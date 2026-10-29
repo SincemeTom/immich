@@ -119,7 +119,7 @@ export class DatabaseBackupService {
     databaseMajorVersion?: number;
   }> {
     const {
-      database: { config: databaseConfig },
+      database: { config: databaseConfig, binDir },
     } = this.configRepository.getEnv();
     const isUrlConnection = databaseConfig.connectionType === 'url';
 
@@ -215,7 +215,8 @@ export class DatabaseBackupService {
     }
 
     return {
-      bin: `/usr/lib/postgresql/${databaseMajorVersion}/bin/${bin}`,
+      // the image ships the client tools of every supported major version, so it picks the server's
+      bin: binDir ? path.join(binDir, bin) : `/usr/lib/postgresql/${databaseMajorVersion}/bin/${bin}`,
       args,
       databaseUsername,
       databasePassword,
@@ -251,6 +252,12 @@ export class DatabaseBackupService {
       const fileStream = this.storageRepository.createWriteStream(temporaryFilePath);
 
       await pipeline(pgdump, gzip, fileStream);
+      // a gzip stream is never empty, so nothing written means a tool failed while exiting 0, as a gzip without
+      // --rsyncable does (macOS's): renaming it would present a backup that holds nothing
+      const { size } = await this.storageRepository.stat(temporaryFilePath);
+      if (size === 0) {
+        throw new Error('Backup file is empty');
+      }
       await this.storageRepository.rename(temporaryFilePath, backupFilePath);
     } catch (error) {
       this.logger.error(`Database Backup Failure: ${error}`);

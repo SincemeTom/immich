@@ -1,5 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
 import { DateTime } from 'luxon';
+import { Stats } from 'node:fs';
 import { Duplex, PassThrough, Readable } from 'node:stream';
 import { StorageCore } from 'src/cores/storage.core.js';
 import { SystemConfig, defaults } from 'src/dtos/config.dto.js';
@@ -7,6 +8,7 @@ import { ImmichWorker, JobStatus, StorageFolder } from 'src/enum.js';
 import { MaintenanceHealthRepository } from 'src/maintenance/maintenance-health.repository.js';
 import { DatabaseBackupService } from 'src/services/database-backup.service.js';
 import { systemConfigStub } from 'test/fixtures/system-config.stub.js';
+import { envData, mockEnvData } from 'test/repositories/config.repository.mock.js';
 import { AutoMocked, ServiceMocks, automock, getMocks, mockDuplex, mockSpawn } from 'test/utils.js';
 
 describe(DatabaseBackupService.name, () => {
@@ -16,6 +18,8 @@ describe(DatabaseBackupService.name, () => {
 
   beforeEach(() => {
     mocks = getMocks();
+    // a written backup has content; the empty case is tested on its own
+    mocks.storage.stat.mockResolvedValue({ size: 1024 } as Stats);
     maintenanceHealthRepositoryMock = automock(MaintenanceHealthRepository, {
       args: [mocks.logger],
       strict: false,
@@ -172,6 +176,13 @@ describe(DatabaseBackupService.name, () => {
       mocks.storage.createWriteStream.mockReturnValue(new PassThrough());
     });
 
+    it('should fail and remove the file if the backup is empty', async () => {
+      mocks.storage.stat.mockResolvedValue({ size: 0 } as Stats);
+      await expect(sut.handleBackupDatabase()).rejects.toThrow('Backup file is empty');
+      expect(mocks.storage.rename).not.toHaveBeenCalled();
+      expect(mocks.storage.unlink).toHaveBeenCalledWith(expect.stringMatching(/\.sql\.gz\.tmp$/));
+    });
+
     it('should sanitize DB_URL (remove uselibpqcompat) before calling pg_dumpall', async () => {
       // create a service instance with a URL connection that includes libpqcompat
       const dbUrl = 'postgresql://postgres:pwd@host:5432/immich?sslmode=require&uselibpqcompat=true';
@@ -312,6 +323,27 @@ describe(DatabaseBackupService.name, () => {
       mocks.database.getPostgresVersion.mockResolvedValue(postgresVersion);
       const result = await sut.handleBackupDatabase();
       expect(mocks.process.spawn).not.toHaveBeenCalled();
+      expect(result).toBe(JobStatus.Failed);
+    });
+
+    it('should use pg_dump from DB_BIN_DIR', async () => {
+      mocks.config.getEnv.mockReturnValue(
+        mockEnvData({ database: { ...envData.database, binDir: '/opt/homebrew/opt/postgresql@17/bin' } }),
+      );
+      mocks.database.getPostgresVersion.mockResolvedValue('17.6');
+      await sut.handleBackupDatabase();
+      expect(mocks.process.spawnDuplexStream).toHaveBeenCalledWith(
+        '/opt/homebrew/opt/postgresql@17/bin/pg_dump',
+        expect.any(Array),
+        expect.any(Object),
+      );
+    });
+
+    it('should still check the postgres version with DB_BIN_DIR', async () => {
+      mocks.config.getEnv.mockReturnValue(mockEnvData({ database: { ...envData.database, binDir: '/usr/bin' } }));
+      mocks.database.getPostgresVersion.mockResolvedValue('19.0.0');
+      const result = await sut.handleBackupDatabase();
+      expect(mocks.process.spawnDuplexStream).not.toHaveBeenCalled();
       expect(result).toBe(JobStatus.Failed);
     });
   });

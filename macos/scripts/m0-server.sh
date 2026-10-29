@@ -40,6 +40,8 @@ export DB_PORT=5433
 export DB_USERNAME=postgres
 export DB_PASSWORD=postgres
 export DB_DATABASE_NAME=immich
+# pg_dump/psql for database backups (mac/feat/pg-bin-path); without it the server looks in /usr/lib/postgresql
+export DB_BIN_DIR=/opt/homebrew/opt/postgresql@17/bin
 export REDIS_HOSTNAME=127.0.0.1
 export REDIS_PORT=6380
 export IMMICH_LOG_LEVEL="${IMMICH_LOG_LEVEL:-log}"
