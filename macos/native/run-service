@@ -1,0 +1,102 @@
+#!/bin/bash
+# Starts one Immich service in the foreground, with the environment it needs. launchd runs it for each LaunchAgent
+# that install.sh registers, and immichctl runs `run-service server immich-admin ...` for the admin CLI.
+#
+# Usage: run-service postgres|valkey|ml|server [args]
+#
+# Everything comes from $IMMICH_HOME/config: native.env (written by install.sh) and server.env (yours, extra
+# Immich settings for the server). The release a service runs is the one `current` points at when it starts.
+set -euo pipefail
+
+home="$(cd "$(dirname "$0")/.." && pwd)"
+# shellcheck source=/dev/null
+. "$home/config/native.env"
+
+# the release ml and server run: the one `current` points at when they start, so that switching it during an
+# upgrade does not change what a running process loads
+current_release() {
+  cd "$home/current" && pwd -P
+}
+
+# launchd starts jobs with LANG unset. Postgres then asks macOS for the locale, which starts a thread in the
+# postmaster, and it refuses to run ("postmaster became multithreaded during startup").
+export LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8
+# GNU gzip (Homebrew) ahead of macOS's, which rejects the --rsyncable that database backups use
+export PATH="/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+
+service="${1:?usage: run-service postgres|valkey|ml|server [args]}"
+shift
+
+case "$service" in
+  postgres)
+    "$IMMICH_NATIVE_PG_PREFIX/bin/postgres" -D "$home/data/postgres" &
+    pid=$!
+    # launchd stops a job with SIGTERM, which postgres takes as a smart shutdown that waits for every client to
+    # leave. The official image stops it with SIGINT (STOPSIGNAL), a fast shutdown, and so does this.
+    trap 'kill -INT "$pid" 2>/dev/null || true' TERM INT
+    status=0
+    while :; do
+      wait "$pid" && status=0 || status=$?
+      kill -0 "$pid" 2>/dev/null || break
+    done
+    exit "$status"
+    ;;
+
+  valkey)
+    exec /opt/homebrew/bin/valkey-server "$home/config/valkey.conf"
+    ;;
+
+  ml)
+    release="$(current_release)"
+    export PYTHONPATH="$release/ml"
+    export MACHINE_LEARNING_CACHE_FOLDER="$home/data/models"
+    export HF_HOME="$home/data/models/hf-cache"
+    export IMMICH_LOG_LEVEL="${IMMICH_NATIVE_LOG_LEVEL:-info}"
+    cd "$release/ml"
+    # uvicorn directly rather than `python -m immich_ml`, which forks a worker from gunicorn: a forked worker
+    # compiling CoreML models aborted once in M0 (macos/verification/m0-ml-coreml.md). launchd restarts it instead.
+    exec "$release/ml/venv/bin/python" -m uvicorn immich_ml.main:app \
+      --host 127.0.0.1 --port "$IMMICH_NATIVE_ML_PORT" \
+      --timeout-keep-alive 2 --log-config "$release/ml/immich_ml/log_conf.json" "$@"
+    ;;
+
+  server)
+    release="$(current_release)"
+    # your settings first, so that the ones the services depend on below take precedence
+    set -a
+    # shellcheck source=/dev/null
+    [ -f "$home/config/server.env" ] && . "$home/config/server.env"
+    set +a
+
+    export NODE_ENV=production
+    export IMMICH_LOG_LEVEL="${IMMICH_LOG_LEVEL:-${IMMICH_NATIVE_LOG_LEVEL:-log}}"
+    export IMMICH_PORT="$IMMICH_NATIVE_SERVER_PORT"
+    if [ -n "${IMMICH_NATIVE_LISTEN:-}" ]; then
+      export IMMICH_HOST="$IMMICH_NATIVE_LISTEN"
+    fi
+    # what the container keeps in /build and /data
+    export IMMICH_BUILD_DATA="$release/build"
+    export IMMICH_MEDIA_LOCATION="$IMMICH_NATIVE_LIBRARY"
+    export DB_HOSTNAME=127.0.0.1
+    export DB_PORT="$IMMICH_NATIVE_DB_PORT"
+    export DB_USERNAME=postgres
+    export DB_PASSWORD="$IMMICH_NATIVE_DB_PASSWORD"
+    export DB_DATABASE_NAME=immich
+    export DB_BIN_DIR="$IMMICH_NATIVE_PG_PREFIX/bin"
+    export REDIS_HOSTNAME=127.0.0.1
+    export REDIS_PORT="$IMMICH_NATIVE_REDIS_PORT"
+    # the default for Settings > Machine Learning, which can still be changed there
+    export IMMICH_MACHINE_LEARNING_URL="http://127.0.0.1:$IMMICH_NATIVE_ML_PORT"
+    # as server/bin/start.sh sets it from the container's CPU quota
+    UV_THREADPOOL_SIZE="$(sysctl -n hw.ncpu)"
+    export UV_THREADPOOL_SIZE
+    # jellyfin-ffmpeg, which has the tonemapx filter the server uses for HDR video
+    export PATH="$release/ffmpeg:$PATH"
+    exec "$release/node/bin/node" "$release/server/dist/main.js" "$@"
+    ;;
+
+  *)
+    echo "unknown service: $service" >&2
+    exit 64
+    ;;
+esac

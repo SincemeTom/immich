@@ -10,6 +10,7 @@ Usage (with the machine-learning venv's python, which has httpx):
 
 import argparse
 import gzip
+import os
 import subprocess
 import sys
 import time
@@ -20,7 +21,7 @@ from typing import Any
 import httpx
 
 REPO = Path(__file__).resolve().parents[2]
-FFPROBE = str(Path.home() / "Library/Caches/immich-m0/ffmpeg/ffprobe")
+FFPROBE = os.environ.get("M0_FFPROBE", str(Path.home() / "Library/Caches/immich-m0/ffmpeg/ffprobe"))
 FORMATS = REPO / "e2e/test-assets/formats"
 EXTRA = [
     REPO / "e2e/test-assets/metadata/faces/portrait.jpg",
