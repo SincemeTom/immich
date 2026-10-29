@@ -3,6 +3,9 @@
 # Usage: macos/scripts/m0-check-env.sh
 set -uo pipefail
 
+# the tools M0 installs outside the default PATH: keg-only formulae, and jellyfin-ffmpeg as mise.lock pins it
+export PATH="$HOME/Library/Caches/immich-m0/ffmpeg:/opt/homebrew/opt/node@24/bin:/opt/homebrew/opt/postgresql@17/bin:/opt/homebrew/opt/rustup/bin:$HOME/.cargo/bin:/opt/homebrew/bin:$PATH"
+
 pass=0
 warn=0
 fail=0
@@ -71,7 +74,7 @@ check_tool postgres "brew install postgresql@17"
 check_tool pg_dump "brew install postgresql@17"
 check_tool valkey-server "brew install valkey"
 check_tool vips "brew install vips"
-check_tool ffmpeg "jellyfin-ffmpeg, see M0 report"
+check_tool ffmpeg "jellyfin-ffmpeg 7.1.3-6, see macos/verification/m0-ffmpeg-videotoolbox.md"
 check_tool exiftool "brew install exiftool"
 
 if command -v ffmpeg >/dev/null 2>&1; then
@@ -88,10 +91,10 @@ fi
 
 if command -v vips >/dev/null 2>&1; then
   echo "== libvips formats"
-  loaders="$(vips -l foreign 2>/dev/null)"
-  # dcraw is libvips' name for its libraw-based camera RAW loader
-  for fmt in heif jxl dcraw webp tiff; do
-    grep -qi "${fmt}load" <<<"$loaders" && ok "loader $fmt" || wn "loader $fmt missing"
+  loaders="$(vips -l 2>/dev/null)"
+  # names as in `vips -l`; DcRaw is libvips' libraw-based camera RAW loader, Uhdr is Ultra HDR JPEG
+  for fmt in Heif Jxl DcRaw Uhdr Webp Tiff; do
+    grep -q "VipsForeignLoad${fmt}File" <<<"$loaders" && ok "loader $fmt" || wn "loader $fmt missing"
   done
 fi
 
