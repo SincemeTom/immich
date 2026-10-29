@@ -1,5 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
 import { DateTime } from 'luxon';
+import { Stats } from 'node:fs';
 import { Duplex, PassThrough, Readable } from 'node:stream';
 import { StorageCore } from 'src/cores/storage.core.js';
 import { SystemConfig, defaults } from 'src/dtos/config.dto.js';
@@ -17,6 +18,8 @@ describe(DatabaseBackupService.name, () => {
 
   beforeEach(() => {
     mocks = getMocks();
+    // a written backup has content; the empty case is tested on its own
+    mocks.storage.stat.mockResolvedValue({ size: 1024 } as Stats);
     maintenanceHealthRepositoryMock = automock(MaintenanceHealthRepository, {
       args: [mocks.logger],
       strict: false,
@@ -171,6 +174,13 @@ describe(DatabaseBackupService.name, () => {
       mocks.storage.unlink.mockResolvedValue();
       mocks.systemMetadata.get.mockResolvedValue(systemConfigStub.backupEnabled);
       mocks.storage.createWriteStream.mockReturnValue(new PassThrough());
+    });
+
+    it('should fail and remove the file if the backup is empty', async () => {
+      mocks.storage.stat.mockResolvedValue({ size: 0 } as Stats);
+      await expect(sut.handleBackupDatabase()).rejects.toThrow('Backup file is empty');
+      expect(mocks.storage.rename).not.toHaveBeenCalled();
+      expect(mocks.storage.unlink).toHaveBeenCalledWith(expect.stringMatching(/\.sql\.gz\.tmp$/));
     });
 
     it('should sanitize DB_URL (remove uselibpqcompat) before calling pg_dumpall', async () => {
