@@ -261,11 +261,13 @@ warm_once() {
   is_loaded server && warm_server=1
   stop_one server >/dev/null
   stop_one ml >/dev/null
-  "$home/bin/run-service" ml-warm "$clip" "$face" "$ocr" "$ocr_max" >"$logs/ml-warm.log" 2>&1 &
+  # in a process group of its own, so that stopping it reaches the downloader and the service's preparing children
+  /usr/bin/perl -e 'setpgrp(0, 0); exec @ARGV or die "exec: $!\n"' \
+    "$home/bin/run-service" ml-warm "$clip" "$face" "$ocr" "$ocr_max" >"$logs/ml-warm.log" 2>&1 &
   warm_pid=$!
   # whatever ends this (an error, Ctrl-C), the warm-up stops and the services come back
   trap warm_cleanup EXIT
-  trap 'echo; echo "  stopped: the models not prepared yet are prepared on first use"; exit 130' INT TERM
+  trap 'echo; echo "  stopped: run immichctl warm again to resume (a download continues where it left off)"; exit 130' INT TERM
 
   started=$SECONDS
   next=$SECONDS
@@ -297,10 +299,10 @@ warm_cleanup() {
   [ -n "${warm_pid:-}" ] || return 0
   local pid="$warm_pid" waited=0
   warm_pid=""
-  kill "$pid" 2>/dev/null || true
+  kill -TERM -- "-$pid" 2>/dev/null || true
   # while it downloads, the service is still starting up and does not act on SIGTERM
-  while kill -0 "$pid" 2>/dev/null; do
-    [ "$waited" -ge 10 ] && { kill -9 "$pid" 2>/dev/null || true; break; }
+  while kill -0 -- "-$pid" 2>/dev/null; do
+    [ "$waited" -ge 10 ] && { kill -KILL -- "-$pid" 2>/dev/null || true; break; }
     sleep 1
     waited=$((waited + 1))
   done

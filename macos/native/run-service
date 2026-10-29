@@ -54,8 +54,8 @@ case "$service" in
     export HF_HOME="$home/data/models/hf-cache"
     export IMMICH_LOG_LEVEL="${IMMICH_NATIVE_LOG_LEVEL:-info}"
     if [ "$service" = ml-warm ]; then
-      # `immichctl warm` runs this in place of the service: the service's own preload downloads the models and
-      # prepares every shape the provider compiles (CoreML), and only then answers /ping
+      # `immichctl warm` runs this in place of the service: the models are downloaded, then the service's own
+      # preload prepares every shape the provider compiles (CoreML), and only then answers /ping
       [ $# -ge 4 ] || { echo "usage: run-service ml-warm CLIP FACE OCR OCR_MAX_RESOLUTION" >&2; exit 64; }
       export MACHINE_LEARNING_PRELOAD__CLIP__TEXTUAL="$1" MACHINE_LEARNING_PRELOAD__CLIP__VISUAL="$1"
       export MACHINE_LEARNING_PRELOAD__FACIAL_RECOGNITION__DETECTION="$2"
@@ -63,6 +63,30 @@ case "$service" in
       export MACHINE_LEARNING_PRELOAD__OCR__DETECTION="$3" MACHINE_LEARNING_PRELOAD__OCR__RECOGNITION="$3"
       export MACHINE_LEARNING_PRELOAD__OCR__MAX_RESOLUTION="$4"
       export MACHINE_LEARNING_MODEL_TTL=0
+      cd "$release/ml"
+      # Downloaded first, apart from the service: Hugging Face resumes an interrupted download from its partial
+      # files, while the service, finding a model it cannot load, deletes its folder and fetches all of it again,
+      # which on a slow line is hours. A marker records a finished download, so later warm-ups need no network.
+      "$release/ml/venv/bin/python" - "$1" "$2" "$3" <<'PY' || echo "the download step failed, preparing what is there"
+import sys
+
+from huggingface_hub import snapshot_download
+
+from immich_ml.config import settings
+from immich_ml.schemas import ModelTask
+
+for task, name in zip((ModelTask.SEARCH, ModelTask.FACIAL_RECOGNITION, ModelTask.OCR), sys.argv[1:]):
+    # where and how the service downloads it: InferenceModel._cache_dir_default and download() in models/base.py
+    folder = settings.cache_folder / task.value / name
+    folder = folder if settings.legacy_models else folder / settings.model_revision
+    marker = folder / ".immich-native-downloaded"
+    if marker.exists():
+        continue
+    print(f"Downloading {task.value} model '{name}'", flush=True)
+    snapshot_download(f"{settings.model_organization}/{name}", revision=settings.model_revision,
+                      cache_dir=folder, local_dir=folder, ignore_patterns=["*.armnn", "*.rknn"])
+    marker.touch()
+PY
       shift 4
     fi
     cd "$release/ml"
