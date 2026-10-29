@@ -237,14 +237,25 @@ ml_models() {
 }
 
 cmd_warm() {
-  local clip face ocr ocr_max started next elapsed size last
+  local clip face ocr ocr_max
   read -r clip face ocr ocr_max <<<"$(ml_models)"
   [ -n "$ocr_max" ] || { echo "cannot read the machine learning settings from the server's code" >&2; return 1; }
   echo "preparing the machine learning models:"
   echo "  smart search: $clip"
   echo "  faces:        $face"
   echo "  text (OCR):   $ocr (max resolution $ocr_max)"
+  warm_once "$clip" "$face" "$ocr" "$ocr_max"
+  # A model that does not load (an interrupted download) is deleted and fetched again, and with it everything
+  # prepared in its folder, like the CLIP text half beside a broken image half. The preload does not go back to
+  # what it already loaded, so one more pass prepares what was lost.
+  if grep -q "Clearing cache" "$logs/ml-warm.log"; then
+    echo "  a model had to be downloaded again, preparing once more"
+    warm_once "$clip" "$face" "$ocr" "$ocr_max"
+  fi
+}
 
+warm_once() {
+  local clip="$1" face="$2" ocr="$3" ocr_max="$4" started next elapsed size last
   # the warm-up takes the service's port, and the server would fail any job it sends meanwhile, so both pause
   warm_server=""
   is_loaded server && warm_server=1
