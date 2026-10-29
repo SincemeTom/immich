@@ -6,6 +6,8 @@
 #   immichctl logs [svc] [-f]           the last lines of one log, or of all; -f follows
 #   immichctl admin <args>              the server's admin CLI, e.g. `immichctl admin reset-admin-password`
 #   immichctl psql [args]               a psql session on the Immich database
+#   immichctl warm                      downloads and prepares the machine learning models the settings name
+#   immichctl clip-model [NAME]         shows, or switches, the smart search model; then prepares it
 #   immichctl doctor                    checks that the Mac keeps Immich running unattended
 #   immichctl uninstall [--purge]       removes the services; --purge also deletes the install (never the library)
 #
@@ -19,6 +21,8 @@ home="$(cd "$(dirname "$0")/.." && pwd)"
 domain="gui/$(id -u)"
 services=(postgres valkey ml server)
 logs="$IMMICH_NATIVE_LOG_DIR"
+# set while `warm` has paused the services
+warm_pid="" warm_server=""
 
 label() { echo "$IMMICH_NATIVE_LABEL_PREFIX.$1"; }
 plist() { echo "$HOME/Library/LaunchAgents/$(label "$1").plist"; }
@@ -201,6 +205,161 @@ cmd_uninstall() {
   echo "kept the library: $IMMICH_NATIVE_LIBRARY"
 }
 
+# --- machine learning models -------------------------------------------------------------------------------------
+
+db() {
+  PGPASSWORD="$IMMICH_NATIVE_DB_PASSWORD" "$IMMICH_NATIVE_PG_PREFIX/bin/psql" -h 127.0.0.1 -p "$IMMICH_NATIVE_DB_PORT" \
+    -U postgres -d immich -X -q -v ON_ERROR_STOP=1 "$@"
+}
+
+# the stored settings: what differs from the defaults, saved by the web UI (empty before the first start)
+stored_config() {
+  db -At -c "SELECT value FROM system_metadata WHERE key = 'system-config'" 2>/dev/null || true
+}
+
+# the server's own code answers, from the release that runs: the defaults merged with the stored settings
+release_node() {
+  local release script="$1"
+  shift
+  release="$(cd "$home/current" && pwd -P)"
+  (cd "$release/server" && IMMICH_STORED_CONFIG="$(stored_config)" "$release/node/bin/node" --input-type=module \
+    -e "const dist = '$release/server/dist'; $script" "$@")
+}
+
+# prints: CLIP model, face model, OCR model, OCR max resolution
+ml_models() {
+  release_node "
+    const { defaults } = await import(dist + '/dtos/config.dto.js');
+    const stored = JSON.parse(process.env.IMMICH_STORED_CONFIG || '{}').machineLearning ?? {};
+    const pick = (section, key) => stored[section]?.[key] ?? defaults.machineLearning[section][key];
+    console.log([pick('clip', 'modelName'), pick('facialRecognition', 'modelName'), pick('ocr', 'modelName'),
+      pick('ocr', 'maxResolution')].join(' '));"
+}
+
+cmd_warm() {
+  local clip face ocr ocr_max
+  read -r clip face ocr ocr_max <<<"$(ml_models)"
+  [ -n "$ocr_max" ] || { echo "cannot read the machine learning settings from the server's code" >&2; return 1; }
+  echo "preparing the machine learning models:"
+  echo "  smart search: $clip"
+  echo "  faces:        $face"
+  echo "  text (OCR):   $ocr (max resolution $ocr_max)"
+  warm_once "$clip" "$face" "$ocr" "$ocr_max"
+  # A model that does not load (an interrupted download) is deleted and fetched again, and with it everything
+  # prepared in its folder, like the CLIP text half beside a broken image half. The preload does not go back to
+  # what it already loaded, so one more pass prepares what was lost.
+  if grep -q "Clearing cache" "$logs/ml-warm.log"; then
+    echo "  a model had to be downloaded again, preparing once more"
+    warm_once "$clip" "$face" "$ocr" "$ocr_max"
+  fi
+}
+
+warm_once() {
+  local clip="$1" face="$2" ocr="$3" ocr_max="$4" started next elapsed size last
+  # the warm-up takes the service's port, and the server would fail any job it sends meanwhile, so both pause
+  warm_server=""
+  is_loaded server && warm_server=1
+  stop_one server >/dev/null
+  stop_one ml >/dev/null
+  # in a process group of its own, so that stopping it reaches the downloader and the service's preparing children
+  /usr/bin/perl -e 'setpgrp(0, 0); exec @ARGV or die "exec: $!\n"' \
+    "$home/bin/run-service" ml-warm "$clip" "$face" "$ocr" "$ocr_max" >"$logs/ml-warm.log" 2>&1 &
+  warm_pid=$!
+  # whatever ends this (an error, Ctrl-C), the warm-up stops and the services come back
+  trap warm_cleanup EXIT
+  trap 'echo; echo "  stopped: run immichctl warm again to resume (a download continues where it left off)"; exit 130' INT TERM
+
+  started=$SECONDS
+  next=$SECONDS
+  while ! healthy ml; do
+    if ! kill -0 "$warm_pid" 2>/dev/null; then
+      echo "  the warm-up stopped before the models were ready, see $logs/ml-warm.log" >&2
+      sed 's/\x1b\[[0-9;]*m//g' "$logs/ml-warm.log" | tail -n 15 >&2
+      return 1
+    fi
+    elapsed=$((SECONDS - started))
+    if [ "$SECONDS" -ge "$next" ]; then
+      next=$((SECONDS + 15))
+      size="$(du -sm "$home/data/models" 2>/dev/null | awk '{ printf "%.1f GB", $1 / 1024 }' || true)"
+      # nothing matches until the service logs its first step, which grep reports by failing
+      last="$(sed 's/\x1b\[[0-9;]*m//g' "$logs/ml-warm.log" \
+        | grep -oE "(Downloading|Preparing|Preloading|Loading) [^/]*" | tail -n 1 | cut -c1-70 || true)"
+      printf '  %3d:%02d  %s in the model folder  %s\n' $((elapsed / 60)) $((elapsed % 60)) "$size" "${last:-starting}"
+    fi
+    sleep 1
+  done
+  elapsed=$((SECONDS - started))
+  echo "  ready after $((elapsed / 60)) min $((elapsed % 60)) s, $(du -sm "$home/data/models" | awk '{ printf "%.1f GB", $1 / 1024 }') of models"
+  warm_cleanup
+  trap - EXIT INT TERM
+}
+
+# stops the warm-up and starts what it paused; a no-op once that is done
+warm_cleanup() {
+  [ -n "${warm_pid:-}" ] || return 0
+  local pid="$warm_pid" waited=0
+  warm_pid=""
+  kill -TERM -- "-$pid" 2>/dev/null || true
+  # while it downloads, the service is still starting up and does not act on SIGTERM
+  while kill -0 -- "-$pid" 2>/dev/null; do
+    [ "$waited" -ge 10 ] && { kill -KILL -- "-$pid" 2>/dev/null || true; break; }
+    sleep 1
+    waited=$((waited + 1))
+  done
+  wait "$pid" 2>/dev/null || true
+  start_one ml || true
+  if [ -n "$warm_server" ]; then
+    start_one server || true
+  fi
+}
+
+cmd_clip_model() {
+  local current model="${1:-}" known stored
+  read -r current _ <<<"$(ml_models)"
+  if [ -z "$model" ]; then
+    echo "$current"
+    return
+  fi
+  known="$(release_node "const { CLIP_MODEL_INFO } = await import(dist + '/constants.js');
+    console.log(process.argv[1] in CLIP_MODEL_INFO ? 'yes' : 'no')" "$model")"
+  if [ "$known" != yes ]; then
+    echo "unknown smart search model: $model (the ones Immich knows are in server/src/constants.ts, CLIP_MODEL_INFO)" >&2
+    return 64
+  fi
+  if grep -qE '^[[:space:]]*IMMICH_CONFIG_FILE=' "$home/config/server.env" 2>/dev/null; then
+    echo "server.env sets IMMICH_CONFIG_FILE, so the settings come from that file: set the model there" >&2
+    return 1
+  fi
+  if [ -z "$(db -At -c "SELECT to_regclass('system_metadata')")" ]; then
+    echo "the database has no tables yet: start the server once (immichctl start), then run this again" >&2
+    return 1
+  fi
+  if [ "$model" = "$current" ]; then
+    echo "smart search already uses $model"
+  else
+    # merged into the stored settings, as saving it in Settings > Machine Learning > Smart Search does
+    db -v model="$model" <<'SQL'
+INSERT INTO system_metadata (key, value)
+VALUES ('system-config', jsonb_build_object('machineLearning', jsonb_build_object('clip', jsonb_build_object('modelName', :'model'))))
+ON CONFLICT (key) DO UPDATE SET value = system_metadata.value || jsonb_build_object('machineLearning',
+  coalesce(system_metadata.value -> 'machineLearning', '{}'::jsonb) || jsonb_build_object('clip',
+    coalesce(system_metadata.value -> 'machineLearning' -> 'clip', '{}'::jsonb) || jsonb_build_object('modelName', :'model')));
+SQL
+    stored="$(stored_config)"
+    case "$stored" in *"\"$model\""*) ;; *) echo "the setting did not take: $stored" >&2; return 1 ;; esac
+    echo "smart search: $current -> $model"
+  fi
+  # the warm-up restarts the server, which then sizes the search index for the model's vectors
+  [ "${2:-}" = --no-warm ] || cmd_warm
+  if [ "$model" != "$current" ] && [ "$(db -At -c "SELECT count(*) FROM asset WHERE \"deletedAt\" IS NULL")" -gt 0 ]; then
+    cat <<EOF
+
+The photos already in the library were indexed with $current, whose search data no longer applies.
+Re-index them in the web UI: Administration > Jobs > Smart Search > All.
+EOF
+  fi
+}
+
 command="${1:-status}"
 [ $# -gt 0 ] && shift
 # service names have no spaces, so the word splitting of $(selected) is the list itself
@@ -220,7 +379,9 @@ case "$command" in
     exec "$IMMICH_NATIVE_PG_PREFIX/bin/psql" -h 127.0.0.1 -p "$IMMICH_NATIVE_DB_PORT" -U postgres -d immich "$@"
     ;;
   doctor) cmd_doctor ;;
+  warm) cmd_warm ;;
+  clip-model) cmd_clip_model "$@" ;;
   uninstall) cmd_uninstall "$@" ;;
-  -h | --help | help) sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//' ;;
+  -h | --help | help) sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//' ;;
   *) echo "unknown command: $command (see immichctl help)" >&2; exit 64 ;;
 esac

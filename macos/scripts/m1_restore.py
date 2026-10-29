@@ -1,10 +1,10 @@
 """M1: restores a database backup through the API the web UI uses (Administration > Maintenance > Restore), on a
 native install, and checks the data comes back.
 
-1. creates a backup of the current state, then deletes an asset so the database differs from it
+1. creates a backup of the current state, then moves an asset to the trash so the database differs from it
 2. enters maintenance mode, which restarts the server into its maintenance worker
 3. starts the restore of that backup, follows its progress, and waits for the server to come back out
-4. checks the deleted asset is back, with its search embedding and the restore point backup taken before the restore
+4. checks the asset is out of the trash again, with its search embedding, and the restore point backup taken before
 
 Usage (with the machine-learning venv's python, which has httpx; the instance must have run m0_e2e.py):
   m1_restore.py --url http://127.0.0.1:2284
@@ -59,9 +59,10 @@ def main() -> None:
     hits = client.post("/api/search/smart", json={"query": "a bird of prey", "size": 1}).json()["assets"]["items"]
     falcon = hits[0]
     assert falcon["originalFileName"] == "prairie_falcon.jpg", falcon["originalFileName"]
-    client.request("DELETE", "/api/assets", json={"ids": [falcon["id"]], "force": True}).raise_for_status()
-    wait("the delete", lambda: client.get(f"/api/assets/{falcon['id']}").status_code == 400, timeout=60)
-    print(f"  deleted {falcon['originalFileName']} ({falcon['id']}), it is no longer found")
+    # to the trash, not deleted for good: that would remove its files, which restoring the database cannot bring back
+    client.request("DELETE", "/api/assets", json={"ids": [falcon["id"]]}).raise_for_status()
+    wait("the delete", lambda: client.get(f"/api/assets/{falcon['id']}").json()["isTrashed"], timeout=60)
+    print(f"  moved {falcon['originalFileName']} ({falcon['id']}) to the trash")
 
     print("== restore it the way the web UI does")
     response = client.post("/api/admin/maintenance", json={"action": "start"})
@@ -94,8 +95,8 @@ def main() -> None:
     login.raise_for_status()
     client.headers["Authorization"] = f"Bearer {login.json()['accessToken']}"
     results = []
-    asset = client.get(f"/api/assets/{falcon['id']}")
-    results.append(("the deleted asset is back", asset.status_code == 200, asset.json().get("originalFileName")))
+    asset = client.get(f"/api/assets/{falcon['id']}").json()
+    results.append(("the trashed asset is back", not asset["isTrashed"], f"{asset['originalFileName']}, in trash: no"))
     hits = client.post("/api/search/smart", json={"query": "a bird of prey", "size": 1}).json()["assets"]["items"]
     top = hits[0]["originalFileName"] if hits else "nothing"
     results.append(("its search embedding is back", bool(hits) and hits[0]["id"] == falcon["id"], f"top hit {top}"))

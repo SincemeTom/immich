@@ -144,10 +144,20 @@ def main() -> None:
     texts = [line.get("text") for line in ocr] if isinstance(ocr, list) else []
     check("OCR text in japanese-shop.jpg", any(texts), ", ".join(t for t in texts if t)[:80])
 
-    falcon = uploaded["e2e/test-assets/albums/nature/prairie_falcon.jpg"]
-    hits = client.post("/api/search/smart", json={"query": "a bird of prey", "size": 5}).json()["assets"]["items"]
-    top = [hit["originalFileName"] for hit in hits]
-    check("smart search 'a bird of prey' ranks the falcon first", bool(hits) and hits[0]["id"] == falcon, ", ".join(top[:3]))
+    model = client.get("/api/system-config").json()["machineLearning"]["clip"]["modelName"]
+    queries = [("a bird of prey", "albums/nature/prairie_falcon.jpg")]
+    # the native install's default model understands Chinese; Immich's own default (ViT-B-32__openai) does not
+    if model.startswith(("XLM-", "nllb-")) or "SigLIP2" in model:
+        queries += [("猛禽", "albums/nature/prairie_falcon.jpg"), ("夜晚的日本小店", "albums/text/japanese-shop.jpg")]
+    for query, expected in queries:
+        hits = client.post("/api/search/smart", json={"query": query, "size": 5}).json()["assets"]["items"]
+        top = [hit["originalFileName"] for hit in hits]
+        wanted = uploaded[f"e2e/test-assets/{expected}"]
+        check(
+            f"smart search '{query}' ranks {Path(expected).name} first ({model})",
+            bool(hits) and hits[0]["id"] == wanted,
+            ", ".join(top[:3]),
+        )
 
     for video in videos:
         asset_id = uploaded[video.name]

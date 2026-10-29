@@ -11,6 +11,9 @@
 #   --db-port N        PostgreSQL, localhost only (default: 5432)
 #   --redis-port N     Valkey, localhost only (default: 6379)
 #   --label PREFIX     LaunchAgent label prefix (default: local.immich), to run a second install alongside
+#   --clip-model NAME  smart search model (default for a new library: XLM-Roberta-Large-ViT-H-14__frozen_laion5b_s13b_b90k,
+#                      which understands Chinese as well as English); on an existing library, switches to NAME
+#   --no-warm          skip downloading and preparing the machine learning models (they are then fetched on first use)
 #   --no-start         build and configure, but leave the services stopped
 #   -h, --help
 #
@@ -21,18 +24,22 @@ set -euo pipefail
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
 DEFAULT_HOME="$HOME/Library/Application Support/Immich"
 DEFAULT_LABEL=local.immich
+# Immich's default, ViT-B-32__openai, is English only: it found 2 of 30 Chinese queries' photos first, this one 27
+# (macos/verification/m1-clip-model.md). It downloads 4.8 GB, takes about 14 GB on disk with CoreML's compiled copy,
+# and about 7 GB of memory while loaded.
+DEFAULT_CLIP_MODEL=XLM-Roberta-Large-ViT-H-14__frozen_laion5b_s13b_b90k
 BREW=/opt/homebrew/bin/brew
 PG_FORMULA=postgresql@17
 PG_PREFIX=/opt/homebrew/opt/$PG_FORMULA
 # the mise.toml tools the build has no use for (Java is for the mobile app's API client)
 MISE_UNUSED="java,terragrunt,opentofu,npm:@openapitools/openapi-generator-cli,npm:oazapfts,github:extism/cli"
 
-usage() { sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'; }
 
 # --- options -----------------------------------------------------------------------------------------------------
 
 opt_home="" opt_library="" opt_server_port="" opt_listen="" opt_listen_set="" opt_ml_port="" opt_db_port=""
-opt_redis_port="" opt_label="" no_start=""
+opt_redis_port="" opt_label="" opt_clip_model="" no_warm="" no_start="" fresh_database=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --home) opt_home="$2"; shift ;;
@@ -43,6 +50,8 @@ while [ $# -gt 0 ]; do
     --db-port) opt_db_port="$2"; shift ;;
     --redis-port) opt_redis_port="$2"; shift ;;
     --label) opt_label="$2"; shift ;;
+    --clip-model) opt_clip_model="$2"; shift ;;
+    --no-warm) no_warm=1 ;;
     --no-start) no_start=1 ;;
     -h | --help) usage; exit 0 ;;
     *) echo "unknown option: $1" >&2; usage >&2; exit 64 ;;
@@ -129,7 +138,10 @@ SDKROOT="$(xcrun --show-sdk-path 2>/dev/null)" && [ -d "$SDKROOT" ] \
   || die "no macOS SDK: install the Xcode command line tools with xcode-select --install"
 export SDKROOT
 free_gb="$(df -g "$HOME" | awk 'NR == 2 { print $4 }')"
-[ "$free_gb" -ge 15 ] || die "at least 15 GB free is needed to build, there are $free_gb GB"
+# the build, and the models with their CoreML copies (about 14 GB for the default smart search model)
+need_gb=15
+[ -d "$IMMICH_HOME/data/models" ] || need_gb=35
+[ "$free_gb" -ge "$need_gb" ] || die "at least $need_gb GB free is needed, there are $free_gb GB"
 info "$(sysctl -n machdep.cpu.brand_string), macOS $macos, $free_gb GB free"
 
 # a port in use by anything but this install's own service, which runs as (or under) the LaunchAgent's process
@@ -441,11 +453,22 @@ else
     "SELECT 1 FROM pg_database WHERE datname = 'immich'")" ]; then
     quiet "$PG_PREFIX/bin/psql" -h 127.0.0.1 -p "$DB_PORT" -U postgres -c "CREATE DATABASE immich"
     info "created the immich database"
+    fresh_database=1
   fi
   unset PGPASSWORD
   "$ctl" start valkey
   "$ctl" start ml
   "$ctl" start server
+
+  # the smart search model: the multilingual default for a new library, otherwise only when asked for. Changing it
+  # on a library with photos means re-indexing them, which the web UI's Jobs page starts.
+  if [ -n "$fresh_database" ] || [ -n "$opt_clip_model" ]; then
+    step "Smart search model ${opt_clip_model:-$DEFAULT_CLIP_MODEL}"
+    "$ctl" clip-model "${opt_clip_model:-$DEFAULT_CLIP_MODEL}" ${no_warm:+--no-warm} | sed 's/^/    /'
+  elif [ -z "$no_warm" ]; then
+    step "Preparing the machine learning models"
+    "$ctl" warm | sed 's/^/    /'
+  fi
 fi
 
 # keep the release that runs and the one before it, for going back
