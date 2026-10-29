@@ -3,6 +3,7 @@
 # that install.sh registers, and immichctl runs `run-service server immich-admin ...` for the admin CLI.
 #
 # Usage: run-service postgres|valkey|ml|server [args]
+#        run-service ml-warm CLIP FACE OCR OCR_MAX_RESOLUTION     (immichctl warm)
 #
 # Everything comes from $IMMICH_HOME/config: native.env (written by install.sh) and server.env (yours, extra
 # Immich settings for the server). The release a service runs is the one `current` points at when it starts.
@@ -46,12 +47,24 @@ case "$service" in
     exec /opt/homebrew/bin/valkey-server "$home/config/valkey.conf"
     ;;
 
-  ml)
+  ml | ml-warm)
     release="$(current_release)"
     export PYTHONPATH="$release/ml"
     export MACHINE_LEARNING_CACHE_FOLDER="$home/data/models"
     export HF_HOME="$home/data/models/hf-cache"
     export IMMICH_LOG_LEVEL="${IMMICH_NATIVE_LOG_LEVEL:-info}"
+    if [ "$service" = ml-warm ]; then
+      # `immichctl warm` runs this in place of the service: the service's own preload downloads the models and
+      # prepares every shape the provider compiles (CoreML), and only then answers /ping
+      [ $# -ge 4 ] || { echo "usage: run-service ml-warm CLIP FACE OCR OCR_MAX_RESOLUTION" >&2; exit 64; }
+      export MACHINE_LEARNING_PRELOAD__CLIP__TEXTUAL="$1" MACHINE_LEARNING_PRELOAD__CLIP__VISUAL="$1"
+      export MACHINE_LEARNING_PRELOAD__FACIAL_RECOGNITION__DETECTION="$2"
+      export MACHINE_LEARNING_PRELOAD__FACIAL_RECOGNITION__RECOGNITION="$2"
+      export MACHINE_LEARNING_PRELOAD__OCR__DETECTION="$3" MACHINE_LEARNING_PRELOAD__OCR__RECOGNITION="$3"
+      export MACHINE_LEARNING_PRELOAD__OCR__MAX_RESOLUTION="$4"
+      export MACHINE_LEARNING_MODEL_TTL=0
+      shift 4
+    fi
     cd "$release/ml"
     # uvicorn directly rather than `python -m immich_ml`, which forks a worker from gunicorn: a forked worker
     # compiling CoreML models aborted once in M0 (macos/verification/m0-ml-coreml.md). launchd restarts it instead.
