@@ -76,6 +76,12 @@ check_tool valkey-server "brew install valkey"
 check_tool vips "brew install vips"
 check_tool ffmpeg "jellyfin-ffmpeg 7.1.3-6, see macos/verification/m0-ffmpeg-videotoolbox.md"
 check_tool exiftool "brew install exiftool"
+# database backups pipe pg_dump through `gzip --rsyncable`; macOS's gzip rejects the flag yet exits 0
+if printf 'x' | gzip --rsyncable >/dev/null 2>&1 && [ -n "$(printf 'x' | gzip --rsyncable 2>/dev/null)" ]; then
+  ok "gzip: $(command -v gzip) supports --rsyncable"
+else
+  ko "gzip: $(command -v gzip) lacks --rsyncable, backups would be empty (brew install gzip)"
+fi
 
 if command -v ffmpeg >/dev/null 2>&1; then
   echo "== ffmpeg capabilities"

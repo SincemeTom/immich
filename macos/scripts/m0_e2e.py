@@ -9,6 +9,7 @@ Usage (with the machine-learning venv's python, which has httpx):
 """
 
 import argparse
+import gzip
 import subprocess
 import sys
 import time
@@ -166,11 +167,26 @@ def main() -> None:
     before = {b["filename"] for b in client.get("/api/admin/database-backups").json()["backups"]}
     client.post("/api/jobs", json={"name": "backup-database"}).raise_for_status()
     wait_for_queues(client, 300)
-    # queue counters are pruned, so the backup is judged by the file it should have written
+    # queue counters are pruned, so the backup is judged by the file it should have written, and by what is in it:
+    # a backup that exists is not one that restores (an empty file once passed here)
     after = client.get("/api/admin/database-backups").json()["backups"]
     created = [b for b in after if b["filename"] not in before]
-    detail = f"{created[0]['filename']} ({created[0]['filesize']} bytes)" if created else "no new backup file"
-    check("backup written", bool(created), detail)
+    if not created:
+        check("backup written", False, "no new backup file")
+    else:
+        name = created[0]["filename"]
+        body = client.get(f"/api/admin/database-backups/{name}").content
+        try:
+            dump = gzip.decompress(body).decode()
+        except (OSError, EOFError, UnicodeDecodeError) as error:
+            check("backup written", False, f"{name} ({len(body)} bytes) is not a readable gzip: {error}")
+        else:
+            tables = [table for table in ("asset", "smart_search", "asset_face") if f"COPY public.{table} " in dump]
+            check(
+                "backup written",
+                "PostgreSQL database dump complete" in dump and len(tables) == 3,
+                f"{name}: {len(body)} bytes, {len(dump)} bytes of SQL, data for {', '.join(tables) or 'no tables'}",
+            )
 
     passed = sum(ok for _, ok, _ in results)
     print(f"\nResult: {passed}/{len(results)} checks passed")
