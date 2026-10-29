@@ -7,6 +7,7 @@ import { ImmichWorker, JobStatus, StorageFolder } from 'src/enum.js';
 import { MaintenanceHealthRepository } from 'src/maintenance/maintenance-health.repository.js';
 import { DatabaseBackupService } from 'src/services/database-backup.service.js';
 import { systemConfigStub } from 'test/fixtures/system-config.stub.js';
+import { envData, mockEnvData } from 'test/repositories/config.repository.mock.js';
 import { AutoMocked, ServiceMocks, automock, getMocks, mockDuplex, mockSpawn } from 'test/utils.js';
 
 describe(DatabaseBackupService.name, () => {
@@ -312,6 +313,27 @@ describe(DatabaseBackupService.name, () => {
       mocks.database.getPostgresVersion.mockResolvedValue(postgresVersion);
       const result = await sut.handleBackupDatabase();
       expect(mocks.process.spawn).not.toHaveBeenCalled();
+      expect(result).toBe(JobStatus.Failed);
+    });
+
+    it('should use pg_dump from DB_BIN_DIR', async () => {
+      mocks.config.getEnv.mockReturnValue(
+        mockEnvData({ database: { ...envData.database, binDir: '/opt/homebrew/opt/postgresql@17/bin' } }),
+      );
+      mocks.database.getPostgresVersion.mockResolvedValue('17.6');
+      await sut.handleBackupDatabase();
+      expect(mocks.process.spawnDuplexStream).toHaveBeenCalledWith(
+        '/opt/homebrew/opt/postgresql@17/bin/pg_dump',
+        expect.any(Array),
+        expect.any(Object),
+      );
+    });
+
+    it('should still check the postgres version with DB_BIN_DIR', async () => {
+      mocks.config.getEnv.mockReturnValue(mockEnvData({ database: { ...envData.database, binDir: '/usr/bin' } }));
+      mocks.database.getPostgresVersion.mockResolvedValue('19.0.0');
+      const result = await sut.handleBackupDatabase();
+      expect(mocks.process.spawnDuplexStream).not.toHaveBeenCalled();
       expect(result).toBe(JobStatus.Failed);
     });
   });

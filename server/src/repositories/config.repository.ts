@@ -66,6 +66,8 @@ export interface EnvData {
     config: DatabaseConnectionParams;
     skipMigrations: boolean;
     vectorExtension?: VectorExtension;
+    /** Where pg_dump, pg_dumpall and psql are, instead of the image's per-major-version Debian directories */
+    binDir?: string;
   };
 
   licensePublicKey: {
@@ -308,6 +310,7 @@ const getEnv = (): EnvData => {
       config: databaseConnection,
       skipMigrations: dto.DB_SKIP_MIGRATIONS ?? false,
       vectorExtension,
+      binDir: dto.DB_BIN_DIR,
     },
 
     helmet: {

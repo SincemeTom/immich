@@ -69,6 +69,7 @@ export const EnvSchema = z
     IMMICH_TRUSTED_PROXIES: trustedProxiesSchema,
     IMMICH_WORKERS_INCLUDE: z.string().optional(),
     IMMICH_WORKERS_EXCLUDE: z.string().optional(),
+    DB_BIN_DIR: absolutePath,
     DB_DATABASE_NAME: z.string().optional(),
     DB_HOSTNAME: z.string().optional(),
     DB_PASSWORD: z.string().optional(),

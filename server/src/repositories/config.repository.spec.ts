@@ -21,6 +21,7 @@ const resetEnv = () => {
     'IMMICH_TELEMETRY_EXCLUDE',
 
     'DB_URL',
+    'DB_BIN_DIR',
     'DB_HOSTNAME',
     'DB_PORT',
     'DB_USERNAME',
@@ -129,7 +130,19 @@ describe('getEnv', () => {
         },
         skipMigrations: false,
         vectorExtension: undefined,
+        binDir: undefined,
       });
+    });
+
+    it('should use DB_BIN_DIR', () => {
+      process.env.DB_BIN_DIR = '/opt/homebrew/opt/postgresql@17/bin';
+      const { database } = getEnv();
+      expect(database).toMatchObject({ binDir: '/opt/homebrew/opt/postgresql@17/bin' });
+    });
+
+    it('should throw an error for a relative DB_BIN_DIR', () => {
+      process.env.DB_BIN_DIR = 'postgresql/bin';
+      expect(() => getEnv()).toThrowError('[DB_BIN_DIR] Must be an absolute path');
     });
 
     it('should validate DB_SSL_MODE', () => {

@@ -85,6 +85,7 @@ Information on the current workers can be found [here](/administration/jobs-work
 | `DB_SSL_MODE`                       | Database SSL mode                                                                      |            | server                         |
 | `DB_VECTOR_EXTENSION`<sup>\*2</sup> | Database vector extension (one of [`vectorchord`, `pgvector`])                         |            | server                         |
 | `DB_SKIP_MIGRATIONS`                | Whether to skip running migrations on startup (one of [`true`, `false`])               |  `false`   | server                         |
+| `DB_BIN_DIR`<sup>\*4</sup>          | Directory with `pg_dump`, `pg_dumpall` and `psql`, used for database backups           |            | server                         |
 | `DB_STORAGE_TYPE`                   | Optimize concurrent IO on SSDs or sequential IO on HDDs ([`SSD`, `HDD`])<sup>\*3</sup> |   `SSD`    | database                       |
 
 \*1: The values of `DB_USERNAME`, `DB_PASSWORD`, and `DB_DATABASE_NAME` are passed to the Postgres container as the variables `POSTGRES_USER`, `POSTGRES_PASSWORD`, and `POSTGRES_DB` in `docker-compose.yml`.
@@ -92,6 +93,8 @@ Information on the current workers can be found [here](/administration/jobs-work
 \*2: If not provided, the appropriate extension to use is auto-detected at startup by inspecting the database. When multiple extensions are installed, the order of preference is VectorChord, pgvector.
 
 \*3: Uses either [`postgresql.ssd.conf`](https://github.com/immich-app/base-images/blob/main/postgres/postgresql.ssd.conf) or [`postgresql.hdd.conf`](https://github.com/immich-app/base-images/blob/main/postgres/postgresql.hdd.conf) which mainly controls the Postgres `effective_io_concurrency` setting to allow for concurrenct IO on SSDs and sequential IO on HDDs.
+
+\*4: Only needed when running the server outside the official image, which ships the client tools for every supported Postgres version and picks the one matching the database. The tools in this directory must be the same major version as the database, or newer.
 
 :::info
 
