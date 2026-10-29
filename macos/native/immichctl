@@ -1,0 +1,226 @@
+#!/bin/bash
+# Controls a native Immich install: its four LaunchAgents (postgres, valkey, ml, server), logs, and host checks.
+#
+#   immichctl status                    state and health of every service
+#   immichctl start|stop|restart [svc]  all services in dependency order, or one
+#   immichctl logs [svc] [-f]           the last lines of one log, or of all; -f follows
+#   immichctl admin <args>              the server's admin CLI, e.g. `immichctl admin reset-admin-password`
+#   immichctl psql [args]               a psql session on the Immich database
+#   immichctl doctor                    checks that the Mac keeps Immich running unattended
+#   immichctl uninstall [--purge]       removes the services; --purge also deletes the install (never the library)
+#
+# Services stopped with `stop` come back at the next login, since their LaunchAgents stay in ~/Library/LaunchAgents.
+set -euo pipefail
+
+home="$(cd "$(dirname "$0")/.." && pwd)"
+# shellcheck source=/dev/null
+. "$home/config/native.env"
+
+domain="gui/$(id -u)"
+services=(postgres valkey ml server)
+logs="$IMMICH_NATIVE_LOG_DIR"
+
+label() { echo "$IMMICH_NATIVE_LABEL_PREFIX.$1"; }
+plist() { echo "$HOME/Library/LaunchAgents/$(label "$1").plist"; }
+is_loaded() { launchctl print "$domain/$(label "$1")" >/dev/null 2>&1; }
+job_pid() { launchctl print "$domain/$(label "$1")" 2>/dev/null | awk '$1 == "pid" { print $3; exit }'; }
+
+check_service() {
+  case "$1" in
+    postgres | valkey | ml | server) ;;
+    *) echo "unknown service: $1 (one of: ${services[*]})" >&2; exit 64 ;;
+  esac
+}
+
+healthy() {
+  case "$1" in
+    postgres) "$IMMICH_NATIVE_PG_PREFIX/bin/pg_isready" -q -h 127.0.0.1 -p "$IMMICH_NATIVE_DB_PORT" ;;
+    valkey) [ "$(/opt/homebrew/bin/valkey-cli -p "$IMMICH_NATIVE_REDIS_PORT" ping 2>/dev/null)" = PONG ] ;;
+    ml) [ "$(curl -fsS -m 2 "http://127.0.0.1:$IMMICH_NATIVE_ML_PORT/ping" 2>/dev/null)" = pong ] ;;
+    server) curl -fsS -m 2 "http://127.0.0.1:$IMMICH_NATIVE_SERVER_PORT/api/server/ping" 2>/dev/null | grep -q pong ;;
+  esac
+}
+
+# the first start runs every database migration, and ml may be compiling CoreML models
+wait_healthy() {
+  local service="$1" timeout="${2:-180}" waited=0
+  until healthy "$service"; do
+    if [ "$waited" -ge "$timeout" ]; then
+      echo "  $service is not healthy after ${timeout}s, see: immichctl logs $service" >&2
+      return 1
+    fi
+    sleep 1
+    waited=$((waited + 1))
+  done
+}
+
+start_one() {
+  local service="$1"
+  if is_loaded "$service"; then
+    launchctl kickstart "$domain/$(label "$service")"
+  else
+    launchctl bootstrap "$domain" "$(plist "$service")"
+  fi
+  wait_healthy "$service" && echo "  $service: running"
+}
+
+stop_one() {
+  local service="$1" pid group waited=0
+  if ! is_loaded "$service"; then
+    echo "  $service: not running"
+    return 0
+  fi
+  pid="$(job_pid "$service")"
+  group="$( [ -n "$pid" ] && ps -o pgid= -p "$pid" 2>/dev/null | tr -d ' ' || true)"
+  launchctl bootout "$domain/$(label "$service")" 2>/dev/null || true
+  while is_loaded "$service" || { [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; }; do
+    [ "$waited" -ge 90 ] && { echo "  $service did not stop within 90s" >&2; return 1; }
+    sleep 1
+    waited=$((waited + 1))
+  done
+  # launchd ends the job's process group with it; anything left (the server's exiftool children, say) is reported
+  if [ -n "$group" ] && pgrep -g "$group" >/dev/null 2>&1; then
+    echo "  $service: processes left in group $group: $(pgrep -g "$group" | tr '\n' ' '), stopping them" >&2
+    pkill -TERM -g "$group" 2>/dev/null || true
+  fi
+  echo "  $service: stopped"
+}
+
+reverse() {
+  local i
+  for ((i = $# ; i > 0 ; i--)); do echo "${!i}"; done
+}
+
+selected() {
+  if [ $# -gt 0 ]; then
+    check_service "$1"
+    echo "$1"
+  else
+    printf '%s\n' "${services[@]}"
+  fi
+}
+
+cmd_status() {
+  local service pid state health release
+  release="$(cd "$home/current" 2>/dev/null && pwd -P || echo none)"
+  echo "install:  $home"
+  echo "release:  $(basename "$release")"
+  echo "library:  $IMMICH_NATIVE_LIBRARY"
+  printf '\n%-9s %-22s %s\n' service state health
+  for service in "${services[@]}"; do
+    if ! is_loaded "$service"; then
+      state="not loaded"
+    else
+      pid="$(job_pid "$service")"
+      state="${pid:+running, pid $pid}"
+      state="${state:-loaded, not running}"
+    fi
+    healthy "$service" && health=ok || health="-"
+    printf '%-9s %-22s %s\n' "$service" "$state" "$health"
+  done
+  echo
+  if [ -n "${IMMICH_NATIVE_LISTEN:-}" ]; then
+    echo "web:      http://$IMMICH_NATIVE_LISTEN:$IMMICH_NATIVE_SERVER_PORT"
+  else
+    echo "web:      http://$(ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null || echo localhost):$IMMICH_NATIVE_SERVER_PORT"
+  fi
+}
+
+cmd_logs() {
+  local follow="" lines=50 service="" files=()
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      -f) follow=1 ;;
+      -n) lines="$2"; shift ;;
+      *) check_service "$1"; service="$1" ;;
+    esac
+    shift
+  done
+  if [ -n "$service" ]; then
+    files=("$logs/$service.log")
+  else
+    for service in "${services[@]}"; do files+=("$logs/$service.log"); done
+  fi
+  tail -n "$lines" ${follow:+-F} "${files[@]}"
+}
+
+cmd_doctor() {
+  local ok=0 warn=0 value
+  pass() { printf '  [ OK ] %s\n' "$1"; ok=$((ok + 1)); }
+  note() { printf '  [WARN] %s\n' "$1"; warn=$((warn + 1)); }
+
+  echo "== Keeping Immich running unattended"
+  value="$(pmset -g | awk '$1 == "sleep" { print $2; exit }')"
+  [ "$value" = 0 ] && pass "system sleep is off" \
+    || note "system sleep after ${value} min: System Settings > Energy > Prevent automatic sleeping (or: sudo pmset -a sleep 0)"
+  value="$(pmset -g | awk '$1 == "autorestart" { print $2; exit }')"
+  [ "$value" = 1 ] && pass "restarts after a power failure" \
+    || note "does not restart after a power failure: System Settings > Energy > Start up automatically after a power failure (or: sudo pmset -a autorestart 1)"
+  value="$(defaults read /Library/Preferences/com.apple.loginwindow autoLoginUser 2>/dev/null || true)"
+  if [ "$value" = "$(id -un)" ]; then
+    pass "logs in automatically as $value, which starts the services after a restart"
+  elif [ "$(fdesetup isactive 2>/dev/null)" = true ]; then
+    note "FileVault is on, which rules out automatic login: after a restart Immich waits until someone logs in"
+  else
+    note "no automatic login as $(id -un): after a restart Immich waits until you log in (System Settings > Users & Groups > Automatically log in as)"
+  fi
+
+  echo "== Network"
+  if /usr/libexec/ApplicationFirewall/socketfilterfw --getglobalstate 2>/dev/null | grep -q enabled; then
+    note "the firewall is on: allow incoming connections for node when macOS asks, or phones cannot reach port $IMMICH_NATIVE_SERVER_PORT"
+  else
+    pass "the firewall lets other devices reach port $IMMICH_NATIVE_SERVER_PORT"
+  fi
+
+  echo "== Library"
+  if [ -d "$IMMICH_NATIVE_LIBRARY" ] && [ -w "$IMMICH_NATIVE_LIBRARY" ]; then
+    value="$(df -g "$IMMICH_NATIVE_LIBRARY" | awk 'NR == 2 { print $4 }')"
+    pass "$IMMICH_NATIVE_LIBRARY is writable, ${value} GB free"
+  else
+    note "$IMMICH_NATIVE_LIBRARY is missing or not writable (an external disk that is not mounted?)"
+  fi
+
+  echo
+  echo "Result: $ok ok, $warn warnings"
+}
+
+cmd_uninstall() {
+  local purge="" service
+  [ "${1:-}" = --purge ] && purge=1
+  for service in $(reverse "${services[@]}"); do
+    stop_one "$service"
+    rm -f "$(plist "$service")"
+  done
+  echo "removed the LaunchAgents"
+  if [ -n "$purge" ]; then
+    rm -rf "$home"
+    echo "deleted $home"
+  else
+    echo "kept $home (database, settings, models); \`immichctl uninstall --purge\` deletes it"
+  fi
+  echo "kept the library: $IMMICH_NATIVE_LIBRARY"
+}
+
+command="${1:-status}"
+[ $# -gt 0 ] && shift
+# service names have no spaces, so the word splitting of $(selected) is the list itself
+# shellcheck disable=SC2046
+case "$command" in
+  status) cmd_status ;;
+  start) for service in $(selected "$@"); do start_one "$service"; done ;;
+  stop) for service in $(reverse $(selected "$@")); do stop_one "$service"; done ;;
+  restart)
+    for service in $(reverse $(selected "$@")); do stop_one "$service"; done
+    for service in $(selected "$@"); do start_one "$service"; done
+    ;;
+  logs) cmd_logs "$@" ;;
+  admin) exec "$home/bin/run-service" server immich-admin "$@" ;;
+  psql)
+    export PGPASSWORD="$IMMICH_NATIVE_DB_PASSWORD"
+    exec "$IMMICH_NATIVE_PG_PREFIX/bin/psql" -h 127.0.0.1 -p "$IMMICH_NATIVE_DB_PORT" -U postgres -d immich "$@"
+    ;;
+  doctor) cmd_doctor ;;
+  uninstall) cmd_uninstall "$@" ;;
+  -h | --help | help) sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//' ;;
+  *) echo "unknown command: $command (see immichctl help)" >&2; exit 64 ;;
+esac

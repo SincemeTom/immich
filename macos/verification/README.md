@@ -22,6 +22,7 @@
 | 编号 | 验证项 | 文件 | 结论 |
 |---|---|---|---|
 | M1-1 | 数据库备份：`DB_BIN_DIR` 与空备份检测（分支 `mac/feat/pg-bin-path`） | [m1-db-backup.md](m1-db-backup.md) | 通过，端到端 40/40 |
+| M1-2 | 一键安装与 launchd 托管（分支 `mac/feat/native-install`） | [m1-native-install.md](m1-native-install.md) | 通过：端到端 40/40，从备份恢复 3/3，崩溃拉起、升级、卸载 |
 
 ## 风险跟踪
 
@@ -40,11 +41,9 @@
 | 阶段 | 事项 |
 |---|---|
 | ~~M1~~ | ~~`pg_dump` / `psql` 路径可配置~~（已完成，见 M1-1） |
-| M1 | 机器学习服务单进程启动；安装后预热模型 |
-| M1 | launchd 配置：PostgreSQL 设置 `LC_ALL`；服务端设置 `DB_BIN_DIR`，PATH 中 GNU gzip 排在 `/usr/bin` 前 |
-| M1 | 进程管理器按进程名（`immich` / `immich-api`）和端口管理服务端；服务端单独成为一个进程组，停止时整组发信号（否则会留下孤儿 exiftool 进程） |
-| M1 | 安装流程：`pnpm install` 之后源码编译 sharp；准备 geodata、网页文件、插件 |
-| M1 | 端到端补测网页上的"从备份恢复" |
+| ~~M1~~ | ~~机器学习服务单进程启动；launchd 配置（`LC_ALL`、`DB_BIN_DIR`、GNU gzip）；进程组管理；安装流程；补测从备份恢复~~（已完成，见 M1-2） |
+| M1 | 安装后预热机器学习模型（首次使用时 CoreML 编译需要几十秒） |
 | M2 | VideoToolbox：SDR 走全硬件；HDR 走"硬件解码与缩放 + CPU `tonemapx` + 硬件编码"；校准 `-q:v` |
 | M3 | 打包 libvips 及其约 30 个依赖库，改写动态库引用路径；统一 `MACOSX_DEPLOYMENT_TARGET`；PostgreSQL 客户端工具与 GNU gzip 一并打包 |
+| M3 | 系统级服务（LaunchDaemon），开机即运行，不依赖登录（FileVault 机器需要） |
 | 可选 | OCR 单独走 CPU（CoreML 对 OCR 没有提速） |
