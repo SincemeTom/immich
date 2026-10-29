@@ -124,6 +124,10 @@ step "Checking this Mac"
 macos="$(sw_vers -productVersion)"
 [ "${macos%%.*}" -ge 14 ] || die "macOS 14 or later is needed (the CoreML build of onnxruntime), this is $macos"
 [ -x "$BREW" ] || die "Homebrew for Apple Silicon is missing at /opt/homebrew, install it from https://brew.sh"
+# Homebrew's clang, which builds VectorChord, finds no headers unless the SDK is spelled out for it, unlike /usr/bin/clang
+SDKROOT="$(xcrun --show-sdk-path 2>/dev/null)" && [ -d "$SDKROOT" ] \
+  || die "no macOS SDK: install the Xcode command line tools with xcode-select --install"
+export SDKROOT
 free_gb="$(df -g "$HOME" | awk 'NR == 2 { print $4 }')"
 [ "$free_gb" -ge 15 ] || die "at least 15 GB free is needed to build, there are $free_gb GB"
 info "$(sysctl -n machdep.cpu.brand_string), macOS $macos, $free_gb GB free"
@@ -184,13 +188,26 @@ else
   info "building with Rust $toolchain (a few minutes the first time)"
   quiet rustup toolchain install "$toolchain" --profile minimal
   command -v cargo-make >/dev/null 2>&1 || quiet cargo install cargo-make --locked
+  # pgrx hands clang the flags Homebrew built PostgreSQL with, verbatim, and those name an -isysroot under the command
+  # line tools. Builds find no headers at all when that SDK is not the one in use, as on a Mac with Xcode but without
+  # the command line tools installed, so build through a pg_config that names the SDK this Mac actually has.
+  # It has to sit at a path without spaces: VectorChord's Makefile expands $(PG_CONFIG) unquoted, and a path through
+  # "Application Support" is then split in two, which leaves make installing into nowhere.
+  pg_config_dir="$(mktemp -d "${TMPDIR:-/tmp}/immich-pgconfig.XXXXXX")"
+  pg_config="$pg_config_dir/pg_config"
+  cat >"$pg_config" <<EOF
+#!/bin/bash
+exec "$PG_PREFIX/bin/pg_config" "\$@" | sed "s|-isysroot [^ ]*|-isysroot $SDKROOT|g"
+EOF
+  chmod +x "$pg_config"
   # the recipe of VectorChord's own macOS CI job (psql_macos in .github/workflows/check.yml)
   (
     cd "$src"
-    export CC="/opt/homebrew/opt/llvm@18/bin/clang" PGRX_PG_CONFIG_PATH="$PG_PREFIX/bin/pg_config"
+    export CC="/opt/homebrew/opt/llvm@18/bin/clang" PGRX_PG_CONFIG_PATH="$pg_config"
     quiet cargo make build -o ./build/raw
-    quiet make PG_CONFIG="$PGRX_PG_CONFIG_PATH" install
+    quiet make PG_CONFIG="$pg_config" install
   )
+  rm -rf "$pg_config_dir"
   info "installed into $("$PG_PREFIX/bin/pg_config" --pkglibdir)"
 fi
 
