@@ -21,6 +21,8 @@ home="$(cd "$(dirname "$0")/.." && pwd)"
 domain="gui/$(id -u)"
 services=(postgres valkey ml server)
 logs="$IMMICH_NATIVE_LOG_DIR"
+# set while `warm` has paused the services
+warm_pid="" warm_server=""
 
 label() { echo "$IMMICH_NATIVE_LABEL_PREFIX.$1"; }
 plist() { echo "$HOME/Library/LaunchAgents/$(label "$1").plist"; }
@@ -235,7 +237,7 @@ ml_models() {
 }
 
 cmd_warm() {
-  local clip face ocr ocr_max pid started next elapsed size last was_running="" service
+  local clip face ocr ocr_max started next elapsed size last
   read -r clip face ocr ocr_max <<<"$(ml_models)"
   [ -n "$ocr_max" ] || { echo "cannot read the machine learning settings from the server's code" >&2; return 1; }
   echo "preparing the machine learning models:"
@@ -244,45 +246,58 @@ cmd_warm() {
   echo "  text (OCR):   $ocr (max resolution $ocr_max)"
 
   # the warm-up takes the service's port, and the server would fail any job it sends meanwhile, so both pause
-  is_loaded server && was_running=1
+  warm_server=""
+  is_loaded server && warm_server=1
   stop_one server >/dev/null
   stop_one ml >/dev/null
   "$home/bin/run-service" ml-warm "$clip" "$face" "$ocr" "$ocr_max" >"$logs/ml-warm.log" 2>&1 &
-  pid=$!
-  # shellcheck disable=SC2064
-  trap "kill $pid 2>/dev/null; echo; echo 'stopped: models not prepared now are prepared on first use'; \
-    start_one ml; [ -n '$was_running' ] && start_one server; exit 130" INT TERM
+  warm_pid=$!
+  # whatever ends this (an error, Ctrl-C), the warm-up stops and the services come back
+  trap warm_cleanup EXIT
+  trap 'echo; echo "  stopped: the models not prepared yet are prepared on first use"; exit 130' INT TERM
 
   started=$SECONDS
   next=$SECONDS
   while ! healthy ml; do
-    if ! kill -0 "$pid" 2>/dev/null; then
+    if ! kill -0 "$warm_pid" 2>/dev/null; then
       echo "  the warm-up stopped before the models were ready, see $logs/ml-warm.log" >&2
-      tail -n 15 "$logs/ml-warm.log" | sed 's/\x1b\[[0-9;]*m//g' >&2
-      trap - INT TERM
-      start_one ml
-      [ -n "$was_running" ] && start_one server
+      sed 's/\x1b\[[0-9;]*m//g' "$logs/ml-warm.log" | tail -n 15 >&2
       return 1
     fi
     elapsed=$((SECONDS - started))
     if [ "$SECONDS" -ge "$next" ]; then
       next=$((SECONDS + 15))
-      size="$(du -sm "$home/data/models" 2>/dev/null | awk '{ printf "%.1f GB", $1 / 1024 }')"
-      last="$(sed 's/\x1b\[[0-9;]*m//g' "$logs/ml-warm.log" | grep -oE "(Downloading|Preparing|Preloading|Loading) [^/]*" \
-        | tail -1 | cut -c1-70)"
+      size="$(du -sm "$home/data/models" 2>/dev/null | awk '{ printf "%.1f GB", $1 / 1024 }' || true)"
+      # nothing matches until the service logs its first step, which grep reports by failing
+      last="$(sed 's/\x1b\[[0-9;]*m//g' "$logs/ml-warm.log" \
+        | grep -oE "(Downloading|Preparing|Preloading|Loading) [^/]*" | tail -n 1 | cut -c1-70 || true)"
       printf '  %3d:%02d  %s in the model folder  %s\n' $((elapsed / 60)) $((elapsed % 60)) "$size" "${last:-starting}"
     fi
     sleep 1
   done
   elapsed=$((SECONDS - started))
-  kill "$pid" 2>/dev/null || true
-  wait "$pid" 2>/dev/null || true
-  trap - INT TERM
   echo "  ready after $((elapsed / 60)) min $((elapsed % 60)) s, $(du -sm "$home/data/models" | awk '{ printf "%.1f GB", $1 / 1024 }') of models"
-  for service in ml server; do
-    [ "$service" = server ] && [ -z "$was_running" ] && continue
-    start_one "$service"
+  warm_cleanup
+  trap - EXIT INT TERM
+}
+
+# stops the warm-up and starts what it paused; a no-op once that is done
+warm_cleanup() {
+  [ -n "${warm_pid:-}" ] || return 0
+  local pid="$warm_pid" waited=0
+  warm_pid=""
+  kill "$pid" 2>/dev/null || true
+  # while it downloads, the service is still starting up and does not act on SIGTERM
+  while kill -0 "$pid" 2>/dev/null; do
+    [ "$waited" -ge 10 ] && { kill -9 "$pid" 2>/dev/null || true; break; }
+    sleep 1
+    waited=$((waited + 1))
   done
+  wait "$pid" 2>/dev/null || true
+  start_one ml || true
+  if [ -n "$warm_server" ]; then
+    start_one server || true
+  fi
 }
 
 cmd_clip_model() {
