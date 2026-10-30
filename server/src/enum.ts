@@ -863,6 +863,7 @@ export enum QueueName {
   Workflow = 'workflow',
   IntegrityCheck = 'integrityCheck',
   Editor = 'editor',
+  AutoStack = 'autoStack',
 }
 
 export const QueueNameSchema = z.enum(QueueName).describe('Queue name').meta({ id: 'QueueName' });
@@ -894,6 +895,8 @@ export enum JobName {
   AssetFileMigration = 'AssetFileMigration',
   AssetGenerateThumbnailsQueueAll = 'AssetGenerateThumbnailsQueueAll',
   AssetGenerateThumbnails = 'AssetGenerateThumbnails',
+  AssetAutoStackQueueAll = 'AssetAutoStackQueueAll',
+  AssetAutoStack = 'AssetAutoStack',
 
   AuditTableCleanup = 'AuditTableCleanup',
 

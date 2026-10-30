@@ -1,5 +1,6 @@
 <script lang="ts">
   import { page } from '$app/stores';
+  import AutoStackSettings from './AutoStackSettings.svelte';
   import ChangePinCodeSettings from './PinCodeSettings.svelte';
   import DownloadSettings from './DownloadSettings.svelte';
   import FeatureSettings from './FeatureSettings.svelte';
@@ -15,6 +16,7 @@
     mdiAccountOutline,
     mdiApi,
     mdiBellOutline,
+    mdiCameraBurst,
     mdiCogOutline,
     mdiDevices,
     mdiDownload,
@@ -97,6 +99,15 @@
   subtitle={$t('features_setting_description')}
 >
   <FeatureSettings />
+</SettingAccordion>
+
+<SettingAccordion
+  icon={mdiCameraBurst}
+  key="auto-stack"
+  title={$t('auto_stack')}
+  subtitle={$t('auto_stack_setting_description')}
+>
+  <AutoStackSettings />
 </SettingAccordion>
 
 <SettingAccordion

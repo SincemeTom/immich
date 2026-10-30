@@ -1,5 +1,6 @@
 import {
   AfterDeleteTrigger,
+  Column,
   CreateDateColumn,
   ForeignKeyColumn,
   type Generated,
@@ -40,4 +41,8 @@ export class StackTable {
 
   @ForeignKeyColumn(() => UserTable, { onDelete: 'CASCADE', onUpdate: 'CASCADE' })
   ownerId!: string;
+
+  /** made by auto stacking, which can remove the stacks it made */
+  @Column({ type: 'boolean', default: false })
+  isAutomatic!: Generated<boolean>;
 }

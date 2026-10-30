@@ -213,6 +213,7 @@ export type ConcurrentQueueName = Exclude<
   | QueueName.FacialRecognition
   | QueueName.DuplicateDetection
   | QueueName.BackupDatabase
+  | QueueName.AutoStack
 >;
 
 export type Jobs = { [K in JobItem['name']]: (JobItem & { name: K })['data'] };
@@ -403,6 +404,10 @@ export type JobItem =
   // Duplicate Detection
   | { name: JobName.AssetDetectDuplicatesQueueAll; data: IBaseJob }
   | { name: JobName.AssetDetectDuplicates; data: IEntityJob }
+
+  // Auto stacking
+  | { name: JobName.AssetAutoStackQueueAll; data: IBaseJob & { userId?: string } }
+  | { name: JobName.AssetAutoStack; data: IEntityJob }
 
   // Memories
   | { name: JobName.MemoryCleanup; data?: IBaseJob }
@@ -619,6 +624,23 @@ export type UserPreferences = {
   recentlyAdded: {
     sidebarWeb: boolean;
   };
+  autoStack: AutoStackPreferences;
+};
+
+export type AutoStackPreferences = {
+  enabled: boolean;
+  /** photos the camera marked as one burst */
+  burst: boolean;
+  /** a raw file and the JPEG or HEIC the camera saved with it */
+  rawJpeg: boolean;
+  /** an edited copy and its original: IMG_E1234 and IMG_1234, IMG_1234-edited and IMG_1234 */
+  edited: boolean;
+  /** photos that look alike and were taken within seconds of each other */
+  similar: boolean;
+  /** the largest CLIP distance of similar photos */
+  maxDistance: number;
+  /** the most seconds apart similar photos may be taken */
+  maxSeconds: number;
 };
 
 export type UserMetadataItem<T extends keyof UserMetadata = UserMetadataKey> = {

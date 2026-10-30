@@ -55,6 +55,15 @@ const getDefaultPreferences = (): UserPreferences => {
     recentlyAdded: {
       sidebarWeb: false,
     },
+    autoStack: {
+      enabled: false,
+      burst: true,
+      rawJpeg: true,
+      edited: true,
+      similar: false,
+      maxDistance: 0.02,
+      maxSeconds: 10,
+    },
   };
 };
 

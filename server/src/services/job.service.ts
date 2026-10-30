@@ -250,7 +250,11 @@ export class JobService extends BaseService {
 
       case JobName.SmartSearch: {
         if (item.data.source === 'upload') {
-          await this.jobRepository.queue({ name: JobName.AssetDetectDuplicates, data: item.data });
+          // last of the jobs a new asset goes through: its metadata, thumbnails and CLIP embedding are there
+          await this.jobRepository.queueAll([
+            { name: JobName.AssetDetectDuplicates, data: item.data },
+            { name: JobName.AssetAutoStack, data: { id: item.data.id } },
+          ]);
         }
         break;
       }

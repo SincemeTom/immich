@@ -107,6 +107,25 @@ const RecentlyAddedUpdateSchema = z
   .optional()
   .meta({ id: 'RecentlyAddedUpdate' });
 
+const AutoStackUpdateSchema = z
+  .object({
+    enabled: z.boolean().optional().describe('Whether photos are stacked automatically'),
+    burst: z.boolean().optional().describe('Whether to stack the photos of a burst'),
+    rawJpeg: z.boolean().optional().describe('Whether to stack a raw file with its JPEG or HEIC'),
+    edited: z.boolean().optional().describe('Whether to stack an edited copy with its original'),
+    similar: z.boolean().optional().describe('Whether to stack similar photos taken within seconds'),
+    maxDistance: z
+      .number()
+      .min(0.001)
+      .max(0.1)
+      .optional()
+      .describe('Largest CLIP distance of similar photos')
+      .meta({ format: 'double' }),
+    maxSeconds: z.int().min(1).max(600).optional().describe('Most seconds apart similar photos may be taken'),
+  })
+  .optional()
+  .meta({ id: 'AutoStackUpdate' });
+
 const UserPreferencesUpdateSchema = z
   .object({
     albums: AlbumsUpdateSchema,
@@ -122,6 +141,7 @@ const UserPreferencesUpdateSchema = z
     sharedLinks: SharedLinksUpdateSchema,
     tags: TagsUpdateSchema,
     recentlyAdded: RecentlyAddedUpdateSchema,
+    autoStack: AutoStackUpdateSchema,
   })
   .meta({ id: 'UserPreferencesUpdateDto' });
 
@@ -209,6 +229,18 @@ const RecentlyAddedResponseSchema = z
   })
   .meta({ id: 'RecentlyAddedResponse' });
 
+const AutoStackResponseSchema = z
+  .object({
+    enabled: z.boolean().describe('Whether photos are stacked automatically'),
+    burst: z.boolean().describe('Whether to stack the photos of a burst'),
+    rawJpeg: z.boolean().describe('Whether to stack a raw file with its JPEG or HEIC'),
+    edited: z.boolean().describe('Whether to stack an edited copy with its original'),
+    similar: z.boolean().describe('Whether to stack similar photos taken within seconds'),
+    maxDistance: z.number().describe('Largest CLIP distance of similar photos').meta({ format: 'double' }),
+    maxSeconds: z.int().describe('Most seconds apart similar photos may be taken'),
+  })
+  .meta({ id: 'AutoStackResponse' });
+
 const UserPreferencesResponseSchema = z
   .object({
     albums: AlbumsResponseSchema,
@@ -223,6 +255,7 @@ const UserPreferencesResponseSchema = z
     purchase: PurchaseResponseSchema,
     cast: CastResponseSchema,
     recentlyAdded: RecentlyAddedResponseSchema,
+    autoStack: AutoStackResponseSchema,
   })
   .meta({ id: 'UserPreferencesResponseDto' });
 

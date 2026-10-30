@@ -160,6 +160,141 @@ from
 where
   "asset"."id" = $1
 
+-- StackRepository.getForAutoStack
+select
+  "asset"."id",
+  "asset"."ownerId",
+  "asset"."type",
+  "asset"."originalFileName",
+  "asset"."originalPath",
+  "asset"."fileCreatedAt",
+  "asset"."isFavorite",
+  "asset"."width",
+  "asset"."height",
+  "asset"."stackId",
+  "asset_exif"."dateTimeOriginal",
+  "asset_exif"."model",
+  "asset_exif"."rating",
+  "asset_exif"."autoStackId",
+  "asset_job_status"."autoStackedAt",
+  "asset"."visibility",
+  "asset"."deletedAt",
+  "smart_search"."embedding"
+from
+  "asset"
+  left join "asset_exif" on "asset_exif"."assetId" = "asset"."id"
+  left join "asset_job_status" on "asset_job_status"."assetId" = "asset"."id"
+  left join "smart_search" on "smart_search"."assetId" = "asset"."id"
+where
+  "asset"."id" = $1::uuid
+
+-- StackRepository.getAutoStackCandidates
+select
+  "asset"."id",
+  "asset"."ownerId",
+  "asset"."type",
+  "asset"."originalFileName",
+  "asset"."originalPath",
+  "asset"."fileCreatedAt",
+  "asset"."isFavorite",
+  "asset"."width",
+  "asset"."height",
+  "asset"."stackId",
+  "asset_exif"."dateTimeOriginal",
+  "asset_exif"."model",
+  "asset_exif"."rating",
+  "asset_exif"."autoStackId",
+  "asset_job_status"."autoStackedAt",
+  "stack"."isAutomatic",
+  "stack"."primaryAssetId",
+  smart_search.embedding <=> $1 as "distance"
+from
+  "asset"
+  left join "asset_exif" on "asset_exif"."assetId" = "asset"."id"
+  left join "asset_job_status" on "asset_job_status"."assetId" = "asset"."id"
+  left join "smart_search" on "smart_search"."assetId" = "asset"."id"
+  left join "stack" on "stack"."id" = "asset"."stackId"
+where
+  "asset"."visibility" in ('archive', 'timeline')
+  and "asset"."id" in (
+    select
+      "asset_exif"."assetId" as "id"
+    from
+      "asset_exif"
+    where
+      "asset_exif"."autoStackId" = $2
+    union
+    select
+      "asset"."id"
+    from
+      "asset"
+    where
+      (
+        f_unaccent (asset."originalFileName") ilike f_unaccent ($3)
+        or f_unaccent (asset."originalFileName") ilike f_unaccent ($4)
+      )
+    union
+    select
+      "asset"."id"
+    from
+      "asset"
+    where
+      "asset"."fileCreatedAt" between $5 and $6
+  )
+  and "asset"."ownerId" = $7::uuid
+  and "asset"."id" != $8::uuid
+  and "asset"."deletedAt" is null
+order by
+  "asset"."fileCreatedAt"
+limit
+  $9
+
+-- StackRepository.streamForAutoStack
+select
+  "asset"."id"
+from
+  "asset"
+  left join "asset_job_status" on "asset_job_status"."assetId" = "asset"."id"
+where
+  "asset"."visibility" in ('archive', 'timeline')
+  and "asset"."ownerId" = any ($1::uuid[])
+  and "asset"."deletedAt" is null
+  and "asset"."stackId" is null
+  and "asset_job_status"."autoStackedAt" is null
+order by
+  "asset"."fileCreatedAt"
+
+-- StackRepository.addAssets
+update "asset"
+set
+  "stackId" = $1,
+  "updatedAt" = $2
+where
+  "id" = any ($3::uuid[])
+  and "stackId" is null
+
+-- StackRepository.resetAutoStacked
+update "asset_job_status"
+set
+  "autoStackedAt" = $1
+from
+  "asset"
+where
+  "asset"."id" = "asset_job_status"."assetId"
+  and "asset"."ownerId" = $2::uuid
+  and "asset"."stackId" is null
+
+-- StackRepository.removeAutomatic
+begin
+select
+  "id"
+from
+  "stack"
+where
+  "ownerId" = $1::uuid
+  and "isAutomatic" = $2
+commit
+
 -- StackRepository.merge
 update "asset"
 set
