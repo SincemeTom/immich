@@ -417,11 +417,12 @@ export class NetworkShareService extends BaseService {
   /** Size and free space, from df: which also tells whether the NAS answers */
   private async getSpace(mountPath: string) {
     const result = await this.run('/bin/df', ['-k', '-P', mountPath], STAT_TIMEOUT);
-    const fields = result.code === 0 ? result.stdout.trim().split('\n').at(-1)?.split(/\s+/) : undefined;
-    if (!fields || fields.length < 4) {
+    // "host:/export 1024-blocks used available capacity% /mount/point", where the paths may hold spaces
+    const match = result.code === 0 ? /\s(\d+)\s+\d+\s+(\d+)\s+\d+%\s/.exec(result.stdout) : null;
+    if (!match) {
       return;
     }
-    return { total: Number(fields[1]) * 1024, available: Number(fields[3]) * 1024 };
+    return { total: Number(match[1]) * 1024, available: Number(match[2]) * 1024 };
   }
 
   private run(command: string, args: string[], timeout: number) {

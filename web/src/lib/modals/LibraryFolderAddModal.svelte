@@ -1,4 +1,5 @@
 <script lang="ts">
+  import NetworkSharePathPicker from '$lib/components/admin-settings/NetworkSharePathPicker.svelte';
   import { handleAddLibraryFolder } from '$lib/services/library.service';
   import type { LibraryResponseDto } from '@immich/sdk';
   import { Field, FormModal, Input, Text } from '@immich/ui';
@@ -32,5 +33,6 @@
   <Text size="small" class="mb-4">{$t('admin.library_folder_description')}</Text>
   <Field label={$t('path')}>
     <Input bind:value />
+    <NetworkSharePathPicker onPick={(path) => (value = path)} />
   </Field>
 </FormModal>
