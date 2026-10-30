@@ -535,7 +535,7 @@ export class LibraryService extends BaseService {
       return;
     }
 
-    await this.assetRepository.update({ id: asset.id, livePhotoVideoId: match.id });
+    await this.assetRepository.swapLivePhotoVideo(asset.id, match.id, asset.livePhotoVideoId);
     this.logger.log(`Paired live photo ${asset.id} with the video ${match.id} in its own library`);
   }
 

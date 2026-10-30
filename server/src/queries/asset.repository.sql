@@ -243,13 +243,15 @@ where
 limit
   $3
 
--- AssetRepository.getLivePhotoCount
-select
-  count(*) as "count"
-from
-  "asset"
-where
+-- AssetRepository.swapLivePhotoVideo
+begin
+update "asset"
+set
   "livePhotoVideoId" = $1::uuid
+where
+  "livePhotoVideoId" = $2::uuid
+  and "id" != $3::uuid
+rollback
 
 -- AssetRepository.getFileSamples
 select

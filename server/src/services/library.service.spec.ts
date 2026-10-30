@@ -721,7 +721,7 @@ describe(LibraryService.name, () => {
           otherAssetId: external.id,
           type: AssetType.Video,
         });
-        expect(mocks.asset.update).toHaveBeenCalledWith({ id: external.id, livePhotoVideoId: 'library-video' });
+        expect(mocks.asset.swapLivePhotoVideo).toHaveBeenCalledWith(external.id, 'library-video', 'uploaded-video');
       });
 
       it('should keep its video when its library has none', async () => {
@@ -730,9 +730,7 @@ describe(LibraryService.name, () => {
 
         await sut.handleAssetChecksum({ id: external.id });
 
-        expect(mocks.asset.update).not.toHaveBeenCalledWith(
-          expect.objectContaining({ livePhotoVideoId: expect.anything() }),
-        );
+        expect(mocks.asset.swapLivePhotoVideo).not.toHaveBeenCalled();
       });
 
       it('should leave one paired within its library alone', async () => {
@@ -757,7 +755,7 @@ describe(LibraryService.name, () => {
 
         await expect(sut.handleAssetChecksum({ id: external.id })).resolves.toBe(JobStatus.Skipped);
 
-        expect(mocks.asset.update).toHaveBeenCalledWith({ id: external.id, livePhotoVideoId: 'library-video' });
+        expect(mocks.asset.swapLivePhotoVideo).toHaveBeenCalledWith(external.id, 'library-video', 'uploaded-video');
       });
     });
 

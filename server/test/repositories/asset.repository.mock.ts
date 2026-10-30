@@ -21,6 +21,7 @@ export const newAssetRepositoryMock = (): Mocked<RepositoryInterface<AssetReposi
     getUploadAssetIdByChecksum: vitest.fn(),
     getUploadedCopies: vitest.fn().mockResolvedValue([]),
     getLivePhotoCount: vitest.fn(),
+    swapLivePhotoVideo: vitest.fn(),
     getLibraryAssetCount: vitest.fn(),
     updateAll: vitest.fn(),
     getByLibraryIdAndOriginalPath: vitest.fn(),

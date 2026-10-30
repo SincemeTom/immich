@@ -545,6 +545,27 @@ export class AssetRepository {
   }
 
   @GenerateSql({ params: [DummyValue.UUID] })
+  /**
+   * Swaps the videos of two live photo stills: the still in an external library that was paired with an uploaded
+   * video gets its library's video, and the upload's still, which the library's video was paired with, its own.
+   */
+  @GenerateSql({ params: [DummyValue.UUID, DummyValue.UUID, DummyValue.UUID] })
+  async swapLivePhotoVideo(stillId: string, videoId: string, currentVideoId: string): Promise<void> {
+    await this.db.transaction().execute(async (tx) => {
+      await tx
+        .updateTable('asset')
+        .set({ livePhotoVideoId: asUuid(currentVideoId) })
+        .where('livePhotoVideoId', '=', asUuid(videoId))
+        .where('id', '!=', asUuid(stillId))
+        .execute();
+      await tx
+        .updateTable('asset')
+        .set({ livePhotoVideoId: asUuid(videoId) })
+        .where('id', '=', asUuid(stillId))
+        .execute();
+    });
+  }
+
   async getLivePhotoCount(motionId: string): Promise<number> {
     const [{ count }] = await this.db
       .selectFrom('asset')
