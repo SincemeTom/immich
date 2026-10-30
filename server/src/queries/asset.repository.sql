@@ -336,9 +336,27 @@ from
 where
   "ownerId" = $1::uuid
   and "checksum" = $2
-  and "libraryId" is null
+  and (
+    "libraryId" is null
+    or "checksumAlgorithm" = 'sha1'
+  )
+order by
+  "libraryId" is null desc
 limit
   $3
+
+-- AssetRepository.getUploadedCopies
+select
+  "id",
+  "duplicateId"
+from
+  "asset"
+where
+  "ownerId" = $1::uuid
+  and "checksum" = $2
+  and "libraryId" is null
+  and "deletedAt" is null
+  and "visibility" in ('timeline', 'archive')
 
 -- AssetRepository.getCalendarHeatmap
 select

@@ -146,6 +146,12 @@ export class AssetMediaService extends BaseService {
         );
       }
 
+      // The checksum constraint catches a second upload of a file, but not one of a file an external library holds
+      const existingId = await this.assetRepository.getUploadAssetIdByChecksum(auth.user.id, file.checksum);
+      if (existingId) {
+        return await this.onDuplicateUpload(auth, existingId, file, sidecarFile);
+      }
+
       asset = await this.assetRepository.create({
         ownerId: auth.user.id,
         libraryId: null,
@@ -343,6 +349,25 @@ export class AssetMediaService extends BaseService {
         };
       }),
     };
+  }
+
+  private async onDuplicateUpload(
+    auth: AuthDto,
+    duplicateId: string,
+    file: UploadFile,
+    sidecarFile?: UploadFile,
+  ): Promise<AssetMediaResponseDto> {
+    await this.jobRepository.queue({
+      name: JobName.FileDelete,
+      data: { files: [file.originalPath, sidecarFile?.originalPath] },
+    });
+
+    if (auth.sharedLink) {
+      await this.addToSharedLink(auth.sharedLink, duplicateId);
+    }
+
+    this.logger.debug(`Duplicate asset upload rejected: existing asset ${duplicateId}`);
+    return { status: AssetMediaStatus.DUPLICATE, id: duplicateId };
   }
 
   private async addToSharedLink(sharedLink: AuthSharedLink, assetId: string) {

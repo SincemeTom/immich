@@ -22,6 +22,7 @@ import {
 import {
   AssetStatus,
   AssetType,
+  AssetVisibility,
   ChecksumAlgorithm,
   CronJob,
   DatabaseLock,
@@ -33,6 +34,7 @@ import {
 import { AssetSyncResult } from 'src/repositories/library.repository.js';
 import { AssetTable } from 'src/schema/tables/asset.table.js';
 import { BaseService } from 'src/services/base.service.js';
+import { isAssetLibraryChecksumConstraint } from 'src/utils/database.js';
 import { mimeTypes } from 'src/utils/mime-types.js';
 import { batched, findOrFail, handlePromiseError } from 'src/utils/misc.js';
 
@@ -430,6 +432,95 @@ export class LibraryService extends BaseService {
         data: { id: assetId, source: 'upload' },
       })),
     );
+
+    // new and changed files are hashed by their contents, which uploads are checked against
+    await this.queueFileChecksums(assetIds);
+  }
+
+  private async queueFileChecksums(assetIds: string[]) {
+    await this.jobRepository.queueAll(
+      assetIds.map((assetId) => ({ name: JobName.LibraryAssetChecksum, data: { id: assetId } })),
+    );
+  }
+
+  /** Files imported with the path hash, before contents were hashed, which every scan works through */
+  private hasPathChecksum(asset: { checksum: Buffer; checksumAlgorithm: ChecksumAlgorithm; originalPath: string }) {
+    return (
+      asset.checksumAlgorithm === ChecksumAlgorithm.sha1Path &&
+      asset.checksum.equals(this.cryptoRepository.hashSha1(`path:${asset.originalPath}`))
+    );
+  }
+
+  /**
+   * Hashes an external file's contents, as uploads are, so that a phone's backup recognises the photos the library
+   * already has, and so that a copy uploaded before shows up next to it in the duplicates utility.
+   */
+  @OnJob({ name: JobName.LibraryAssetChecksum, queue: QueueName.Library })
+  async handleAssetChecksum({ id }: JobOf<JobName.LibraryAssetChecksum>): Promise<JobStatus> {
+    const asset = await this.assetJobRepository.getForFileChecksum(id);
+    if (!asset?.libraryId || asset.isOffline) {
+      return JobStatus.Skipped;
+    }
+
+    let checksum: Buffer;
+    try {
+      checksum = await this.cryptoRepository.hashFile(asset.originalPath);
+    } catch (error) {
+      this.logger.warn(`Could not read ${asset.originalPath} to hash its contents: ${error}`);
+      return JobStatus.Failed;
+    }
+
+    if (asset.checksumAlgorithm === ChecksumAlgorithm.sha1File && checksum.equals(asset.checksum)) {
+      return JobStatus.Skipped;
+    }
+
+    try {
+      await this.assetRepository.update({ id, checksum, checksumAlgorithm: ChecksumAlgorithm.sha1File });
+    } catch (error) {
+      if (!isAssetLibraryChecksumConstraint(error)) {
+        throw error;
+      }
+
+      // Checksums are unique per library, so a second file with the same contents keeps a hash of its path. It is
+      // not the path hash scans look for, so they don't hash it again; the first file stands for both in backups.
+      this.logger.log(`${asset.originalPath} has the same contents as another file in library ${asset.libraryId}`);
+      await this.assetRepository.update({
+        id,
+        checksum: this.cryptoRepository.hashSha1(`same-contents:${asset.originalPath}`),
+        checksumAlgorithm: ChecksumAlgorithm.sha1Path,
+      });
+      return JobStatus.Success;
+    }
+
+    if (asset.visibility === AssetVisibility.Timeline || asset.visibility === AssetVisibility.Archive) {
+      await this.groupUploadedCopies({ ...asset, checksum });
+    }
+
+    return JobStatus.Success;
+  }
+
+  /** Puts uploads with the same contents in one duplicate group with the file, which the utility suggests keeping */
+  private async groupUploadedCopies(asset: {
+    id: string;
+    ownerId: string;
+    checksum: Buffer;
+    duplicateId: string | null;
+  }) {
+    const copies = await this.assetRepository.getUploadedCopies(asset.ownerId, asset.checksum);
+    if (copies.length === 0) {
+      return;
+    }
+
+    const duplicateIds = [
+      ...new Set([asset.duplicateId, ...copies.map((copy) => copy.duplicateId)].filter((id): id is string => !!id)),
+    ];
+    const targetId = duplicateIds.shift() ?? this.cryptoRepository.randomUUID();
+    await this.duplicateRepository.merge({
+      targetId,
+      assetIds: [asset.id, ...copies.map((copy) => copy.id)],
+      sourceIds: duplicateIds,
+    });
+    this.logger.log(`${copies.length} upload(s) have the same contents as external asset ${asset.id}`);
   }
 
   async queueScan(id: string) {
@@ -484,6 +575,7 @@ export class LibraryService extends BaseService {
     const assetIdsToOnline: string[] = [];
     const trashedAssetIdsToOnline: string[] = [];
     const assetIdsToUpdate: string[] = [];
+    const assetIdsToChecksum: string[] = [];
 
     this.logger.debug(`Checking batch of ${assets.length} existing asset(s) in library ${job.libraryId}`);
 
@@ -497,6 +589,9 @@ export class LibraryService extends BaseService {
       const action = this.checkExistingAsset(asset, stat);
       switch (action) {
         case AssetSyncResult.DO_NOTHING: {
+          if (stat && this.hasPathChecksum(asset)) {
+            assetIdsToChecksum.push(asset.id);
+          }
           break;
         }
         case AssetSyncResult.OFFLINE: {
@@ -565,12 +660,16 @@ export class LibraryService extends BaseService {
       promises.push(this.queuePostSyncJobs(assetIdsToUpdate));
     }
 
+    if (assetIdsToChecksum.length > 0) {
+      promises.push(this.queueFileChecksums(assetIdsToChecksum));
+    }
+
     await Promise.all(promises);
 
     const remainingCount = assets.length - assetIdsToOffline.length - assetIdsToUpdate.length - assetIdsToOnline.length;
     const cumulativePercentage = ((100 * job.progressCounter) / job.totalAssets).toFixed(1);
     this.logger.log(
-      `Checked existing asset(s): ${assetIdsToOffline.length + trashedAssetIdsToOffline.length} offlined, ${assetIdsToOnline.length + trashedAssetIdsToOnline.length} onlined, ${assetIdsToUpdate.length} updated, ${remainingCount} unchanged of current batch of ${assets.length} (Total progress: ${job.progressCounter} of ${job.totalAssets}, ${cumulativePercentage} %) in library ${job.libraryId}.`,
+      `Checked existing asset(s): ${assetIdsToOffline.length + trashedAssetIdsToOffline.length} offlined, ${assetIdsToOnline.length + trashedAssetIdsToOnline.length} onlined, ${assetIdsToUpdate.length} updated, ${remainingCount} unchanged of current batch of ${assets.length}${assetIdsToChecksum.length > 0 ? `, ${assetIdsToChecksum.length} queued for hashing their contents` : ''} (Total progress: ${job.progressCounter} of ${job.totalAssets}, ${cumulativePercentage} %) in library ${job.libraryId}.`,
     );
 
     return JobStatus.Success;

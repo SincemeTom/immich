@@ -515,11 +515,30 @@ select
   "asset"."libraryId",
   "asset"."originalPath",
   "asset"."status",
-  "asset"."fileModifiedAt"
+  "asset"."fileModifiedAt",
+  "asset"."checksum",
+  "asset"."checksumAlgorithm"
 from
   "asset"
 where
   "asset"."id" = any ($1::uuid[])
+
+-- AssetJobRepository.getForFileChecksum
+select
+  "asset"."id",
+  "asset"."ownerId",
+  "asset"."libraryId",
+  "asset"."originalPath",
+  "asset"."checksum",
+  "asset"."checksumAlgorithm",
+  "asset"."isOffline",
+  "asset"."visibility",
+  "asset"."duplicateId"
+from
+  "asset"
+where
+  "asset"."id" = $1
+  and "asset"."deletedAt" is null
 
 -- AssetJobRepository.getForAssetDeletion
 select

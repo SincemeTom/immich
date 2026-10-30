@@ -25,6 +25,7 @@ import {
   AssetType,
   AssetVisibility,
   CalendarHeatmapType,
+  ChecksumAlgorithm,
 } from 'src/enum.js';
 import { DB } from 'src/schema/index.js';
 import { AssetAudioTable, AssetKeyframeTable, AssetVideoTable } from 'src/schema/tables/asset-av.table.js';
@@ -679,6 +680,11 @@ export class AssetRepository {
       .execute();
   }
 
+  /**
+   * The asset a new upload with this checksum duplicates: an earlier upload, or else a file in one of the user's
+   * external libraries that was hashed by its contents. Trashed and offline ones count, so that a library whose
+   * share is briefly unmounted doesn't get uploaded again.
+   */
   @GenerateSql({ params: [DummyValue.UUID, DummyValue.BUFFER] })
   async getUploadAssetIdByChecksum(ownerId: string, checksum: Buffer): Promise<string | undefined> {
     const asset = await this.db
@@ -686,11 +692,28 @@ export class AssetRepository {
       .select('id')
       .where('ownerId', '=', asUuid(ownerId))
       .where('checksum', '=', checksum)
-      .where('libraryId', 'is', null)
+      .where((eb) =>
+        eb.or([eb('libraryId', 'is', null), eb('checksumAlgorithm', '=', sql.lit(ChecksumAlgorithm.sha1File))]),
+      )
+      .orderBy(sql`"libraryId" is null`, 'desc')
       .limit(1)
       .executeTakeFirst();
 
     return asset?.id;
+  }
+
+  /** Uploads with the same contents as a file in an external library, which it makes redundant */
+  @GenerateSql({ params: [DummyValue.UUID, DummyValue.BUFFER] })
+  getUploadedCopies(ownerId: string, checksum: Buffer) {
+    return this.db
+      .selectFrom('asset')
+      .select(['id', 'duplicateId'])
+      .where('ownerId', '=', asUuid(ownerId))
+      .where('checksum', '=', checksum)
+      .where('libraryId', 'is', null)
+      .where('deletedAt', 'is', null)
+      .where('visibility', 'in', [sql.lit(AssetVisibility.Timeline), sql.lit(AssetVisibility.Archive)])
+      .execute();
   }
 
   findLivePhotoMatch(options: LivePhotoSearchOptions) {

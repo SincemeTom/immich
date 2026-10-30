@@ -428,6 +428,7 @@ export type JobItem =
   | { name: JobName.LibrarySyncAssetsQueueAll; data: IEntityJob }
   | { name: JobName.LibrarySyncAssets; data: ILibraryBulkIdsJob }
   | { name: JobName.LibraryRemoveAsset; data: ILibraryFileJob }
+  | { name: JobName.LibraryAssetChecksum; data: IEntityJob }
   | { name: JobName.LibraryDelete; data: IEntityJob }
   | { name: JobName.LibraryScanQueueAll; data?: IBaseJob }
   | { name: JobName.LibraryDeleteCheck; data: IBaseJob }
