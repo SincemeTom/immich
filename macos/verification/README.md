@@ -27,6 +27,7 @@
 | M1-4 | 中文智能搜索模型 XLM-Roberta-Large-ViT-H-14 与模型预热（分支 `mac/feat/ml-warm-clip`） | [m1-clip-model.md](m1-clip-model.md) | 通过：中文 recall@1 从 6.7% 提高到 90.0%，英文不变；设为默认并在安装时预热；端到端 42/42，恢复 3/3，切换模型 3/3 与 5/5，预热中断后能续传 |
 | M1-5 | 外部库（群晖）与手机备份：重复照片（分支 `mac/feat/external-checksum`） | [m1-external-dedupe.md](m1-external-dedupe.md) | 通过：修复前 5/5 复现，修复后 24/24。外部库改为按内容算指纹，手机备份不再重复上传；已有的重复归入"重复项"页面，默认保留外部库原件，相册和收藏随之合并。另外修复了上游的实况照片交叉配对 bug |
 | M1-6 | 删除后清理缩略图和转码文件（分支 `mac/fix/offline-trash`） | [m1-delete-cleanup.md](m1-delete-cleanup.md) | 普通删除本来就能清理干净。修复外部库的离线文件清空回收站清不掉的问题，并防止群晖断开超过 30 天时照片被删。修复前 5 项失败，修复后 23/23 |
+| M1-7 | macOS 网络宗卷授权（分支 `mac/fix/network-volume-permission`） | [m1-network-volume-permission.md](m1-network-volume-permission.md) | 通过：服务端从固定路径运行 node，只需点一次"允许"，升级后不再询问；ffmpeg 和 exiftool 继承 node 的授权；普通用户就能挂载 NFS |
 
 ## M2 视频转码用 Apple 硬件
 
@@ -57,7 +58,8 @@
 | 新：Immich 会往外部库目录写 `.xmp` 文件 | 上游原有行为，**待你决定**是否改为不写 | [m1-external-dedupe.md](m1-external-dedupe.md) |
 | 新：外部库离线文件清空回收站清不掉，缩略图和转码文件一直留着 | **已修复** | [m1-delete-cleanup.md](m1-delete-cleanup.md) |
 | 新（上游）：群晖断开超过回收站天数，照片记录连同相册、人脸被删 | **已修复**：外部库不能访问时不删离线照片 | [m1-delete-cleanup.md](m1-delete-cleanup.md) |
-| 上游行为：读写挂载时，在 Immich 里删除外部库照片会删掉群晖上的原文件 | **待你决定**：只读挂载、加"不删原文件"开关，或保持现状 | [m1-delete-cleanup.md](m1-delete-cleanup.md) |
+| 上游行为：读写挂载时，在 Immich 里删除外部库照片会删掉群晖上的原文件 | **已决定保持**：用 Immich 清理群晖库；Immich 回收站保留 30 天，建议群晖开快照 | [m1-delete-cleanup.md](m1-delete-cleanup.md) |
+| 新：后台服务读网络盘要 macOS 授权，没点"允许"之前一直卡住；原来每次升级都要重新授权 | **已修复**：node 固定路径，只需授权一次 | [m1-network-volume-permission.md](m1-network-volume-permission.md) |
 
 ## 后续事项
 
@@ -71,6 +73,7 @@
 | M2 | 在浏览器里实际验证实时转码（网页播放时按需转码）走 VideoToolbox |
 | 问题 2 | 自动堆叠：连拍、RAW+JPG、手机编辑版、高相似度 |
 | M1-5 | 在真实群晖 NFS 上用一个小目录验证一遍 |
+| 提前 | 网页上挂载群晖（NFS / SMB）：添加、测试连接、状态、开机自动挂载、断线重连，建外部库时直接选择 |
 | M3 | 打包 libvips 及其约 30 个依赖库，改写动态库引用路径；统一 `MACOSX_DEPLOYMENT_TARGET`；PostgreSQL 客户端工具与 GNU gzip 一并打包 |
 | M3 | 模型随包提供（4.8 GB 下载内容即可；CoreML 编译产物和路径绑定，安装时在本机编译，约 2 分钟） |
 | M3 | 系统级服务（LaunchDaemon），开机即运行，不依赖登录（FileVault 机器需要） |
