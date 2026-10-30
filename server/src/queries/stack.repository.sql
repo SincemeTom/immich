@@ -216,20 +216,38 @@ from
   left join "stack" on "stack"."id" = "asset"."stackId"
 where
   "asset"."visibility" in ('archive', 'timeline')
-  and "asset"."ownerId" = $2::uuid
-  and "asset"."id" != $3::uuid
-  and "asset"."deletedAt" is null
-  and (
-    "asset_exif"."autoStackId" = $4
-    or f_unaccent (asset."originalFileName") ilike f_unaccent ($5)
-    or f_unaccent (asset."originalFileName") ilike f_unaccent ($6)
-    or "asset"."fileCreatedAt" between $7 and $8
-    or $9
+  and "asset"."id" in (
+    select
+      "asset_exif"."assetId" as "id"
+    from
+      "asset_exif"
+    where
+      "asset_exif"."autoStackId" = $2
+    union
+    select
+      "asset"."id"
+    from
+      "asset"
+    where
+      (
+        f_unaccent (asset."originalFileName") ilike f_unaccent ($3)
+        or f_unaccent (asset."originalFileName") ilike f_unaccent ($4)
+      )
+    union
+    select
+      "asset"."id"
+    from
+      "asset"
+    where
+      "asset"."fileCreatedAt" between $5 and $6
   )
+  and "asset"."ownerId" = $7::uuid
+  and "asset"."id" != $8::uuid
+  and "asset"."deletedAt" is null
 order by
   "asset"."fileCreatedAt"
 limit
-  $10
+  $9
 
 -- StackRepository.streamForAutoStack
 select

@@ -1,5 +1,12 @@
 import { Injectable } from '@nestjs/common';
-import { type ExpressionBuilder, type Insertable, type Kysely, type Updateable, sql } from 'kysely';
+import {
+  type ExpressionBuilder,
+  type Insertable,
+  type Kysely,
+  type SelectQueryBuilder,
+  type Updateable,
+  sql,
+} from 'kysely';
 import { jsonArrayFrom } from 'kysely/helpers/postgres';
 import { InjectKysely } from 'nestjs-kysely';
 import { columns } from 'src/database.js';
@@ -224,7 +231,49 @@ export class StackRepository {
       },
     ],
   })
-  getAutoStackCandidates({ ownerId, assetId, autoStackId, nameKeys, similar }: AutoStackCandidateSearch) {
+  async getAutoStackCandidates({ ownerId, assetId, autoStackId, nameKeys, similar }: AutoStackCandidateSearch) {
+    // one lookup per rule, each along its index: OR-ed together they would scan all of the owner's assets
+    const lookups: SelectQueryBuilder<DB, any, { id: string }>[] = [];
+    if (autoStackId) {
+      lookups.push(
+        this.db
+          .selectFrom('asset_exif')
+          .select('asset_exif.assetId as id')
+          .where('asset_exif.autoStackId', '=', autoStackId),
+      );
+    }
+    if (nameKeys.length > 0) {
+      lookups.push(
+        this.db
+          .selectFrom('asset')
+          .select('asset.id')
+          // the trigram index of file names
+          .where((eb) =>
+            eb.or(
+              nameKeys.map((key) =>
+                eb(sql`f_unaccent(asset."originalFileName")`, 'ilike', sql`f_unaccent(${`${escapeLike(key)}.%`})`),
+              ),
+            ),
+          ),
+      );
+    }
+    if (similar) {
+      lookups.push(
+        this.db
+          .selectFrom('asset')
+          .select('asset.id')
+          .where((eb) => eb.between('asset.fileCreatedAt', similar.from, similar.to)),
+      );
+    }
+    const [first, ...rest] = lookups;
+    if (!first) {
+      return [];
+    }
+    let candidateIds = first;
+    for (const lookup of rest) {
+      candidateIds = candidateIds.union(lookup);
+    }
+
     return this.db
       .selectFrom('asset')
       .$call(withDefaultVisibility)
@@ -239,20 +288,10 @@ export class StackRepository {
           ? sql<number | null>`smart_search.embedding <=> ${similar.embedding}`.as('distance')
           : sql<number | null>`null::real`.as('distance'),
       )
+      .where('asset.id', 'in', candidateIds)
       .where('asset.ownerId', '=', asUuid(ownerId))
       .where('asset.id', '!=', asUuid(assetId))
       .where('asset.deletedAt', 'is', null)
-      .where((eb) =>
-        eb.or([
-          ...(autoStackId ? [eb('asset_exif.autoStackId', '=', autoStackId)] : []),
-          // along the trigram index of file names
-          ...nameKeys.map((key) =>
-            eb(sql`f_unaccent(asset."originalFileName")`, 'ilike', sql`f_unaccent(${`${escapeLike(key)}.%`})`),
-          ),
-          ...(similar ? [eb.between('asset.fileCreatedAt', similar.from, similar.to)] : []),
-          eb.val(false),
-        ]),
-      )
       .orderBy('asset.fileCreatedAt')
       .limit(500)
       .execute();
