@@ -19,6 +19,15 @@ async function* mockWalk() {
   yield await Promise.resolve(['/data/user1/photo.jpg']);
 }
 
+const syncJob = (importPaths: string[], assetIds: string[]): ILibraryBulkIdsJob => ({
+  assetIds,
+  libraryId: 'library-id',
+  importPaths,
+  exclusionPatterns: [],
+  totalAssets: assetIds.length,
+  progressCounter: 0,
+});
+
 const syncAssetsJob = (assetIds: string[]): ILibraryBulkIdsJob => ({
   assetIds,
   libraryId: 'library-id',
@@ -420,13 +429,84 @@ describe(LibraryService.name, () => {
       };
 
       mocks.assetJob.getForSyncAssets.mockResolvedValue([asset]);
-      mocks.storage.stat.mockRejectedValue(new Error('ENOENT, no such file or directory'));
+      // the import path is there, with other files in it; the asset's file is not
+      mocks.storage.stat.mockImplementation((path) =>
+        path === '/'
+          ? Promise.resolve({ isDirectory: () => true } as Stats)
+          : Promise.reject(new Error('ENOENT, no such file or directory')),
+      );
+      mocks.storage.checkFileExists.mockResolvedValue(true);
+      mocks.storage.readdir.mockResolvedValue(['other.jpg']);
 
       await expect(sut.handleSyncAssets(mockAssetJob)).resolves.toBe(JobStatus.Success);
 
       expect(mocks.asset.updateAll).toHaveBeenCalledWith([asset.id], {
         isOffline: true,
         deletedAt: expect.anything(),
+      });
+    });
+
+    describe('an import path that cannot be reached, as a NAS share that is not mounted', () => {
+      beforeEach(() => {
+        mocks.storage.checkFileExists.mockResolvedValue(true);
+      });
+
+      it.each([
+        { name: 'an empty folder', readdir: [] as string[], stat: true },
+        { name: 'no folder', readdir: [] as string[], stat: false },
+      ])('should keep its missing files as they are when it is $name', async ({ readdir, stat }) => {
+        const asset = AssetFactory.create({ libraryId: 'library-id', originalPath: '/mnt/nas/photos/a.jpg' });
+        mocks.assetJob.getForSyncAssets.mockResolvedValue([asset]);
+        mocks.storage.stat.mockImplementation((path) =>
+          path === '/mnt/nas/photos' && stat
+            ? Promise.resolve({ isDirectory: () => true } as Stats)
+            : Promise.reject(new Error('ENOENT')),
+        );
+        mocks.storage.readdir.mockResolvedValue(readdir);
+
+        await expect(sut.handleSyncAssets(syncJob(['/mnt/nas/photos'], [asset.id]))).resolves.toBe(JobStatus.Success);
+
+        expect(mocks.asset.updateAll).not.toHaveBeenCalled();
+      });
+
+      it('should still offline the missing files of the import paths that can be reached', async () => {
+        const away = AssetFactory.create({ libraryId: 'library-id', originalPath: '/mnt/nas/photos/a.jpg' });
+        const gone = AssetFactory.create({ libraryId: 'library-id', originalPath: '/Users/me/Pictures/b.jpg' });
+        mocks.assetJob.getForSyncAssets.mockResolvedValue([away, gone]);
+        mocks.storage.stat.mockImplementation((path) =>
+          path === '/Users/me/Pictures' || path === '/mnt/nas/photos'
+            ? Promise.resolve({ isDirectory: () => true } as Stats)
+            : Promise.reject(new Error('ENOENT')),
+        );
+        mocks.storage.readdir.mockImplementation((path) =>
+          Promise.resolve(path === '/mnt/nas/photos' ? [] : ['c.jpg']),
+        );
+
+        await sut.handleSyncAssets(syncJob(['/mnt/nas/photos', '/Users/me/Pictures'], [away.id, gone.id]));
+
+        expect(mocks.asset.updateAll).toHaveBeenCalledWith([gone.id], {
+          isOffline: true,
+          deletedAt: expect.anything(),
+        });
+        expect(mocks.asset.updateAll).not.toHaveBeenCalledWith(expect.arrayContaining([away.id]), expect.anything());
+      });
+
+      it('should not take a sibling folder for the import path', async () => {
+        const asset = AssetFactory.create({ libraryId: 'library-id', originalPath: '/mnt/nas/photos-old/a.jpg' });
+        mocks.assetJob.getForSyncAssets.mockResolvedValue([asset]);
+        mocks.storage.stat.mockImplementation((path) =>
+          path === '/mnt/nas/photos-old'
+            ? Promise.resolve({ isDirectory: () => true } as Stats)
+            : Promise.reject(new Error('ENOENT')),
+        );
+        mocks.storage.readdir.mockResolvedValue(['b.jpg']);
+
+        await sut.handleSyncAssets(syncJob(['/mnt/nas/photos', '/mnt/nas/photos-old'], [asset.id]));
+
+        expect(mocks.asset.updateAll).toHaveBeenCalledWith([asset.id], {
+          isOffline: true,
+          deletedAt: expect.anything(),
+        });
       });
     });
 

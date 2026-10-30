@@ -10,7 +10,8 @@
 #   immichctl clip-model [NAME]         shows, or switches, the smart search model; then prepares it
 #   immichctl video-accel [videotoolbox|disabled]  shows, or switches, video transcoding on the GPU
 #   immichctl doctor                    checks that the Mac keeps Immich running unattended
-#   immichctl uninstall [--purge]       removes the services; --purge also deletes the install (never the library)
+#   immichctl uninstall [--purge]       removes the services; --purge also unmounts network shares and deletes the
+#                                       install (never the library)
 #
 # Services stopped with `stop` come back at the next login, since their LaunchAgents stay in ~/Library/LaunchAgents.
 set -euo pipefail
@@ -195,6 +196,29 @@ cmd_doctor() {
   echo "Result: $ok ok, $warn warnings"
 }
 
+# the network shares the server has mounted under the install (Administration > Network shares), one per line
+share_mounts() {
+  local mounts
+  mounts="$(cd "$home" && pwd -P)/mounts/"
+  /sbin/mount | sed -n 's/^.* on \(.*\) ([^()]*)$/\1/p' | while IFS= read -r path; do
+    case "$path" in "$mounts"*) echo "$path" ;; esac
+  done
+}
+
+# a NAS share mounted read-write under the install would be emptied by deleting the install
+unmount_shares() {
+  local path
+  while IFS= read -r path; do
+    [ -n "$path" ] || continue
+    /sbin/umount "$path" 2>/dev/null || /sbin/umount -f "$path" 2>/dev/null || true
+  done < <(share_mounts)
+  if [ -n "$(share_mounts)" ]; then
+    echo "still mounted, unmount them first (umount -f <path>):" >&2
+    share_mounts | sed 's/^/  /' >&2
+    return 1
+  fi
+}
+
 cmd_uninstall() {
   local purge="" service
   [ "${1:-}" = --purge ] && purge=1
@@ -204,6 +228,7 @@ cmd_uninstall() {
   done
   echo "removed the LaunchAgents"
   if [ -n "$purge" ]; then
+    unmount_shares || { echo "kept $home, as network shares are mounted in it" >&2; exit 1; }
     rm -rf "$home"
     echo "deleted $home"
   else

@@ -69,6 +69,9 @@ export const Route = {
   viewLibrary: ({ id }: { id: string }) => `/admin/library-management/${id}`,
   editLibrary: ({ id }: { id: string }) => `/admin/library-management/${id}/edit`,
 
+  // network shares
+  networkShares: () => '/admin/network-shares',
+
   // maintenance
   maintenanceMode: (params?: { continue?: string }) => '/maintenance' + asQueryString(params),
 

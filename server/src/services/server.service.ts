@@ -25,6 +25,7 @@ import {
   isOcrEnabled,
   isSmartSearchEnabled,
 } from 'src/utils/misc.js';
+import { isNetworkSharesSupported } from 'src/utils/network-share.js';
 
 @Injectable()
 export class ServerService extends BaseService {
@@ -88,7 +89,7 @@ export class ServerService extends BaseService {
   async getFeatures(): Promise<ServerFeaturesDto> {
     const { reverseGeocoding, metadata, map, machineLearning, trash, oauth, passwordLogin, notifications, ffmpeg } =
       await this.getConfig({ withCache: false });
-    const { configFile } = this.configRepository.getEnv();
+    const { configFile, storage } = this.configRepository.getEnv();
 
     return {
       smartSearch: isSmartSearchEnabled(machineLearning),
@@ -107,6 +108,7 @@ export class ServerService extends BaseService {
       configFile: !!configFile,
       email: notifications.smtp.enabled,
       realtimeTranscoding: ffmpeg.realtime.enabled,
+      networkShares: isNetworkSharesSupported(storage.networkSharesLocation),
     };
   }
 

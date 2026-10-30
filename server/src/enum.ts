@@ -382,6 +382,8 @@ export enum SystemMetadataKey {
   VersionCheckState = 'version-check-state',
   License = 'license',
   IntegrityChecksumCheckpoint = 'integrity-checksum-checkpoint',
+  NetworkShares = 'network-shares',
+  NetworkShareErrors = 'network-share-errors',
 }
 
 export enum UserMetadataKey {
@@ -830,6 +832,8 @@ export enum BootstrapEventPriority {
   DatabaseService = -200,
   // Detect and configure the media location before jobs are queued which may use it
   StorageService = -195,
+  // Mount the network shares external libraries read, before jobs that read their files run
+  NetworkShares = -192,
   // Other services may need to queue jobs on bootstrap.
   JobService = -190,
   // Initialize config after other bootstrap services, stop other services from using config on bootstrap
@@ -1235,6 +1239,7 @@ export const ReleaseChannelSchema = z.enum(ReleaseChannel).describe('Release cha
 
 export enum CronJob {
   LibraryScan = 'LibraryScan',
+  NetworkShareCheck = 'NetworkShareCheck',
   NightlyJobs = 'NightlyJobs',
   VersionCheck = 'VersionCheck',
 }
@@ -1266,6 +1271,7 @@ export enum ApiTag {
   Libraries = 'Libraries',
   Maintenance = 'Maintenance (admin)',
   Map = 'Map',
+  NetworkShares = 'Network shares (admin)',
   Memories = 'Memories',
   Notifications = 'Notifications',
   NotificationsAdmin = 'Notifications (admin)',

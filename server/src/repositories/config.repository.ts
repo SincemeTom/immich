@@ -117,6 +117,10 @@ export interface EnvData {
   storage: {
     ignoreMountCheckErrors: boolean;
     mediaLocation?: string;
+    /** where network shares are mounted; set where the server can mount them (natively on macOS) */
+    networkSharesLocation?: string;
+    /** the NFS server's port, instead of the portmapper's answer: for tests against an NFS server of their own */
+    networkSharesNfsPort?: number;
   };
 
   workers: ImmichWorker[];
@@ -359,6 +363,8 @@ const getEnv = (): EnvData => {
     storage: {
       ignoreMountCheckErrors: !!dto.IMMICH_IGNORE_MOUNT_CHECK_ERRORS,
       mediaLocation: dto.IMMICH_MEDIA_LOCATION,
+      networkSharesLocation: dto.IMMICH_NETWORK_SHARES_LOCATION,
+      networkSharesNfsPort: dto.IMMICH_NETWORK_SHARES_NFS_PORT,
     },
 
     telemetry: {

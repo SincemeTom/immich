@@ -28,3 +28,9 @@ export const isLibraryReachable = async (storage: StorageRepository, importPaths
 
   return true;
 };
+
+/** Whether a file is in an import path: at it, or anywhere under it */
+export const isWithinImportPath = (filePath: string, importPath: string) => {
+  const folder = importPath.endsWith('/') ? importPath : `${importPath}/`;
+  return filePath === importPath || filePath.startsWith(folder);
+};

@@ -7,6 +7,7 @@ import type {
   JobCreateDto,
   LibraryResponseDto,
   LoginResponseDto,
+  NetworkShareResponseDto,
   PersonResponseDto,
   QueueResponseDto,
   ReleaseEventV1,
@@ -101,6 +102,10 @@ export type Events = {
   LibraryCreate: [LibraryResponseDto];
   LibraryUpdate: [LibraryResponseDto];
   LibraryDelete: [{ id: string }];
+
+  NetworkShareCreate: [NetworkShareResponseDto];
+  NetworkShareUpdate: [NetworkShareResponseDto];
+  NetworkShareDelete: [{ id: string }];
 
   WorkflowCreate: [WorkflowResponseDto];
   WorkflowUpdate: [WorkflowResponseDto];
