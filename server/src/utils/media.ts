@@ -1181,7 +1181,9 @@ export class VideoToolboxSwDecodeConfig extends BaseHWConfig {
   }
 }
 
-// Decodes, scales and tone maps on the GPU: the frames never leave it
+// Decodes and scales on the GPU. HDR frames come back to the CPU for BaseConfig's tone mapping: tonemap_videotoolbox
+// made real iPhone HLG videos about 15% brighter than it, so brighter than their own thumbnails, which use it too
+// (macos/verification/m2-videotoolbox.md).
 export class VideoToolboxHwDecodeConfig extends VideoToolboxSwDecodeConfig {
   getBaseInputOptions() {
     return ['-hwaccel', 'videotoolbox', '-hwaccel_output_format', 'videotoolbox_vld', '-noautorotate'];
@@ -1195,13 +1197,15 @@ export class VideoToolboxHwDecodeConfig extends VideoToolboxSwDecodeConfig {
   getFilterOptions(videoStream: VideoStreamInfo) {
     const options = [];
     const tonemapOptions = this.getToneMapping(videoStream);
-    const scale = this.shouldScale(videoStream);
-    const convert = tonemapOptions.length === 0 && !videoStream.pixelFormat.endsWith('420p');
-    if (scale || convert) {
-      const size = scale ? [this.getScaling(videoStream)] : [];
-      options.push(`scale_vt=${[...size, ...(convert ? ['format=nv12'] : [])].join(':')}`);
+    const size = this.shouldScale(videoStream) ? [this.getScaling(videoStream)] : [];
+    if (tonemapOptions.length > 0) {
+      // tone mapping reads 10 bits, whatever the depth decoded
+      options.push(`scale_vt=${[...size, 'format=p010'].join(':')}`, ...tonemapOptions);
+    } else if (!videoStream.pixelFormat.endsWith('420p')) {
+      options.push(`scale_vt=${[...size, 'format=nv12'].join(':')}`);
+    } else if (size.length > 0) {
+      options.push(`scale_vt=${size[0]}`);
     }
-    options.push(...tonemapOptions);
     return options;
   }
 
@@ -1213,23 +1217,7 @@ export class VideoToolboxHwDecodeConfig extends VideoToolboxSwDecodeConfig {
   }
 
   getToneMapping(videoStream: VideoStreamInfo) {
-    if (!this.shouldToneMap(videoStream)) {
-      return [];
-    }
-
-    const { matrix, primaries, transfer } = this.getColors();
-    const tonemapOptions = [
-      'desat=0',
-      `matrix=${matrix}`,
-      `primaries=${primaries}`,
-      'range=pc',
-      `tonemap=${this.config.tonemap}`,
-      'tonemap_mode=lum',
-      `transfer=${transfer}`,
-      'peak=100',
-      'format=nv12',
-    ];
-
-    return [`tonemap_videotoolbox=${tonemapOptions.join(':')}`];
+    const tonemapOptions = super.getToneMapping(videoStream);
+    return tonemapOptions.length > 0 ? ['hwdownload', 'format=p010le', ...tonemapOptions] : [];
   }
 }

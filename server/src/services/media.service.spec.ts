@@ -3752,8 +3752,9 @@ describe(MediaService.name, () => {
     });
 
     describe('videotoolbox', () => {
+      // HDR comes back to the CPU for the tone mapping the software path and the thumbnails use
       const tonemap =
-        'tonemap_videotoolbox=desat=0:matrix=bt709:primaries=bt709:range=pc:tonemap=hable:tonemap_mode=lum:transfer=bt709:peak=100:format=nv12';
+        'hwdownload,format=p010le,tonemapx=tonemap=hable:desat=0:p=bt709:t=bt709:m=bt709:r=pc:peak=100:format=yuv420p';
       const hwInput = ['-hwaccel', 'videotoolbox', '-hwaccel_output_format', 'videotoolbox_vld', '-noautorotate'];
 
       beforeEach(() => {
@@ -3845,8 +3846,8 @@ describe(MediaService.name, () => {
       });
 
       it.each([
-        { name: 'HDR', stub: probeStub.videoStreamHDR, filters: tonemap },
-        { name: '4K HDR10', stub: probeStub.videoStreamHDR10, filters: `scale_vt=w=1280:h=720,${tonemap}` },
+        { name: 'HDR', stub: probeStub.videoStreamHDR, filters: `scale_vt=format=p010,${tonemap}` },
+        { name: '4K HDR10', stub: probeStub.videoStreamHDR10, filters: `scale_vt=w=1280:h=720:format=p010,${tonemap}` },
         { name: '10-bit SDR', stub: probeStub.videoStream10Bit, filters: 'scale_vt=format=nv12' },
         { name: '4K 10-bit SDR', stub: probeStub.videoStream4K10Bit, filters: 'scale_vt=w=1280:h=720:format=nv12' },
         // frames keep their stored orientation, so these scale by their stored size
