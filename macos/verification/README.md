@@ -73,6 +73,7 @@
 | 新：群晖重启后旧挂载的句柄失效，挂载还在但读不了 | **已修复**：每分钟检查发现后自动重新挂载 | [m1-network-shares.md](m1-network-shares.md) |
 | Mac 磁盘小，原图、缩略图、转码视频只能放 Mac | **已完成**：网页上把它们放到群晖，Mac 只留数据库和模型 | [m1-storage-locations.md](m1-storage-locations.md) |
 | 视频只能看、不能旋转；查看时也没有快捷旋转 | **已完成**：视频旋转和镜像；查看时按 `R` 旋转 | [m1-video-rotation.md](m1-video-rotation.md) |
+| 上游不允许编辑实况照片，iPhone 的 HEIC 大多是实况，`R` 对它们无效 | **已完成**：实况照片可旋转、镜像，动态部分一起转；端到端（真实 iPhone 实况照片）23/23，浏览器 6/6 | [m1-video-rotation.md](m1-video-rotation.md) |
 | 新（上游 bug）：读编辑列表时没按顺序，镜像和旋转同时存在时可能顺序颠倒 | **已修复** | [m1-video-rotation.md](m1-video-rotation.md) |
 | 新（上游）：PP-OCRv5_server 在 CoreML 上编译失败，选了它 OCR 全部报错 | **已修复**：该模型自动改用 CPU | [m1-ml-models.md](m1-ml-models.md) |
 
