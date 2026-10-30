@@ -223,6 +223,16 @@
     onClose?.(asset.id);
   };
 
+  // turned from the viewer (r, shift+r): shown as it is now, as the editor does on closing
+  const onAssetEditsApplied = async (assetId: string) => {
+    if (assetId !== asset.id || assetViewerManager.isShowEditor) {
+      return;
+    }
+    const refreshedAsset = await getAssetInfo({ id: asset.id });
+    onAssetChange?.(refreshedAsset);
+    assetViewerManager.setAsset(refreshedAsset);
+  };
+
   const closeEditor = async () => {
     if (editManager.hasAppliedEdits) {
       const refreshedAsset = await getAssetInfo({ id: asset.id });
@@ -502,6 +512,7 @@
   onStackDelete={() => closeViewer()}
   {onStackUpdate}
   {onPersonThumbnailReady}
+  {onAssetEditsApplied}
 />
 
 <svelte:document

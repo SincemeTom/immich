@@ -583,33 +583,40 @@ const handleRunAssetJob = async (dto: AssetJobsDto) => {
   }
 };
 
-let rotating = false;
+/** turns asked for while one is applied, by asset: applied together after it, so that none is lost */
+const pendingTurns = new Map<string, number>();
 
 export const handleRotateAsset = async (asset: AssetResponseDto, degrees: number) => {
-  if (rotating) {
+  const busy = pendingTurns.has(asset.id);
+  pendingTurns.set(asset.id, (pendingTurns.get(asset.id) ?? 0) + degrees);
+  if (busy) {
     return;
   }
-  rotating = true;
+
   const $t = await getFormatter();
   try {
-    const { edits } = await getAssetEdits({ id: asset.id });
-    const rotated = rotateEdits(
-      edits.map(({ action, parameters }) => ({ action, parameters }) as (typeof edits)[number]),
-      degrees,
-    );
-    const ready = waitForWebsocketEvent(
-      'AssetEditReadyV2',
-      (event) => event.asset.id === asset.id,
-      getEditTimeout(asset),
-    );
-    await (rotated.length === 0
-      ? removeAssetEdits({ id: asset.id })
-      : editAsset({ id: asset.id, assetEditsCreateDto: { edits: rotated } }));
-    await ready;
-    eventManager.emit('AssetEditsApplied', asset.id);
+    let turn: number;
+    while ((turn = pendingTurns.get(asset.id) ?? 0) % 360 !== 0) {
+      pendingTurns.set(asset.id, 0);
+      const { edits } = await getAssetEdits({ id: asset.id });
+      const rotated = rotateEdits(
+        edits.map(({ action, parameters }) => ({ action, parameters }) as (typeof edits)[number]),
+        turn,
+      );
+      const ready = waitForWebsocketEvent(
+        'AssetEditReadyV2',
+        (event) => event.asset.id === asset.id,
+        getEditTimeout(asset),
+      );
+      await (rotated.length === 0
+        ? removeAssetEdits({ id: asset.id })
+        : editAsset({ id: asset.id, assetEditsCreateDto: { edits: rotated } }));
+      await ready;
+      eventManager.emit('AssetEditsApplied', asset.id);
+    }
   } catch (error) {
     handleError(error, $t('editor_edits_applied_error'));
   } finally {
-    rotating = false;
+    pendingTurns.delete(asset.id);
   }
 };

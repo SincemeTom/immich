@@ -30,6 +30,7 @@
 | M1-7 | macOS 网络宗卷授权（分支 `mac/fix/network-volume-permission`） | [m1-network-volume-permission.md](m1-network-volume-permission.md) | 通过：服务端从固定路径运行 node，只需点一次"允许"，升级后不再询问；ffmpeg 和 exiftool 继承 node 的授权；普通用户就能挂载 NFS |
 | M1-8 | 网页上挂载群晖（分支 `mac/feat/network-shares`） | [m1-network-shares.md](m1-network-shares.md) | 通过：管理 → 网络共享里添加 NFS 共享并测试连接；开机自动挂载，群晖重启、断网、句柄失效后自动重连；建外部库时可直接选择；端到端 41/41 |
 | M1-9 | 存储位置：缩略图、转码视频、备份和原图放群晖（分支 `mac/feat/storage-locations`） | [m1-storage-locations.md](m1-storage-locations.md) | 通过：管理 → 存储位置里设置，现有文件后台迁移并校验；群晖不在线时相关任务自动暂停、不会误写到 Mac、服务端照常启动，恢复后自动继续；外部库自动跳过 Immich 的目录；端到端 42/42 |
+| M1-10 | 视频旋转、镜像，查看时一键旋转（分支 `mac/feat/video-rotate`） | [m1-video-rotation.md](m1-video-rotation.md) | 通过：视频可在编辑器里旋转、镜像（不能裁剪），只改写显示方向、不重新编码，几秒完成、无损；查看照片或视频时 `R` / `Shift+R` 旋转；播放、缩略图、下载、实时转码、重新转码后都正确，与照片编辑结果逐帧一致；端到端 49/49，浏览器 11/11 |
 | 模型选型 | OCR 与人脸模型、阈值（分支 `mac/feat/ml-defaults`） | [m1-ml-models.md](m1-ml-models.md) | 通过：OCR 默认改为 PP-OCRv6_medium @1024（真实照片 57/58，原来 48/58；内存 9.0 → 6.6 GB）；人脸保持 buffalo_l；阈值实测后保持上游默认；CoreML 编译不了的模型自动改用 CPU |
 | 问题 2 | 自动堆叠（分支 `mac/feat/auto-stack`） | [m1-auto-stack.md](m1-auto-stack.md) | 通过：每个用户在账户设置里开启，可选连拍、RAW+JPG、编辑版、相似照片（相似度 + 拍摄间隔）；上传和外部库扫描后自动执行；只加不删，移出的照片不再放回，可一键移除或重新堆叠；端到端 25/25 |
 | RAW 预览 | RAW 照片预览默认用相机内嵌 JPG（分支 `mac/feat/raw-embedded-preview`） | [m1-raw-preview.md](m1-raw-preview.md) | 通过："优先使用嵌入式预览"默认打开，RAW 显示与相机 JPG 一致；升级和切换开关时只自动重做 RAW 的预览；端到端 11/11 |
@@ -71,6 +72,8 @@
 | 原来挂载群晖只能写 yml 或手动挂载 | **已完成**：网页上管理 NFS 共享 | [m1-network-shares.md](m1-network-shares.md) |
 | 新：群晖重启后旧挂载的句柄失效，挂载还在但读不了 | **已修复**：每分钟检查发现后自动重新挂载 | [m1-network-shares.md](m1-network-shares.md) |
 | Mac 磁盘小，原图、缩略图、转码视频只能放 Mac | **已完成**：网页上把它们放到群晖，Mac 只留数据库和模型 | [m1-storage-locations.md](m1-storage-locations.md) |
+| 视频只能看、不能旋转；查看时也没有快捷旋转 | **已完成**：视频旋转和镜像；查看时按 `R` 旋转 | [m1-video-rotation.md](m1-video-rotation.md) |
+| 新（上游 bug）：读编辑列表时没按顺序，镜像和旋转同时存在时可能顺序颠倒 | **已修复** | [m1-video-rotation.md](m1-video-rotation.md) |
 | 新（上游）：PP-OCRv5_server 在 CoreML 上编译失败，选了它 OCR 全部报错 | **已修复**：该模型自动改用 CPU | [m1-ml-models.md](m1-ml-models.md) |
 
 ## 后续事项
