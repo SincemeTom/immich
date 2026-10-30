@@ -1820,6 +1820,187 @@
         "x-immich-state": "Stable"
       }
     },
+    "/admin/storage-locations": {
+      "get": {
+        "description": "Where thumbnails, encoded videos, database backups and each user's originals are kept, whether each can be used now, and how far a move has got.",
+        "operationId": "getStorageLocations",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StorageLocationsResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "cookie": []
+          },
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "Retrieve storage locations",
+        "tags": [
+          "Storage locations (admin)"
+        ],
+        "x-immich-admin-only": true,
+        "x-immich-history": [
+          {
+            "version": "v3.3.5",
+            "state": "Added"
+          },
+          {
+            "version": "v3.3.5",
+            "state": "Alpha"
+          }
+        ],
+        "x-immich-permission": "systemConfig.read",
+        "x-immich-state": "Alpha"
+      }
+    },
+    "/admin/storage-locations/folders/{folder}": {
+      "put": {
+        "description": "Keep thumbnails, encoded videos or database backups in a folder on a mounted network share, or in the media location again. The files there now are moved in the background.",
+        "operationId": "updateStorageLocationFolder",
+        "parameters": [
+          {
+            "name": "folder",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "$ref": "#/components/schemas/StorageLocationFolder"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StorageLocationUpdateDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StorageLocationsResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "cookie": []
+          },
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "Set where a folder is kept",
+        "tags": [
+          "Storage locations (admin)"
+        ],
+        "x-immich-admin-only": true,
+        "x-immich-history": [
+          {
+            "version": "v3.3.5",
+            "state": "Added"
+          },
+          {
+            "version": "v3.3.5",
+            "state": "Alpha"
+          }
+        ],
+        "x-immich-permission": "systemConfig.update",
+        "x-immich-state": "Alpha"
+      }
+    },
+    "/admin/storage-locations/users/{id}": {
+      "put": {
+        "description": "Keep a user's originals in a folder on a mounted network share, or in the media location again. The storage template migration moves the ones there now.",
+        "operationId": "updateStorageLocationUser",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StorageLocationUpdateDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StorageLocationsResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "cookie": []
+          },
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "Set where a user's originals are kept",
+        "tags": [
+          "Storage locations (admin)"
+        ],
+        "x-immich-admin-only": true,
+        "x-immich-history": [
+          {
+            "version": "v3.3.5",
+            "state": "Added"
+          },
+          {
+            "version": "v3.3.5",
+            "state": "Alpha"
+          }
+        ],
+        "x-immich-permission": "systemConfig.update",
+        "x-immich-state": "Alpha"
+      }
+    },
     "/admin/users": {
       "get": {
         "description": "Search for users.",
@@ -18842,6 +19023,10 @@
       "description": "Maintenance mode allows you to put Immich in a read-only state to perform various operations."
     },
     {
+      "name": "Storage locations (admin)",
+      "description": "Where thumbnails, encoded videos, database backups and each user's originals are kept: in the media location, or on a network share. Only available when the server runs natively on macOS."
+    },
+    {
       "name": "Network shares (admin)",
       "description": "Network shares, such as a NAS folder shared over NFS, that the server mounts itself, so that external libraries can read them. Only available when the server runs natively on macOS."
     },
@@ -23475,6 +23660,7 @@
           "FacialRecognition",
           "FileDelete",
           "FileMigrationQueueAll",
+          "StorageLocationMigration",
           "LibraryDeleteCheck",
           "LibraryDelete",
           "LibraryRemoveAsset",
@@ -30898,6 +31084,185 @@
           "backups"
         ],
         "type": "string"
+      },
+      "StorageLocationFolder": {
+        "description": "A folder of the media location that can be kept on a network share",
+        "enum": [
+          "thumbs",
+          "encoded-video",
+          "backups"
+        ],
+        "type": "string"
+      },
+      "StorageLocationItemDto": {
+        "properties": {
+          "absolutePath": {
+            "description": "Where its files go on this Mac",
+            "type": "string"
+          },
+          "available": {
+            "description": "Whether it can be used now",
+            "type": "boolean"
+          },
+          "folder": {
+            "$ref": "#/components/schemas/StorageLocationFolder"
+          },
+          "location": {
+            "$ref": "#/components/schemas/StorageLocationOnShareDto",
+            "description": "The share it is kept on; the media location if not"
+          },
+          "message": {
+            "description": "Why it cannot be used",
+            "type": "string"
+          },
+          "migration": {
+            "$ref": "#/components/schemas/StorageLocationMigrationDto"
+          },
+          "pendingFrom": {
+            "description": "Folders its files are still being moved out of",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "suggestedPath": {
+            "description": "A folder on a share to suggest for it",
+            "type": "string"
+          },
+          "userEmail": {
+            "description": "User email",
+            "type": "string"
+          },
+          "userId": {
+            "description": "User ID, for where a user's originals are kept",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
+            "type": "string"
+          },
+          "userName": {
+            "description": "User name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "absolutePath",
+          "available",
+          "pendingFrom",
+          "suggestedPath"
+        ],
+        "type": "object"
+      },
+      "StorageLocationMigrationDto": {
+        "properties": {
+          "failed": {
+            "description": "Files that could not be moved, tried again later",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "moved": {
+            "description": "Files moved so far",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "remaining": {
+            "description": "Files left to move",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "failed",
+          "moved",
+          "remaining"
+        ],
+        "type": "object"
+      },
+      "StorageLocationOnShareDto": {
+        "properties": {
+          "path": {
+            "description": "Folder on the share, relative to its top level",
+            "type": "string"
+          },
+          "shareId": {
+            "description": "Network share ID",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
+            "type": "string"
+          },
+          "shareName": {
+            "description": "Network share name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "shareId",
+          "shareName"
+        ],
+        "type": "object"
+      },
+      "StorageLocationUpdateDto": {
+        "properties": {
+          "path": {
+            "description": "Folder on the share, relative to its top level",
+            "maxLength": 1024,
+            "type": "string"
+          },
+          "shareId": {
+            "description": "Network share to keep it on; null for the media location",
+            "format": "uuid",
+            "nullable": true,
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "shareId"
+        ],
+        "type": "object"
+      },
+      "StorageLocationsResponseDto": {
+        "properties": {
+          "checkedAt": {
+            "description": "When the locations were last checked",
+            "type": "string"
+          },
+          "folders": {
+            "description": "Thumbnails, encoded videos and database backups",
+            "items": {
+              "$ref": "#/components/schemas/StorageLocationItemDto"
+            },
+            "type": "array"
+          },
+          "pausedQueues": {
+            "description": "Queues paused while a location cannot be used",
+            "items": {
+              "$ref": "#/components/schemas/QueueName"
+            },
+            "type": "array"
+          },
+          "storageTemplateEnabled": {
+            "description": "Whether the storage template is on: originals only move with it",
+            "type": "boolean"
+          },
+          "users": {
+            "description": "Each user's originals",
+            "items": {
+              "$ref": "#/components/schemas/StorageLocationItemDto"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "folders",
+          "pausedQueues",
+          "storageTemplateEnabled",
+          "users"
+        ],
+        "type": "object"
       },
       "StringFilter": {
         "properties": {

@@ -615,6 +615,62 @@ export type TestEmailResponseDto = {
     /** Email message ID */
     messageId: string;
 };
+export type StorageLocationOnShareDto = {
+    /** Folder on the share, relative to its top level */
+    path: string;
+    /** Network share ID */
+    shareId: string;
+    /** Network share name */
+    shareName: string;
+};
+export type StorageLocationMigrationDto = {
+    /** Files that could not be moved, tried again later */
+    failed: number;
+    /** Files moved so far */
+    moved: number;
+    /** Files left to move */
+    remaining: number;
+};
+export type StorageLocationItemDto = {
+    /** Where its files go on this Mac */
+    absolutePath: string;
+    /** Whether it can be used now */
+    available: boolean;
+    folder?: StorageLocationFolder;
+    /** The share it is kept on; the media location if not */
+    location?: StorageLocationOnShareDto;
+    /** Why it cannot be used */
+    message?: string;
+    migration?: StorageLocationMigrationDto;
+    /** Folders its files are still being moved out of */
+    pendingFrom: string[];
+    /** A folder on a share to suggest for it */
+    suggestedPath: string;
+    /** User email */
+    userEmail?: string;
+    /** User ID, for where a user's originals are kept */
+    userId?: string;
+    /** User name */
+    userName?: string;
+};
+export type StorageLocationsResponseDto = {
+    /** When the locations were last checked */
+    checkedAt?: string;
+    /** Thumbnails, encoded videos and database backups */
+    folders: StorageLocationItemDto[];
+    /** Queues paused while a location cannot be used */
+    pausedQueues: QueueName[];
+    /** Whether the storage template is on: originals only move with it */
+    storageTemplateEnabled: boolean;
+    /** Each user's originals */
+    users: StorageLocationItemDto[];
+};
+export type StorageLocationUpdateDto = {
+    /** Folder on the share, relative to its top level */
+    path?: string;
+    /** Network share to keep it on; null for the media location */
+    shareId: string | null;
+};
 export type UserLicense = {
     /** Activation date */
     activatedAt: string;
@@ -4422,6 +4478,49 @@ export function sendTestEmailAdmin({ adminConfigSmtpDto }: {
         ...opts,
         method: "POST",
         body: adminConfigSmtpDto
+    })));
+}
+/**
+ * Retrieve storage locations
+ */
+export function getStorageLocations(opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchJson<{
+        status: 200;
+        data: StorageLocationsResponseDto;
+    }>("/admin/storage-locations", {
+        ...opts
+    }));
+}
+/**
+ * Set where a folder is kept
+ */
+export function updateStorageLocationFolder({ folder, storageLocationUpdateDto }: {
+    folder: StorageLocationFolder;
+    storageLocationUpdateDto: StorageLocationUpdateDto;
+}, opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchJson<{
+        status: 200;
+        data: StorageLocationsResponseDto;
+    }>(`/admin/storage-locations/folders/${encodeURIComponent(folder)}`, oazapfts.json({
+        ...opts,
+        method: "PUT",
+        body: storageLocationUpdateDto
+    })));
+}
+/**
+ * Set where a user's originals are kept
+ */
+export function updateStorageLocationUser({ id, storageLocationUpdateDto }: {
+    id: string;
+    storageLocationUpdateDto: StorageLocationUpdateDto;
+}, opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchJson<{
+        status: 200;
+        data: StorageLocationsResponseDto;
+    }>(`/admin/storage-locations/users/${encodeURIComponent(id)}`, oazapfts.json({
+        ...opts,
+        method: "PUT",
+        body: storageLocationUpdateDto
     })));
 }
 /**
@@ -8357,6 +8456,33 @@ export enum NotificationType {
     ClusterGroupRequest = "ClusterGroupRequest",
     Custom = "Custom"
 }
+export enum StorageLocationFolder {
+    Thumbs = "thumbs",
+    EncodedVideo = "encoded-video",
+    Backups = "backups"
+}
+export enum QueueName {
+    ThumbnailGeneration = "thumbnailGeneration",
+    MetadataExtraction = "metadataExtraction",
+    VideoConversion = "videoConversion",
+    FaceDetection = "faceDetection",
+    FacialRecognition = "facialRecognition",
+    SmartSearch = "smartSearch",
+    DuplicateDetection = "duplicateDetection",
+    BackgroundTask = "backgroundTask",
+    StorageTemplateMigration = "storageTemplateMigration",
+    Migration = "migration",
+    Search = "search",
+    Sidecar = "sidecar",
+    Library = "library",
+    Notifications = "notifications",
+    BackupDatabase = "backupDatabase",
+    Ocr = "ocr",
+    Workflow = "workflow",
+    IntegrityCheck = "integrityCheck",
+    Editor = "editor",
+    AutoStack = "autoStack"
+}
 export enum UserStatus {
     Active = "active",
     Removing = "removing",
@@ -8635,28 +8761,6 @@ export enum ManualJobName {
     IntegrityUntrackedFilesDeleteAll = "integrity-untracked-files-delete-all",
     IntegrityChecksumMismatchDeleteAll = "integrity-checksum-mismatch-delete-all"
 }
-export enum QueueName {
-    ThumbnailGeneration = "thumbnailGeneration",
-    MetadataExtraction = "metadataExtraction",
-    VideoConversion = "videoConversion",
-    FaceDetection = "faceDetection",
-    FacialRecognition = "facialRecognition",
-    SmartSearch = "smartSearch",
-    DuplicateDetection = "duplicateDetection",
-    BackgroundTask = "backgroundTask",
-    StorageTemplateMigration = "storageTemplateMigration",
-    Migration = "migration",
-    Search = "search",
-    Sidecar = "sidecar",
-    Library = "library",
-    Notifications = "notifications",
-    BackupDatabase = "backupDatabase",
-    Ocr = "ocr",
-    Workflow = "workflow",
-    IntegrityCheck = "integrityCheck",
-    Editor = "editor",
-    AutoStack = "autoStack"
-}
 export enum QueueCommand {
     Start = "start",
     Pause = "pause",
@@ -8724,6 +8828,7 @@ export enum JobName {
     FacialRecognition = "FacialRecognition",
     FileDelete = "FileDelete",
     FileMigrationQueueAll = "FileMigrationQueueAll",
+    StorageLocationMigration = "StorageLocationMigration",
     LibraryDeleteCheck = "LibraryDeleteCheck",
     LibraryDelete = "LibraryDelete",
     LibraryRemoveAsset = "LibraryRemoveAsset",
