@@ -145,10 +145,10 @@ The default configuration looks like this:
     },
     "ocr": {
       "enabled": true,
-      "maxResolution": 736,
+      "maxResolution": 1024,
       "minDetectionScore": 0.5,
       "minRecognitionScore": 0.8,
-      "modelName": "PP-OCRv5_mobile"
+      "modelName": "PP-OCRv6_medium"
     },
     "urls": ["http://immich-machine-learning:3003"]
   },

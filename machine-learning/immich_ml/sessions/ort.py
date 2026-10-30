@@ -329,8 +329,36 @@ class OrtSession:
                     self.disabled_optimizers,
                     self.threads,
                 )
-                graph = self.graphs[shape] = OrtGraph(spec)
+                try:
+                    graph = self.graphs[shape] = OrtGraph(spec)
+                except RuntimeError:
+                    if self.dynamic or "CPUExecutionProvider" not in self.providers:
+                        raise
+                    # a provider that cannot compile the graph at all (CoreML and the MaxPool of PP-OCRv5_server)
+                    # would fail every request for it: the model runs on the CPU instead, slower but answering
+                    log.warning(f"{self.providers[0]} cannot run {self.model_path}, which runs on the CPU instead")
+                    graph = self._use_cpu()
             return graph
+
+    def _use_cpu(self) -> OrtGraph:
+        """Becomes the session it would have been on the CPU alone: one graph, for any shape"""
+        self.providers = ["CPUExecutionProvider"]
+        self.disabled_optimizers = _disabled_optimizers_default(self.providers)
+        self.dynamic = True
+        self.shapes = (self.policy.pinned,)
+        self.batches = tuple(sorted({shape.batch for shape in self.shapes}, reverse=True))
+        self.graphs.clear()
+        shape = self.shapes[0]
+        spec = GraphSpec(
+            self.model_path,
+            shape.pins,
+            _overrides(self.policy, shape.pins),
+            self.providers,
+            self.disabled_optimizers,
+            self.threads,
+        )
+        graph = self.graphs[shape] = OrtGraph(spec)
+        return graph
 
     def warm(self) -> None:
         """Opens a graph for every shape and runs it once before opening the next: OpenVINO defers work to the first

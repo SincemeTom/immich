@@ -131,10 +131,10 @@ const updatedConfig = Object.freeze<SystemConfig>({
     },
     ocr: {
       enabled: true,
-      modelName: 'PP-OCRv5_mobile',
+      modelName: 'PP-OCRv6_medium',
       minDetectionScore: 0.5,
       minRecognitionScore: 0.8,
-      maxResolution: 736,
+      maxResolution: 1024,
     },
   },
   map: {
