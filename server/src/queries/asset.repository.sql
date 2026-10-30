@@ -362,7 +362,8 @@ where
 -- AssetRepository.findLivePhotoMatch
 select
   "asset"."id",
-  "asset"."ownerId"
+  "asset"."ownerId",
+  "asset"."libraryId"
 from
   "asset"
   inner join "asset_exif" on "asset"."id" = "asset_exif"."assetId"

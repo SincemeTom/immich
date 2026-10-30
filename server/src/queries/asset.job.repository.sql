@@ -533,9 +533,15 @@ select
   "asset"."checksumAlgorithm",
   "asset"."isOffline",
   "asset"."visibility",
-  "asset"."duplicateId"
+  "asset"."duplicateId",
+  "asset"."type",
+  "asset"."livePhotoVideoId",
+  "motion"."libraryId" as "livePhotoVideoLibraryId",
+  "asset_exif"."livePhotoCID"
 from
   "asset"
+  left join "asset" as "motion" on "motion"."id" = "asset"."livePhotoVideoId"
+  left join "asset_exif" on "asset_exif"."assetId" = "asset"."id"
 where
   "asset"."id" = $1
   and "asset"."deletedAt" is null

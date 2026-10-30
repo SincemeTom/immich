@@ -292,7 +292,13 @@ export class AssetJobRepository {
         'asset.isOffline',
         'asset.visibility',
         'asset.duplicateId',
+        'asset.type',
+        'asset.livePhotoVideoId',
       ])
+      .leftJoin('asset as motion', 'motion.id', 'asset.livePhotoVideoId')
+      .select('motion.libraryId as livePhotoVideoLibraryId')
+      .leftJoin('asset_exif', 'asset_exif.assetId', 'asset.id')
+      .select('asset_exif.livePhotoCID')
       .where('asset.id', '=', id)
       .where('asset.deletedAt', 'is', null)
       .executeTakeFirst();

@@ -738,7 +738,7 @@ export class AssetRepository {
     const { ownerId, libraryId, otherAssetId, livePhotoCID, type } = options;
     return this.db
       .selectFrom('asset')
-      .select(['asset.id', 'asset.ownerId'])
+      .select(['asset.id', 'asset.ownerId', 'asset.libraryId'])
       .innerJoin('asset_exif', 'asset.id', 'asset_exif.assetId')
       .where('id', '!=', asUuid(otherAssetId))
       .where('ownerId', '=', asUuid(ownerId))

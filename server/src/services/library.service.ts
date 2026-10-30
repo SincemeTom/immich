@@ -470,6 +470,8 @@ export class LibraryService extends BaseService {
       return JobStatus.Failed;
     }
 
+    await this.relinkLivePhoto(asset);
+
     if (asset.checksumAlgorithm === ChecksumAlgorithm.sha1File && checksum.equals(asset.checksum)) {
       return JobStatus.Skipped;
     }
@@ -497,6 +499,44 @@ export class LibraryService extends BaseService {
     }
 
     return JobStatus.Success;
+  }
+
+  /**
+   * Before a still was paired with the video in its own library, one in an external library whose photos were also
+   * backed up from the phone could be paired with the uploaded video, and the upload's still with the library's.
+   * Then removing the uploads deleted the library still's video. This pairs it with its library's video again.
+   */
+  private async relinkLivePhoto(asset: {
+    id: string;
+    ownerId: string;
+    libraryId: string | null;
+    type: AssetType;
+    livePhotoVideoId: string | null;
+    livePhotoVideoLibraryId: string | null;
+    livePhotoCID: string | null;
+  }) {
+    if (
+      asset.type !== AssetType.Image ||
+      !asset.livePhotoVideoId ||
+      !asset.livePhotoCID ||
+      asset.livePhotoVideoLibraryId === asset.libraryId
+    ) {
+      return;
+    }
+
+    const match = await this.assetRepository.findLivePhotoMatch({
+      ownerId: asset.ownerId,
+      libraryId: asset.libraryId,
+      livePhotoCID: asset.livePhotoCID,
+      otherAssetId: asset.id,
+      type: AssetType.Video,
+    });
+    if (!match || match.libraryId !== asset.libraryId) {
+      return;
+    }
+
+    await this.assetRepository.update({ id: asset.id, livePhotoVideoId: match.id });
+    this.logger.log(`Paired live photo ${asset.id} with the video ${match.id} in its own library`);
   }
 
   /** Puts uploads with the same contents in one duplicate group with the file, which the utility suggests keeping */
