@@ -29,6 +29,8 @@
 | M1-6 | 删除后清理缩略图和转码文件（分支 `mac/fix/offline-trash`） | [m1-delete-cleanup.md](m1-delete-cleanup.md) | 普通删除本来就能清理干净。修复外部库的离线文件清空回收站清不掉的问题，并防止群晖断开超过 30 天时照片被删。修复前 5 项失败，修复后 23/23 |
 | M1-7 | macOS 网络宗卷授权（分支 `mac/fix/network-volume-permission`） | [m1-network-volume-permission.md](m1-network-volume-permission.md) | 通过：服务端从固定路径运行 node，只需点一次"允许"，升级后不再询问；ffmpeg 和 exiftool 继承 node 的授权；普通用户就能挂载 NFS |
 | M1-8 | 网页上挂载群晖（分支 `mac/feat/network-shares`） | [m1-network-shares.md](m1-network-shares.md) | 通过：管理 → 网络共享里添加 NFS 共享并测试连接；开机自动挂载，群晖重启、断网、句柄失效后自动重连；建外部库时可直接选择；端到端 41/41 |
+| M1-9 | 存储位置：缩略图、转码视频、备份和原图放群晖（分支 `mac/feat/storage-locations`） | [m1-storage-locations.md](m1-storage-locations.md) | 通过：管理 → 存储位置里设置，现有文件后台迁移并校验；群晖不在线时相关任务自动暂停、不会误写到 Mac、服务端照常启动，恢复后自动继续；外部库自动跳过 Immich 的目录；端到端 42/42 |
+| 模型选型 | OCR 与人脸模型、阈值（分支 `mac/feat/ml-defaults`） | [m1-ml-models.md](m1-ml-models.md) | 通过：OCR 默认改为 PP-OCRv6_medium @1024（真实照片 57/58，原来 48/58；内存 9.0 → 6.6 GB）；人脸保持 buffalo_l；阈值实测后保持上游默认；CoreML 编译不了的模型自动改用 CPU |
 | 问题 2 | 自动堆叠（分支 `mac/feat/auto-stack`） | [m1-auto-stack.md](m1-auto-stack.md) | 通过：每个用户在账户设置里开启，可选连拍、RAW+JPG、编辑版、相似照片（相似度 + 拍摄间隔）；上传和外部库扫描后自动执行；只加不删，移出的照片不再放回，可一键移除或重新堆叠；端到端 25/25 |
 | RAW 预览 | RAW 照片预览默认用相机内嵌 JPG（分支 `mac/feat/raw-embedded-preview`） | [m1-raw-preview.md](m1-raw-preview.md) | 通过："优先使用嵌入式预览"默认打开，RAW 显示与相机 JPG 一致；升级和切换开关时只自动重做 RAW 的预览；端到端 11/11 |
 | 默认设置 | 新安装、新用户按这台的配置（分支 `mac/feat/my-defaults`） | [m1-defaults.md](m1-defaults.md) | 通过：存储模板 `{{y}}/{{MM}}/{{filename}}`、文件夹/人物/回忆侧边栏、自动堆叠全部规则默认开启 |
@@ -68,6 +70,8 @@
 | 群晖外部库的照片不会自动堆叠 | **已完成**：连拍、RAW+JPG、编辑版、相似照片，每个用户自己设置 | [m1-auto-stack.md](m1-auto-stack.md) |
 | 原来挂载群晖只能写 yml 或手动挂载 | **已完成**：网页上管理 NFS 共享 | [m1-network-shares.md](m1-network-shares.md) |
 | 新：群晖重启后旧挂载的句柄失效，挂载还在但读不了 | **已修复**：每分钟检查发现后自动重新挂载 | [m1-network-shares.md](m1-network-shares.md) |
+| Mac 磁盘小，原图、缩略图、转码视频只能放 Mac | **已完成**：网页上把它们放到群晖，Mac 只留数据库和模型 | [m1-storage-locations.md](m1-storage-locations.md) |
+| 新（上游）：PP-OCRv5_server 在 CoreML 上编译失败，选了它 OCR 全部报错 | **已修复**：该模型自动改用 CPU | [m1-ml-models.md](m1-ml-models.md) |
 
 ## 后续事项
 
@@ -85,8 +89,9 @@
 | ~~提前~~ | ~~网页上挂载群晖（NFS）：添加、测试连接、状态、开机自动挂载、断线重连，建外部库时直接选择~~（已完成，见 M1-8） |
 | 以后 | 网页上挂载 SMB 共享（密码存钥匙串） |
 | M1-8 | 在真实群晖上验证网络共享，并确认群晖重启后句柄是否不变 |
+| M1-9 | 在真实群晖上验证存储位置：NFS 写入文件的属主（Squash 为 admin）下各用户能否在 File Station 看到自己的 `Photos/Immich`；缩略图目录在机械硬盘 / SSD 缓存上的速度 |
 | M3 | 打包 libvips 及其约 30 个依赖库，改写动态库引用路径；统一 `MACOSX_DEPLOYMENT_TARGET`；PostgreSQL 客户端工具与 GNU gzip 一并打包 |
 | M3 | 模型随包提供（4.8 GB 下载内容即可；CoreML 编译产物和路径绑定，安装时在本机编译，约 2 分钟） |
 | M3 | 系统级服务（LaunchDaemon），开机即运行，不依赖登录（FileVault 机器需要） |
 | 跟进上游 | 上游 `main` 开始设置 `MACHINE_LEARNING_MODEL_REVISION: v2`，跟进到这个版本时 `run-service` 要同步设置 |
-| 可选 | OCR 单独走 CPU（CoreML 对 OCR 没有提速） |
+| ~~可选~~ | ~~OCR 单独走 CPU~~（不需要：v6_medium 用 CoreML 比 CPU 快 3.6 倍，见模型选型） |
