@@ -108,7 +108,23 @@ select
         where
           "asset_keyframe"."assetId" is not null
       ) as obj
-  ) as "packets"
+  ) as "packets",
+  (
+    select
+      coalesce(json_agg(agg), '[]')
+    from
+      (
+        select
+          "asset_edit"."action",
+          "asset_edit"."parameters"
+        from
+          "asset_edit"
+        where
+          "asset_edit"."assetId" = "asset"."id"
+        order by
+          "asset_edit"."sequence" asc
+      ) as agg
+  ) as "edits"
 from
   "asset"
   inner join "asset_exif" on "asset"."id" = "asset_exif"."assetId"
@@ -288,7 +304,23 @@ select
         where
           "asset_keyframe"."assetId" is not null
       ) as obj
-  ) as "packets"
+  ) as "packets",
+  (
+    select
+      coalesce(json_agg(agg), '[]')
+    from
+      (
+        select
+          "asset_edit"."action",
+          "asset_edit"."parameters"
+        from
+          "asset_edit"
+        where
+          "asset_edit"."assetId" = "asset"."id"
+        order by
+          "asset_edit"."sequence" asc
+      ) as agg
+  ) as "edits"
 from
   "asset"
   inner join "asset_exif" on "asset"."id" = "asset_exif"."assetId"

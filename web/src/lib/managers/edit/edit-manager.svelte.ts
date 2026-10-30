@@ -6,6 +6,7 @@ import TransformTool from '$lib/components/asset-viewer/editor/transform-tool/Tr
 import { transformManager } from '$lib/managers/edit/transform-manager.svelte';
 import { eventManager } from '$lib/managers/event-manager.svelte';
 import { waitForWebsocketEvent } from '$lib/stores/websocket';
+import { getEditTimeout } from '$lib/utils/asset-rotate';
 import { getFormatter } from '$lib/utils/i18n';
 
 export type EditAction = AssetEditsCreateDto['edits'][number];
@@ -127,7 +128,11 @@ export class EditManager {
 
     try {
       // Setup the websocket listener before sending the edit request
-      const editCompleted = waitForWebsocketEvent('AssetEditReadyV2', (event) => event.asset.id === assetId, 10_000);
+      const editCompleted = waitForWebsocketEvent(
+        'AssetEditReadyV2',
+        (event) => event.asset.id === assetId,
+        getEditTimeout(this.currentAsset),
+      );
 
       await (edits.length === 0
         ? removeAssetEdits({ id: assetId })

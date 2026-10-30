@@ -223,6 +223,16 @@
     onClose?.(asset.id);
   };
 
+  // turned from the viewer (r, shift+r): shown as it is now, as the editor does on closing
+  const onAssetEditsApplied = async (assetId: string) => {
+    if (assetId !== asset.id || assetViewerManager.isShowEditor) {
+      return;
+    }
+    const refreshedAsset = await getAssetInfo({ id: asset.id });
+    onAssetChange?.(refreshedAsset);
+    assetViewerManager.setAsset(refreshedAsset);
+  };
+
   const closeEditor = async () => {
     if (editManager.hasAppliedEdits) {
       const refreshedAsset = await getAssetInfo({ id: asset.id });
@@ -435,7 +445,10 @@
       return previewStackedAsset.type === AssetTypeEnum.Image ? 'PhotoViewer' : 'StackVideoViewer';
     }
     if (asset.type === AssetTypeEnum.Video) {
-      return 'VideoViewer';
+      // a video turns and flips in the editor on its preview, as a photo does
+      return assetViewerManager.isShowEditor && editManager.selectedTool?.type === EditToolType.Transform
+        ? 'CropArea'
+        : 'VideoViewer';
     }
     if (assetViewerManager.isPlayingMotionPhoto && asset.livePhotoVideoId) {
       return 'LiveVideoViewer';
@@ -499,6 +512,7 @@
   onStackDelete={() => closeViewer()}
   {onStackUpdate}
   {onPersonThumbnailReady}
+  {onAssetEditsApplied}
 />
 
 <svelte:document

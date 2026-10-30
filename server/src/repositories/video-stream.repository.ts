@@ -8,7 +8,7 @@ import {
   VideoStreamSessionTable,
   VideoStreamVariantTable,
 } from 'src/schema/tables/video-stream.table.js';
-import { withAudioStream, withVideoFormat, withVideoPackets, withVideoStream } from 'src/utils/database.js';
+import { withAudioStream, withEdits, withVideoFormat, withVideoPackets, withVideoStream } from 'src/utils/database.js';
 
 @Injectable()
 export class VideoStreamRepository {
@@ -81,6 +81,7 @@ export class VideoStreamRepository {
       .innerJoin('asset_keyframe', 'asset.id', 'asset_keyframe.assetId')
       .select((eb) => withVideoStream(eb).$notNull().as('videoStream'))
       .select((eb) => withVideoPackets(eb).$notNull().as('packets'))
+      .select(withEdits)
       .executeTakeFirst();
   }
 
@@ -114,6 +115,7 @@ export class VideoStreamRepository {
       .select((eb) => withVideoStream(eb).$notNull().as('videoStream'))
       .select((eb) => withVideoFormat(eb).$notNull().as('format'))
       .select((eb) => withVideoPackets(eb).$notNull().as('packets'))
+      .select(withEdits)
       .executeTakeFirst();
   }
 }

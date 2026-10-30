@@ -170,6 +170,8 @@ export interface VideoTuning {
 
 export interface HlsCommandOptions {
   initFilename: string;
+  /** before the input, such as the display matrix of a rotated video */
+  inputOptions?: string[];
   inputPath: string;
   packetCount: number;
   playlistFilename: string;

@@ -124,6 +124,8 @@
     {#if !sharedLink}
       <ButtonContextMenu direction="left" align="top-right" color="secondary" title={$t('more')} icon={mdiDotsVertical}>
         <ActionMenuItem action={Actions.PlaySlideshow} />
+        <ActionMenuItem action={Actions.RotateLeft} />
+        <ActionMenuItem action={Actions.RotateRight} />
 
         <ActionMenuItem action={Actions.Download} />
         <ActionMenuItem action={Actions.DownloadOriginal} />

@@ -16,10 +16,12 @@ import {
 } from 'src/constants.js';
 import { StorageCore } from 'src/cores/storage.core.js';
 import { OnEvent, OnJob } from 'src/decorators.js';
+import { AssetEditActionItem } from 'src/dtos/editing.dto.js';
 import { DatabaseLock, ImmichWorker, JobName, QueueName, TranscodeTarget } from 'src/enum.js';
 import { BaseService } from 'src/services/base.service.js';
 import { isVideoStreamSessionPkConstraint } from 'src/utils/database.js';
 import { BaseConfig } from 'src/utils/media.js';
+import { withVideoEdits } from 'src/utils/video-edit.js';
 
 type Session = {
   assetId: string;
@@ -210,6 +212,8 @@ export class TranscodingService extends BaseService {
     // exactly cfr slot K × gop, seek to the midpoint between slots K×gop−1 and
     // K×gop. accurate_seek's "discard < target" then keeps the source frame
     // that quantizes to slot K×gop and discards the one quantizing to K×gop−1.
+    // a rotated or mirrored video: the original read with the display matrix its edits make
+    const { videoStream, inputOptions } = withVideoEdits(asset.videoStream, asset.edits as AssetEditActionItem[]);
     const fps = (asset.packets.packetCount * asset.videoStream.timeBase) / asset.packets.totalDuration;
     const gop = Math.ceil(HLS_SEGMENT_DURATION * fps);
     const seekSeconds = startSegment > 0 ? (startSegment * gop - 0.5) / fps : 0;
@@ -238,6 +242,7 @@ export class TranscodingService extends BaseService {
     const args = config.getHlsCommand(
       {
         initFilename: 'init.mp4',
+        inputOptions,
         inputPath: asset.originalPath,
         packetCount: asset.packets.packetCount,
         playlistFilename: join(variantDir, 'playlist.m3u8'),
@@ -249,7 +254,7 @@ export class TranscodingService extends BaseService {
         timeBase: asset.videoStream.timeBase,
         totalDuration: asset.packets.totalDuration,
       },
-      asset.videoStream,
+      videoStream,
       asset.audioStream ?? undefined,
     );
     this.logger.log(

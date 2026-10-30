@@ -1219,7 +1219,8 @@ export class AssetRepository {
             join
               .onRef('asset.id', '=', 'asset_file.assetId')
               .on('asset_file.isEdited', '=', true)
-              .on('asset_file.type', '=', AssetFileType.FullSize),
+              // an image's edited full size; a video's edited stream
+              .on('asset_file.type', 'in', [AssetFileType.FullSize, AssetFileType.EncodedVideo]),
           )
           .select('asset_file.path as editedPath'),
       )
@@ -1253,8 +1254,18 @@ export class AssetRepository {
   async getForVideo(id: string) {
     return this.db
       .selectFrom('asset')
-      .select(['asset.originalPath'])
+      .select(['asset.id', 'asset.ownerId', 'asset.originalPath'])
       .select((eb) => withFilePath(eb, AssetFileType.EncodedVideo).as('encodedVideoPath'))
+      .select((eb) => withFilePath(eb, AssetFileType.EncodedVideo, true).as('editedVideoPath'))
+      .select((eb) =>
+        eb
+          .selectFrom('asset_file')
+          .select('asset_file.id')
+          .whereRef('asset_file.assetId', '=', 'asset.id')
+          .where('asset_file.type', '=', sql.lit(AssetFileType.EncodedVideo))
+          .where('asset_file.isEdited', '=', sql.lit(true))
+          .as('editedVideoFileId'),
+      )
       .where('asset.id', '=', id)
       .where('asset.type', '=', AssetType.Video)
       .executeTakeFirst();

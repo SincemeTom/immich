@@ -82,7 +82,10 @@
       ]}
       bind:this={transformManager.overlayEl}
     ></div>
-    <div class="crop-frame absolute border-2 border-white" bind:this={transformManager.cropFrame}>
+    <div
+      class={['crop-frame absolute border-2 border-white', !transformManager.canCrop && 'hidden']}
+      bind:this={transformManager.cropFrame}
+    >
       <!-- svelte-ignore a11y_no_static_element_interactions -->
       <div
         class={[

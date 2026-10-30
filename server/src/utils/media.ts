@@ -177,7 +177,7 @@ export class BaseConfig implements VideoCodecSWConfig {
   }
 
   getHlsCommand(options: HlsCommandOptions, video: VideoStreamInfo, audio?: AudioStreamInfo) {
-    const args: string[] = this.getBaseInputOptions(video);
+    const args: string[] = [...(options.inputOptions ?? []), ...this.getBaseInputOptions(video)];
     if (options.seekSeconds) {
       args.push('-ss', String(options.seekSeconds));
     }

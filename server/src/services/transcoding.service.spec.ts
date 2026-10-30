@@ -6,6 +6,7 @@ import {
   HLS_INACTIVITY_TIMEOUT_MS,
   HLS_LEASE_DURATION_MS,
 } from 'src/constants.js';
+import { AssetEditAction, MirrorAxis } from 'src/dtos/editing.dto.js';
 import { TranscodeHardwareAcceleration } from 'src/enum.js';
 import { TranscodingService } from 'src/services/transcoding.service.js';
 import { VIDEO_STREAM_SESSION_PK_CONSTRAINT } from 'src/utils/database.js';
@@ -35,7 +36,7 @@ describe(TranscodingService.name, () => {
   beforeEach(() => {
     ({ sut, mocks } = newTestService(TranscodingService));
     mocks.systemMetadata.get.mockResolvedValue({ ffmpeg: { realtime: { enabled: true } } });
-    mocks.videoStream.getForTranscoding.mockResolvedValue(eiffelTower);
+    mocks.videoStream.getForTranscoding.mockResolvedValue({ ...eiffelTower, edits: [] });
   });
 
   describe('onSessionRequest', () => {
@@ -535,6 +536,31 @@ describe(TranscodingService.name, () => {
     });
   });
 
+  describe('a rotated or mirrored video', () => {
+    it('reads the original with the display matrix its edits make, and sizes it as it shows', async () => {
+      mocks.videoStream.getForTranscoding.mockResolvedValue({
+        ...eiffelTower,
+        edits: [
+          { action: AssetEditAction.Mirror, parameters: { axis: MirrorAxis.Horizontal } },
+          { action: AssetEditAction.Rotate, parameters: { angle: 90 } },
+        ],
+      });
+      mocks.process.spawn.mockReturnValue(mockSpawn(0, '', ''));
+
+      await sut.onSessionRequest({ sessionId, assetId, ownerId });
+      await sut.onSegmentRequest({ sessionId, assetId, variantIndex: 4, segmentIndex: 0 });
+
+      const args = mocks.process.spawn.mock.calls.at(-1)![1] as string[];
+      const input = args.indexOf('-i');
+      // eiffelTower is stored as shown: its frames turn 90° counter-clockwise, then flip
+      expect(args.slice(0, input)).toEqual(expect.arrayContaining(['-display_rotation', '90', '-display_hflip']));
+      expect(args.indexOf('-display_rotation')).toBeLessThan(input);
+      expect(args).toContain('eiffel-tower.mp4');
+      // shown sideways, the 720 rows of the variant are its width
+      expect(args[args.indexOf('-vf') + 1]).toBe('scale=-2:720');
+    });
+  });
+
   describe('FFmpeg seek per segment', () => {
     const eiffelSeeks = [
       0, 1.98715, 3.994372222222222, 6.001594444444444, 8.008816666666666, 10.016038888888888, 12.023261111111111,
@@ -569,7 +595,7 @@ describe(TranscodingService.name, () => {
     ];
 
     it.each(cases)('$name', async ({ fixture, segmentIndex, expected }) => {
-      mocks.videoStream.getForTranscoding.mockResolvedValue(fixture);
+      mocks.videoStream.getForTranscoding.mockResolvedValue({ ...fixture, edits: [] });
       mocks.process.spawn.mockReturnValue(mockSpawn(0, '', ''));
 
       await sut.onSessionRequest({ sessionId, assetId, ownerId });
