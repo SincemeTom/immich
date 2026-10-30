@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import type { ArgOf } from 'src/repositories/event.repository.js';
 import type {
   AudioStreamInfo,
   DecodeToBufferOptions,
@@ -22,6 +23,7 @@ import {
   AssetVisibility,
   AudioCodec,
   Colorspace,
+  DatabaseLock,
   ImageFormat,
   ImmichWorker,
   JobName,
@@ -29,6 +31,7 @@ import {
   QueueName,
   RawExtractedFormat,
   StorageFolder,
+  SystemMetadataKey,
   TranscodeHardwareAcceleration,
   TranscodePolicy,
   TranscodeTarget,
@@ -39,6 +42,7 @@ import { AssetJobRepository } from 'src/repositories/asset-job.repository.js';
 import { BoundingBox } from 'src/repositories/machine-learning.repository.js';
 import { BaseService } from 'src/services/base.service.js';
 import { getAssetFile, getDimensions } from 'src/utils/asset.util.js';
+import { clearConfigCache } from 'src/utils/config.js';
 import { checkFaceVisibility, checkOcrVisibility } from 'src/utils/editor.js';
 import { BaseConfig, ThumbnailConfig } from 'src/utils/media.js';
 import { mimeTypes } from 'src/utils/mime-types.js';
@@ -63,6 +67,49 @@ export class MediaService extends BaseService {
   @OnEvent({ name: 'AppBootstrap', workers: [ImmichWorker.Microservices] })
   async onBootstrap() {
     this.videoInterfaces = await this.storageCore.getVideoInterfaces();
+  }
+
+  @OnEvent({ name: 'ConfigInit', workers: [ImmichWorker.Microservices] })
+  async onConfigInit({ newConfig }: ArgOf<'ConfigInit'>) {
+    await this.syncRawPreviews(newConfig.image.extractEmbedded);
+  }
+
+  @OnEvent({ name: 'ConfigUpdate', workers: [ImmichWorker.Microservices], server: true })
+  async onConfigUpdate({ newConfig }: ArgOf<'ConfigUpdate'>) {
+    await this.syncRawPreviews(newConfig.image.extractEmbedded);
+  }
+
+  /**
+   * Makes the previews of raw photos again when they were made otherwise than the setting now says: at the upgrade
+   * that made the camera's embedded JPEG the default, and when the setting is changed. Only raw photos, which the
+   * setting is about; the thumbnail job's "All" would make every preview again.
+   */
+  private async syncRawPreviews(extractEmbedded: boolean) {
+    await this.databaseRepository.withLock(DatabaseLock.RawPreviews, async () => {
+      const state = await this.systemMetadataRepository.get(SystemMetadataKey.RawPreviews);
+      // before this was kept: as the setting saved then said, or the upstream default, which did not use it
+      const saved = state ? undefined : await this.systemMetadataRepository.get(SystemMetadataKey.SystemConfig);
+      const previous = state?.extractEmbedded ?? saved?.image?.extractEmbedded ?? false;
+
+      if (previous !== extractEmbedded) {
+        // the jobs read the config, which this worker may still hold as it was: they start before it hears of the change
+        clearConfigCache();
+        let count = 0;
+        for await (const assets of batched(this.assetJobRepository.streamRawImages())) {
+          await this.jobRepository.queueAll(
+            assets.map(({ id }) => ({ name: JobName.AssetGenerateThumbnails, data: { id } })),
+          );
+          count += assets.length;
+        }
+        this.logger.log(
+          `Making the previews of ${count} raw photos again, ${extractEmbedded ? 'from the JPEG the camera embedded' : 'decoding the raw files'}`,
+        );
+      }
+
+      if (state?.extractEmbedded !== extractEmbedded) {
+        await this.systemMetadataRepository.set(SystemMetadataKey.RawPreviews, { extractEmbedded });
+      }
+    });
   }
 
   @OnJob({ name: JobName.AssetGenerateThumbnailsQueueAll, queue: QueueName.ThumbnailGeneration })

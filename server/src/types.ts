@@ -570,6 +570,8 @@ export interface SystemMetadata extends Record<SystemMetadataKey, Record<string,
   [SystemMetadataKey.MemoriesState]: MemoriesState;
   [SystemMetadataKey.IntegrityChecksumCheckpoint]: { date?: string };
   [SystemMetadataKey.NetworkShares]: { shares: NetworkShare[] };
+  /** how the previews of raw photos were made: from the JPEG the camera embedded, or decoding the raw file */
+  [SystemMetadataKey.RawPreviews]: { extractEmbedded: boolean };
   [SystemMetadataKey.NetworkShareErrors]: {
     errors: Record<string, { reason: NetworkShareErrorReason; message: string }>;
   };

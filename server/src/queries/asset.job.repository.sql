@@ -75,6 +75,50 @@ where
 limit
   $3
 
+-- AssetJobRepository.streamRawImages
+select
+  "asset"."id"
+from
+  "asset"
+where
+  "asset"."type" = $1
+  and "asset"."deletedAt" is null
+  and "asset"."visibility" != $2
+  and lower(asset."originalFileName") like any (
+    array[
+      '%.3fr',
+      '%.ari',
+      '%.arw',
+      '%.cap',
+      '%.cin',
+      '%.cr2',
+      '%.cr3',
+      '%.crw',
+      '%.dcr',
+      '%.dng',
+      '%.erf',
+      '%.fff',
+      '%.iiq',
+      '%.k25',
+      '%.kdc',
+      '%.mrw',
+      '%.nef',
+      '%.nrw',
+      '%.orf',
+      '%.ori',
+      '%.pef',
+      '%.psd',
+      '%.raf',
+      '%.raw',
+      '%.rw2',
+      '%.rwl',
+      '%.sr2',
+      '%.srf',
+      '%.srw',
+      '%.x3f'
+    ]::text[]
+  )
+
 -- AssetJobRepository.streamForThumbnailJob
 select
   "asset"."id",

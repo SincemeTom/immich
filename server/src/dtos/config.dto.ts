@@ -706,7 +706,7 @@ export const defaults = Object.freeze<SystemConfig>({
       progressive: false,
     },
     colorspace: Colorspace.P3,
-    extractEmbedded: false,
+    extractEmbedded: true,
     fullsize: {
       enabled: false,
       format: ImageFormat.Jpeg,
