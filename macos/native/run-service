@@ -127,6 +127,9 @@ PY
     # as server/bin/start.sh sets it from the container's CPU quota
     UV_THREADPOOL_SIZE="$(sysctl -n hw.ncpu)"
     export UV_THREADPOOL_SIZE
+    # where Administration > Network shares mounts NAS shares, one folder each; `immichctl uninstall --purge`
+    # unmounts them before it deletes the install
+    export IMMICH_NETWORK_SHARES_LOCATION="$home/mounts"
     # jellyfin-ffmpeg, which has the tonemapx filter the server uses for HDR video
     export PATH="$release/ffmpeg:$PATH"
     # macOS asks once whether a program may read network volumes (an external library on a NAS), and remembers the
