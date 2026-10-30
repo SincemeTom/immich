@@ -5,6 +5,15 @@ export const preferencesFactory = Sync.makeFactory<UserPreferencesResponseDto>({
   albums: {
     defaultAssetOrder: AssetOrder.Desc,
   },
+  autoStack: {
+    enabled: false,
+    burst: true,
+    rawJpeg: true,
+    edited: true,
+    similar: false,
+    maxDistance: 0.02,
+    maxSeconds: 10,
+  },
   cast: {
     gCastEnabled: false,
   },

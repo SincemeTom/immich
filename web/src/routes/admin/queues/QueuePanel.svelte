@@ -59,6 +59,10 @@
       missingText: $t('missing'),
       disabled: !featureFlags.duplicateDetection,
     },
+    [QueueName.AutoStack]: {
+      allText: $t('all'),
+      missingText: $t('missing'),
+    },
     [QueueName.FaceDetection]: {
       allText: $t('reset'),
       refreshText: $t('refresh'),
@@ -94,6 +98,15 @@
     const item = asQueueItem($t, { name });
 
     switch (name) {
+      case QueueName.AutoStack: {
+        if (dto.force) {
+          const confirmed = await modalManager.showDialog({ prompt: $t('admin.confirm_auto_stack_all') });
+          if (!confirmed) {
+            return;
+          }
+        }
+        break;
+      }
       case QueueName.FaceDetection:
       case QueueName.FacialRecognition: {
         if (dto.force) {

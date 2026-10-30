@@ -9,6 +9,7 @@ import {
 } from '@immich/sdk';
 import { modalManager, toastManager, type ActionItem, type IconLike } from '@immich/ui';
 import {
+  mdiCameraBurst,
   mdiClose,
   mdiCog,
   mdiContentDuplicate,
@@ -249,6 +250,11 @@ export const asQueueItem = ($t: MessageFormatter, queue: { name: QueueName }): Q
     [QueueName.Editor]: {
       icon: mdiPencil,
       title: $t('editor'),
+    },
+    [QueueName.AutoStack]: {
+      icon: mdiCameraBurst,
+      title: $t('admin.auto_stack_job'),
+      subtitle: $t('admin.auto_stack_job_description'),
     },
   };
 
