@@ -394,6 +394,7 @@
     "transcoding_acceleration_qsv": "Quick Sync（需要第 7 代或更新的 Intel 處理器）",
     "transcoding_acceleration_rkmpp": "RKMPP（僅適用於 Rockchip SOCs）",
     "transcoding_acceleration_vaapi": "VAAPI",
+    "transcoding_acceleration_videotoolbox": "VideoToolbox（僅適用於 macOS）",
     "transcoding_accepted_audio_codecs": "可接受的音訊編解碼器",
     "transcoding_accepted_audio_codecs_description": "選擇哪些音訊編解碼器不需要轉碼。此設定僅適用於特定的轉碼策略。",
     "transcoding_accepted_containers": "可接受的封裝格式",

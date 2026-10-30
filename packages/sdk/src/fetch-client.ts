@@ -7977,6 +7977,7 @@ export enum TranscodeHWAccel {
     Qsv = "qsv",
     Vaapi = "vaapi",
     Rkmpp = "rkmpp",
+    Videotoolbox = "videotoolbox",
     Disabled = "disabled"
 }
 export enum AudioCodec {

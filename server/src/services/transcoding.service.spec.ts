@@ -6,6 +6,7 @@ import {
   HLS_INACTIVITY_TIMEOUT_MS,
   HLS_LEASE_DURATION_MS,
 } from 'src/constants.js';
+import { TranscodeHardwareAcceleration } from 'src/enum.js';
 import { TranscodingService } from 'src/services/transcoding.service.js';
 import { VIDEO_STREAM_SESSION_PK_CONSTRAINT } from 'src/utils/database.js';
 import { eiffelTower, train, waterfall } from 'test/fixtures/media.stub.js';
@@ -485,6 +486,52 @@ describe(TranscodingService.name, () => {
       await sut.onSegmentRequest({ sessionId, assetId, variantIndex, segmentIndex: 0 });
 
       expect(mocks.process.spawn.mock.calls[0][1].toSorted()).toEqual(expected);
+    });
+
+    it('builds the VideoToolbox command with key frames forced on segment boundaries', async () => {
+      mocks.systemMetadata.get.mockResolvedValue({
+        ffmpeg: { accel: TranscodeHardwareAcceleration.VideoToolbox, accelDecode: true, realtime: { enabled: true } },
+      });
+      mocks.process.spawn.mockReturnValue(mockSpawn(0, '', ''));
+
+      await sut.onSessionRequest({ sessionId, assetId, ownerId });
+      await sut.onSegmentRequest({ sessionId, assetId, variantIndex: 5, segmentIndex: 0 });
+
+      const args = mocks.process.spawn.mock.calls[0][1];
+      expect(args.slice(0, 5)).toEqual([
+        '-hwaccel',
+        'videotoolbox',
+        '-hwaccel_output_format',
+        'videotoolbox_vld',
+        '-noautorotate',
+      ]);
+      expect(args.toSorted()).toEqual(
+        [
+          ...baseCommand,
+          '-hwaccel',
+          'videotoolbox',
+          '-hwaccel_output_format',
+          'videotoolbox_vld',
+          '-noautorotate',
+          '-c:v',
+          'h264_videotoolbox',
+          '-c:a',
+          'aac',
+          '-q:v',
+          '54',
+          '-maxrate',
+          '5000k',
+          '-bufsize',
+          '10000k',
+          '-force_key_frames',
+          'expr:gte(n,n_forced*50)',
+          '-vf',
+          'scale_vt=w=720:h=1280',
+          '-hls_segment_filename',
+          '/data/encoded-video/user-1/se/ss/session-1/5/seg_%d.m4s',
+          '/data/encoded-video/user-1/se/ss/session-1/5/playlist.m3u8',
+        ].sort(),
+      );
     });
   });
 

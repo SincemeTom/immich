@@ -310,6 +310,10 @@
                   text: $t('admin.transcoding_acceleration_rkmpp'),
                 },
                 {
+                  value: TranscodeHWAccel.Videotoolbox,
+                  text: $t('admin.transcoding_acceleration_videotoolbox'),
+                },
+                {
                   value: TranscodeHWAccel.Disabled,
                   text: $t('disabled'),
                 },

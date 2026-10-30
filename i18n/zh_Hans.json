@@ -402,6 +402,7 @@
     "transcoding_acceleration_qsv": "Quick Sync（需要Intel 7代及以上的CPU）",
     "transcoding_acceleration_rkmpp": "RKMPP（仅适用于Rockchip SOCs）",
     "transcoding_acceleration_vaapi": "视频加速 API",
+    "transcoding_acceleration_videotoolbox": "VideoToolbox（仅适用于 macOS）",
     "transcoding_accepted_audio_codecs": "支持的音频编码格式",
     "transcoding_accepted_audio_codecs_description": "选择无需转码的音频编码格式。仅在特定的转码策略下生效。",
     "transcoding_accepted_containers": "支持的容器格式",

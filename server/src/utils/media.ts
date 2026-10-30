@@ -134,6 +134,12 @@ export class BaseConfig implements VideoCodecSWConfig {
           : new RkmppSwDecodeConfig(config, interfaces, tune);
         break;
       }
+      case TranscodeHardwareAcceleration.VideoToolbox: {
+        handler = config.accelDecode
+          ? new VideoToolboxHwDecodeConfig(config, interfaces, tune)
+          : new VideoToolboxSwDecodeConfig(config, interfaces, tune);
+        break;
+      }
       default: {
         throw new Error(`${config.accel.toUpperCase()} acceleration is unsupported`);
       }
@@ -1139,5 +1145,91 @@ export class RkmppHwDecodeConfig extends RkmppSwDecodeConfig {
       return [`scale_rkrga=${this.getScaling(videoStream)}:format=nv12:afbc=1:async_depth=4`];
     }
     return [];
+  }
+}
+
+// Apple's media engine on macOS. Software decoding keeps the CPU filters of BaseConfig, whose yuv420p output the encoder takes as is.
+export class VideoToolboxSwDecodeConfig extends BaseHWConfig {
+  // VideoToolbox picks its own device; there is no /dev/dri on macOS
+  getDevice() {
+    return '';
+  }
+
+  // VideoToolbox has no presets
+  getPresetOptions() {
+    return [];
+  }
+
+  getBitrateOptions() {
+    const options = ['-q:v', String(this.getQuality())];
+    const bitrates = this.getBitrateDistribution();
+    if (bitrates.max > 0) {
+      options.push('-maxrate', `${bitrates.max}${bitrates.unit}`, '-bufsize', `${bitrates.max * 2}${bitrates.unit}`);
+    }
+    return options;
+  }
+
+  // VideoToolbox's constant quality runs from 1 to 100, higher being better, and only exists on Apple silicon.
+  // 100 - 2 × CRF gives about the perceptual quality (XPSNR) of libx264 and libx265 at that CRF.
+  getQuality() {
+    return Math.min(100, Math.max(1, 100 - 2 * this.config.crf));
+  }
+
+  getEncoderOptions(): string[] {
+    // VideoToolbox has no option for a fixed GOP, but honours forced key frames
+    return this.tune.strictGop ? ['-force_key_frames', `expr:gte(n,n_forced*${this.getGopSize()})`] : [];
+  }
+}
+
+// Decodes, scales and tone maps on the GPU: the frames never leave it
+export class VideoToolboxHwDecodeConfig extends VideoToolboxSwDecodeConfig {
+  getBaseInputOptions() {
+    return ['-hwaccel', 'videotoolbox', '-hwaccel_output_format', 'videotoolbox_vld', '-noautorotate'];
+  }
+
+  // -noautorotate keeps frames in their stored orientation
+  isFrameVertical(videoStream: VideoStreamInfo) {
+    return videoStream.height > videoStream.width;
+  }
+
+  getFilterOptions(videoStream: VideoStreamInfo) {
+    const options = [];
+    const tonemapOptions = this.getToneMapping(videoStream);
+    const scale = this.shouldScale(videoStream);
+    const convert = tonemapOptions.length === 0 && !videoStream.pixelFormat.endsWith('420p');
+    if (scale || convert) {
+      const size = scale ? [this.getScaling(videoStream)] : [];
+      options.push(`scale_vt=${[...size, ...(convert ? ['format=nv12'] : [])].join(':')}`);
+    }
+    options.push(...tonemapOptions);
+    return options;
+  }
+
+  // scale_vt takes exact sizes only, not -2
+  getScaling(videoStream: VideoStreamInfo) {
+    const target = this.getTargetResolution(videoStream);
+    const { width, height } = getOutputSize({ ...videoStream, rotation: 0 }, target);
+    return `w=${width}:h=${height}`;
+  }
+
+  getToneMapping(videoStream: VideoStreamInfo) {
+    if (!this.shouldToneMap(videoStream)) {
+      return [];
+    }
+
+    const { matrix, primaries, transfer } = this.getColors();
+    const tonemapOptions = [
+      'desat=0',
+      `matrix=${matrix}`,
+      `primaries=${primaries}`,
+      'range=pc',
+      `tonemap=${this.config.tonemap}`,
+      'tonemap_mode=lum',
+      `transfer=${transfer}`,
+      'peak=100',
+      'format=nv12',
+    ];
+
+    return [`tonemap_videotoolbox=${tonemapOptions.join(':')}`];
   }
 }

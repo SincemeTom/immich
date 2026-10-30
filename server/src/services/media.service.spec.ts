@@ -3751,6 +3751,198 @@ describe(MediaService.name, () => {
       );
     });
 
+    describe('videotoolbox', () => {
+      const tonemap =
+        'tonemap_videotoolbox=desat=0:matrix=bt709:primaries=bt709:range=pc:tonemap=hable:tonemap_mode=lum:transfer=bt709:peak=100:format=nv12';
+      const hwInput = ['-hwaccel', 'videotoolbox', '-hwaccel_output_format', 'videotoolbox_vld', '-noautorotate'];
+
+      beforeEach(() => {
+        // macOS has no /dev/dri
+        sut.videoInterfaces = { dri: [], mali: false };
+      });
+
+      it('should decode, scale and encode on the GPU', async () => {
+        mocks.assetJob.getForVideoConversion.mockResolvedValue({ ...asset, ...probeStub.matroskaContainer });
+        mocks.systemMetadata.get.mockResolvedValue({
+          ffmpeg: { accel: TranscodeHardwareAcceleration.VideoToolbox, accelDecode: true },
+        });
+        await sut.handleVideoConversion({ id: 'video-id' });
+        expect(mocks.media.transcode).toHaveBeenCalledTimes(1);
+        const { inputOptions, outputOptions } = mocks.media.transcode.mock.calls[0][2];
+        expect(inputOptions).toEqual(hwInput);
+        expect(outputOptions).toEqual([
+          '-c:v',
+          'h264_videotoolbox',
+          '-c:a',
+          'copy',
+          '-map',
+          '0:0',
+          '-map_metadata',
+          '-1',
+          '-map',
+          '0:3',
+          '-g',
+          '256',
+          '-q:v',
+          '54',
+          '-movflags',
+          'faststart',
+          '-fps_mode',
+          'passthrough',
+          '-v',
+          'verbose',
+          '-vf',
+          'scale_vt=w=1280:h=720',
+        ]);
+      });
+
+      it('should cap the bitrate of hevc when max bitrate is set', async () => {
+        mocks.assetJob.getForVideoConversion.mockResolvedValue({ ...asset, ...probeStub.videoStreamVp9 });
+        mocks.systemMetadata.get.mockResolvedValue({
+          ffmpeg: {
+            accel: TranscodeHardwareAcceleration.VideoToolbox,
+            accelDecode: true,
+            crf: 30,
+            maxBitrate: '10000k',
+            targetVideoCodec: VideoCodec.Hevc,
+          },
+        });
+        await sut.handleVideoConversion({ id: 'video-id' });
+        expect(mocks.media.transcode).toHaveBeenCalledWith(
+          '/original/path.ext',
+          expect.any(String),
+          expect.objectContaining({
+            outputOptions: expect.arrayContaining([
+              '-c:v',
+              'hevc_videotoolbox',
+              '-tag:v',
+              'hvc1',
+              '-q:v',
+              '40',
+              '-maxrate',
+              '10000k',
+              '-bufsize',
+              '20000k',
+            ]),
+            twoPass: false,
+          }),
+        );
+      });
+
+      it.each([
+        { crf: 0, quality: '100' },
+        { crf: 23, quality: '54' },
+        { crf: 51, quality: '1' },
+      ])('should map crf $crf to quality $quality', async ({ crf, quality }) => {
+        mocks.assetJob.getForVideoConversion.mockResolvedValue({ ...asset, ...probeStub.matroskaContainer });
+        mocks.systemMetadata.get.mockResolvedValue({
+          ffmpeg: { accel: TranscodeHardwareAcceleration.VideoToolbox, crf },
+        });
+        await sut.handleVideoConversion({ id: 'video-id' });
+        const { outputOptions } = mocks.media.transcode.mock.calls[0][2];
+        expect(outputOptions[outputOptions.indexOf('-q:v') + 1]).toBe(quality);
+        expect(outputOptions).not.toContain('-preset');
+      });
+
+      it.each([
+        { name: 'HDR', stub: probeStub.videoStreamHDR, filters: tonemap },
+        { name: '4K HDR10', stub: probeStub.videoStreamHDR10, filters: `scale_vt=w=1280:h=720,${tonemap}` },
+        { name: '10-bit SDR', stub: probeStub.videoStream10Bit, filters: 'scale_vt=format=nv12' },
+        { name: '4K 10-bit SDR', stub: probeStub.videoStream4K10Bit, filters: 'scale_vt=w=1280:h=720:format=nv12' },
+        // frames keep their stored orientation, so these scale by their stored size
+        { name: 'vertical 4K', stub: probeStub.videoStreamVertical2160p, filters: 'scale_vt=w=1280:h=720' },
+        {
+          name: 'rotated horizontal 4K',
+          stub: probeStub.videoStreamRotatedHorizontal2160p,
+          filters: 'scale_vt=w=720:h=1280',
+        },
+      ])('should filter $name video on the GPU', async ({ stub, filters }) => {
+        mocks.assetJob.getForVideoConversion.mockResolvedValue({ ...asset, ...stub });
+        mocks.systemMetadata.get.mockResolvedValue({
+          ffmpeg: {
+            accel: TranscodeHardwareAcceleration.VideoToolbox,
+            accelDecode: true,
+            transcode: TranscodePolicy.Optimal,
+          },
+        });
+        await sut.handleVideoConversion({ id: 'video-id' });
+        expect(mocks.media.transcode).toHaveBeenCalledWith(
+          '/original/path.ext',
+          expect.any(String),
+          expect.objectContaining({
+            inputOptions: hwInput,
+            outputOptions: expect.arrayContaining(['-vf', filters]),
+          }),
+        );
+      });
+
+      it('should scale odd dimensions to exact even sizes', async () => {
+        mocks.assetJob.getForVideoConversion.mockResolvedValue({ ...asset, ...probeStub.videoStreamOddHeight });
+        mocks.systemMetadata.get.mockResolvedValue({
+          ffmpeg: {
+            accel: TranscodeHardwareAcceleration.VideoToolbox,
+            accelDecode: true,
+            transcode: TranscodePolicy.All,
+            targetResolution: 'original',
+          },
+        });
+        await sut.handleVideoConversion({ id: 'video-id' });
+        expect(mocks.media.transcode).toHaveBeenCalledWith(
+          '/original/path.ext',
+          expect.any(String),
+          expect.objectContaining({ outputOptions: expect.arrayContaining(['-vf', 'scale_vt=w=1582:h=354']) }),
+        );
+      });
+
+      it('should filter on the CPU when hardware decoding is disabled', async () => {
+        mocks.assetJob.getForVideoConversion.mockResolvedValue({ ...asset, ...probeStub.videoStreamHDR10 });
+        mocks.systemMetadata.get.mockResolvedValue({
+          ffmpeg: { accel: TranscodeHardwareAcceleration.VideoToolbox, accelDecode: false },
+        });
+        await sut.handleVideoConversion({ id: 'video-id' });
+        expect(mocks.media.transcode).toHaveBeenCalledWith(
+          '/original/path.ext',
+          expect.any(String),
+          expect.objectContaining({
+            inputOptions: [],
+            outputOptions: expect.arrayContaining([
+              '-c:v',
+              'h264_videotoolbox',
+              '-vf',
+              'scale=-2:720,tonemapx=tonemap=hable:desat=0:p=bt709:t=bt709:m=bt709:r=pc:peak=100:format=yuv420p',
+            ]),
+          }),
+        );
+      });
+
+      it('should fall back to software decoding, then to software encoding', async () => {
+        mocks.assetJob.getForVideoConversion.mockResolvedValue({ ...asset, ...probeStub.matroskaContainer });
+        mocks.systemMetadata.get.mockResolvedValue({
+          ffmpeg: { accel: TranscodeHardwareAcceleration.VideoToolbox, accelDecode: true },
+        });
+        mocks.media.transcode.mockRejectedValueOnce(new Error('decode failed'));
+        mocks.media.transcode.mockRejectedValueOnce(new Error('encode failed'));
+        await sut.handleVideoConversion({ id: 'video-id' });
+        expect(mocks.media.transcode).toHaveBeenCalledTimes(3);
+        const [hw, sw, cpu] = mocks.media.transcode.mock.calls.map((call) => call[2]);
+        expect(hw.inputOptions).toEqual(hwInput);
+        expect(sw.inputOptions).toEqual([]);
+        expect(sw.outputOptions).toEqual(expect.arrayContaining(['-c:v', 'h264_videotoolbox']));
+        expect(cpu.outputOptions).toEqual(expect.arrayContaining(['-c:v', 'h264', '-preset', 'ultrafast']));
+        expect(mocks.asset.upsertFile).toHaveBeenCalled();
+      });
+
+      it('should reject codecs VideoToolbox cannot encode', async () => {
+        mocks.assetJob.getForVideoConversion.mockResolvedValue({ ...asset, ...probeStub.matroskaContainer });
+        mocks.systemMetadata.get.mockResolvedValue({
+          ffmpeg: { accel: TranscodeHardwareAcceleration.VideoToolbox, targetVideoCodec: VideoCodec.Av1 },
+        });
+        await expect(sut.handleVideoConversion({ id: 'video-id' })).rejects.toThrowError(
+          'VIDEOTOOLBOX acceleration does not support codec',
+        );
+      });
+    });
+
     it('should use software decoding and tone-mapping if hardware decoding is disabled', async () => {
       mocks.assetJob.getForVideoConversion.mockResolvedValue({ ...asset, ...probeStub.videoStreamHDR });
       mocks.systemMetadata.get.mockResolvedValue({

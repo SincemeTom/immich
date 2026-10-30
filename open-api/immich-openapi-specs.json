@@ -32562,6 +32562,7 @@
           "qsv",
           "vaapi",
           "rkmpp",
+          "videotoolbox",
           "disabled"
         ],
         "type": "string"
