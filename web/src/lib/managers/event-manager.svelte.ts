@@ -107,6 +107,8 @@ export type Events = {
   NetworkShareUpdate: [NetworkShareResponseDto];
   NetworkShareDelete: [{ id: string }];
 
+  StorageLocationUpdate: [];
+
   WorkflowCreate: [WorkflowResponseDto];
   WorkflowUpdate: [WorkflowResponseDto];
   WorkflowDelete: [WorkflowResponseDto];

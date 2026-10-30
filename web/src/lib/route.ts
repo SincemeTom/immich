@@ -71,6 +71,7 @@ export const Route = {
 
   // network shares
   networkShares: () => '/admin/network-shares',
+  storageLocations: () => '/admin/storage-locations',
 
   // maintenance
   maintenanceMode: (params?: { continue?: string }) => '/maintenance' + asQueryString(params),
