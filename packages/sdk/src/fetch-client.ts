@@ -720,6 +720,10 @@ export type AlbumsResponse = {
     defaultAssetOrder: AssetOrder;
 };
 export type AutoStackResponse = {
+    /** Whether to stack photos that look all but the same, whenever they were taken */
+    anytime: boolean;
+    /** Largest CLIP distance of photos stacked whenever they were taken */
+    anytimeDistance: number;
     /** Whether to stack the photos of a burst */
     burst: boolean;
     /** Whether to stack an edited copy with its original */
@@ -821,6 +825,10 @@ export type AlbumsUpdate = {
     defaultAssetOrder?: AssetOrder;
 };
 export type AutoStackUpdate = {
+    /** Whether to stack photos that look all but the same, whenever they were taken */
+    anytime?: boolean;
+    /** Largest CLIP distance of photos stacked whenever they were taken */
+    anytimeDistance?: number;
     /** Whether to stack the photos of a burst */
     burst?: boolean;
     /** Whether to stack an edited copy with its original */

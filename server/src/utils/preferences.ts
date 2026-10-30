@@ -63,6 +63,8 @@ const getDefaultPreferences = (): UserPreferences => {
       similar: false,
       maxDistance: 0.06,
       maxSeconds: 10,
+      anytime: false,
+      anytimeDistance: 0.02,
     },
   };
 };

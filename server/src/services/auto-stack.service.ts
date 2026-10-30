@@ -92,14 +92,22 @@ export class AutoStackService extends BaseService {
     }
 
     const fileCreatedAt = new Date(asset.fileCreatedAt);
-    const similar =
-      preferences.similar && asset.type === AssetType.Image && asset.embedding
-        ? {
-            from: new Date(fileCreatedAt.getTime() - preferences.maxSeconds * 1000),
-            to: new Date(fileCreatedAt.getTime() + preferences.maxSeconds * 1000),
-            embedding: asset.embedding,
-          }
-        : undefined;
+    const embedding = preferences.similar && asset.type === AssetType.Image ? asset.embedding : null;
+    const similar = embedding
+      ? {
+          embedding,
+          from: new Date(fileCreatedAt.getTime() - preferences.maxSeconds * 1000),
+          to: new Date(fileCreatedAt.getTime() + preferences.maxSeconds * 1000),
+          ids: preferences.anytime
+            ? await this.stackRepository.getNearest({
+                ownerId: asset.ownerId,
+                assetId: asset.id,
+                embedding,
+                maxDistance: preferences.anytimeDistance,
+              })
+            : undefined,
+        }
+      : undefined;
     const candidates = await this.stackRepository.getAutoStackCandidates({
       ownerId: asset.ownerId,
       assetId: asset.id,

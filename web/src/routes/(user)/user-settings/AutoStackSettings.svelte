@@ -26,6 +26,8 @@
   let similar = $state(saved?.similar ?? false);
   let maxDistance = $state(String(saved?.maxDistance ?? 0.06));
   let maxSeconds = $state<number | undefined>(saved?.maxSeconds ?? 10);
+  let anytime = $state(saved?.anytime ?? false);
+  let anytimeDistance = $state(String(saved?.anytimeDistance ?? 0.02));
   let busy = $state(false);
 
   const presets = ['0.03', '0.06', '0.1'];
@@ -34,6 +36,14 @@
     { label: $t('auto_stack_similarity_default'), value: '0.06' },
     { label: $t('auto_stack_similarity_loose'), value: '0.1' },
     ...(presets.includes(maxDistance) ? [] : [{ label: maxDistance, value: maxDistance }]),
+  ]);
+
+  const anytimePresets = ['0.01', '0.02', '0.03'];
+  const anytimeOptions = $derived([
+    { label: $t('auto_stack_anytime_strict'), value: '0.01' },
+    { label: $t('auto_stack_similarity_default'), value: '0.02' },
+    { label: $t('auto_stack_anytime_loose'), value: '0.03' },
+    ...(anytimePresets.includes(anytimeDistance) ? [] : [{ label: anytimeDistance, value: anytimeDistance }]),
   ]);
 
   const save = async () => {
@@ -46,7 +56,9 @@
           edited,
           similar,
           maxDistance: Number(maxDistance),
-          maxSeconds: Math.min(Math.max(Math.round(maxSeconds ?? 10), 1), 600),
+          maxSeconds: Math.min(Math.max(Math.round(maxSeconds ?? 10), 1), 3600),
+          anytime,
+          anytimeDistance: Number(anytimeDistance),
         },
       },
     });
@@ -141,8 +153,20 @@
                 <Select bind:value={maxDistance} options={similarityOptions} />
               </Field>
               <Field label={$t('auto_stack_seconds')} description={$t('auto_stack_seconds_description')}>
-                <NumberInput bind:value={maxSeconds} min={1} max={600} />
+                <NumberInput bind:value={maxSeconds} min={1} max={3600} />
               </Field>
+              <Field label={$t('auto_stack_anytime')} description={$t('auto_stack_anytime_description')}>
+                <Switch bind:checked={anytime} />
+              </Field>
+              {#if anytime}
+                <Field
+                  label={$t('auto_stack_anytime_similarity')}
+                  description={$t('auto_stack_anytime_similarity_description')}
+                  class="sm:ms-4"
+                >
+                  <Select bind:value={anytimeDistance} options={anytimeOptions} />
+                </Field>
+              {/if}
             </Stack>
           {/if}
 

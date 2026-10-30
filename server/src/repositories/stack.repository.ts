@@ -11,9 +11,14 @@ import { jsonArrayFrom } from 'kysely/helpers/postgres';
 import { InjectKysely } from 'nestjs-kysely';
 import { columns } from 'src/database.js';
 import { Chunked, DummyValue, GenerateSql } from 'src/decorators.js';
+import { AssetType, VectorIndex } from 'src/enum.js';
+import { probes } from 'src/repositories/database.repository.js';
 import { DB } from 'src/schema/index.js';
 import { StackTable } from 'src/schema/tables/stack.table.js';
 import { anyUuid, asUuid, withDefaultVisibility } from 'src/utils/database.js';
+
+/** photos all but the same as one: a handful, or the rule is too loose */
+const NEAREST_LIMIT = 20;
 
 export interface StackSearch {
   ownerId: string;
@@ -27,8 +32,15 @@ export interface AutoStackCandidateSearch {
   autoStackId?: string | null;
   /** lowercased names without extension, from getAutoStackNameKeys */
   nameKeys: string[];
-  /** taken in this window, with their CLIP distance to this embedding */
-  similar?: { from: Date; to: Date; embedding: string };
+  /** with their CLIP distance to this embedding: those taken in the window, and those of `ids` */
+  similar?: { embedding: string; from?: Date; to?: Date; ids?: string[] };
+}
+
+export interface NearestSearch {
+  ownerId: string;
+  assetId: string;
+  embedding: string;
+  maxDistance: number;
 }
 
 const escapeLike = (value: string) => value.replaceAll(/[\\%_]/g, (match) => `\\${match}`);
@@ -264,13 +276,17 @@ export class StackRepository {
           ),
       );
     }
-    if (similar) {
+    if (similar?.from && similar.to) {
+      const { from, to } = similar;
       lookups.push(
         this.db
           .selectFrom('asset')
           .select('asset.id')
-          .where((eb) => eb.between('asset.fileCreatedAt', similar.from, similar.to)),
+          .where((eb) => eb.between('asset.fileCreatedAt', from, to)),
       );
+    }
+    if (similar?.ids && similar.ids.length > 0) {
+      lookups.push(this.db.selectFrom('asset').select('asset.id').where('asset.id', '=', anyUuid(similar.ids)));
     }
     const [first, ...rest] = lookups;
     if (!first) {
@@ -302,6 +318,35 @@ export class StackRepository {
       .orderBy('asset.fileCreatedAt')
       .limit(500)
       .execute();
+  }
+
+  /** The owner's photos closest to an embedding, whenever they were taken, along the CLIP index */
+  @GenerateSql({
+    params: [{ ownerId: DummyValue.UUID, assetId: DummyValue.UUID, embedding: DummyValue.VECTOR, maxDistance: 0.02 }],
+  })
+  getNearest({ ownerId, assetId, embedding, maxDistance }: NearestSearch) {
+    return this.db.transaction().execute(async (trx) => {
+      await sql`set local vchordrq.probes = ${sql.lit(probes[VectorIndex.Clip])}`.execute(trx);
+      const rows = await trx
+        .with('cte', (qb) =>
+          qb
+            .selectFrom('asset')
+            .$call(withDefaultVisibility)
+            .innerJoin('smart_search', 'smart_search.assetId', 'asset.id')
+            .select(['asset.id', sql<number>`smart_search.embedding <=> ${embedding}`.as('distance')])
+            .where('asset.ownerId', '=', asUuid(ownerId))
+            .where('asset.id', '!=', asUuid(assetId))
+            .where('asset.deletedAt', 'is', null)
+            .where('asset.type', '=', AssetType.Image)
+            .orderBy('distance')
+            .limit(NEAREST_LIMIT),
+        )
+        .selectFrom('cte')
+        .select('cte.id')
+        .where('cte.distance', '<=', maxDistance)
+        .execute();
+      return rows.map(({ id }) => id);
+    });
   }
 
   /**

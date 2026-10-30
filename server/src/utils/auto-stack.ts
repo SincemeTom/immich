@@ -126,12 +126,17 @@ export const getAutoStackReasons = (
     preferences.similar &&
     asset.type === AssetType.Image &&
     candidate.type === AssetType.Image &&
-    candidate.distance !== null &&
-    candidate.distance <= preferences.maxDistance &&
-    Math.abs(new Date(asset.fileCreatedAt).getTime() - new Date(candidate.fileCreatedAt).getTime()) <=
-      preferences.maxSeconds * 1000
+    candidate.distance !== null
   ) {
-    reasons.push(AutoStackReason.Similar);
+    const seconds =
+      Math.abs(new Date(asset.fileCreatedAt).getTime() - new Date(candidate.fileCreatedAt).getTime()) / 1000;
+    // alike and taken within seconds; or, whenever taken, all but the same
+    if (
+      (candidate.distance <= preferences.maxDistance && seconds <= preferences.maxSeconds) ||
+      (preferences.anytime && candidate.distance <= preferences.anytimeDistance)
+    ) {
+      reasons.push(AutoStackReason.Similar);
+    }
   }
 
   return reasons;

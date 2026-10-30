@@ -121,7 +121,18 @@ const AutoStackUpdateSchema = z
       .optional()
       .describe('Largest CLIP distance of similar photos')
       .meta({ format: 'double' }),
-    maxSeconds: z.int().min(1).max(600).optional().describe('Most seconds apart similar photos may be taken'),
+    maxSeconds: z.int().min(1).max(3600).optional().describe('Most seconds apart similar photos may be taken'),
+    anytime: z
+      .boolean()
+      .optional()
+      .describe('Whether to stack photos that look all but the same, whenever they were taken'),
+    anytimeDistance: z
+      .number()
+      .min(0.001)
+      .max(0.1)
+      .optional()
+      .describe('Largest CLIP distance of photos stacked whenever they were taken')
+      .meta({ format: 'double' }),
   })
   .optional()
   .meta({ id: 'AutoStackUpdate' });
@@ -238,6 +249,11 @@ const AutoStackResponseSchema = z
     similar: z.boolean().describe('Whether to stack similar photos taken within seconds'),
     maxDistance: z.number().describe('Largest CLIP distance of similar photos').meta({ format: 'double' }),
     maxSeconds: z.int().describe('Most seconds apart similar photos may be taken'),
+    anytime: z.boolean().describe('Whether to stack photos that look all but the same, whenever they were taken'),
+    anytimeDistance: z
+      .number()
+      .describe('Largest CLIP distance of photos stacked whenever they were taken')
+      .meta({ format: 'double' }),
   })
   .meta({ id: 'AutoStackResponse' });
 
