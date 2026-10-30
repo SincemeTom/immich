@@ -60,6 +60,20 @@ export class AssetJobRepository {
       .executeTakeFirst();
   }
 
+  /** Raw photos, whose previews depend on whether the camera's embedded JPEG is used */
+  @GenerateSql({ params: [], stream: true })
+  streamRawImages() {
+    const extensions = sql.join(Object.keys(mimeTypes.raw).map((extension) => sql.lit(`%${extension}`)));
+    return this.db
+      .selectFrom('asset')
+      .select(['asset.id'])
+      .where('asset.type', '=', AssetType.Image)
+      .where('asset.deletedAt', 'is', null)
+      .where('asset.visibility', '!=', AssetVisibility.Hidden)
+      .where(sql`lower(asset."originalFileName")`, 'like', sql`any(array[${extensions}]::text[])`)
+      .stream();
+  }
+
   @GenerateSql({ params: [{ force: false, fullsizeEnabled: true }], stream: true })
   streamForThumbnailJob(options: { force: boolean | undefined; fullsizeEnabled: boolean }) {
     return this.db

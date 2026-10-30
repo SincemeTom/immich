@@ -17,6 +17,7 @@ import {
   JobName,
   JobStatus,
   RawExtractedFormat,
+  SystemMetadataKey,
   TranscodeHardwareAcceleration,
   TranscodePolicy,
   VideoCodec,
@@ -36,6 +37,12 @@ const fullsizeBuffer = Buffer.from('embedded image data');
 const rawBuffer = Buffer.from('raw image data');
 const extractedBuffer = Buffer.from('embedded image file');
 
+/** How the raw previews were made, and the system config saved before that was kept */
+const mockRawPreviews = (mocks: ServiceMocks, state?: { extractEmbedded: boolean }, saved?: object) =>
+  mocks.systemMetadata.get.mockImplementation(
+    (key) => Promise.resolve(key === SystemMetadataKey.RawPreviews ? state : saved) as any,
+  );
+
 describe(MediaService.name, () => {
   let sut: MediaService;
   let mocks: ServiceMocks;
@@ -46,6 +53,66 @@ describe(MediaService.name, () => {
 
   it('should be defined', () => {
     expect(sut).toBeDefined();
+  });
+
+  describe('raw previews', () => {
+    beforeEach(() => {
+      mocks.assetJob.streamRawImages.mockReturnValue(makeStream([{ id: 'raw-1' }, { id: 'raw-2' }]));
+    });
+
+    it('should make the previews of raw photos again at the upgrade that made the embedded JPEG the default', async () => {
+      mockRawPreviews(mocks, undefined, {});
+
+      await sut.onConfigInit({ newConfig: { image: { extractEmbedded: true } } as SystemConfig });
+
+      expect(mocks.job.queueAll).toHaveBeenCalledWith([
+        { name: JobName.AssetGenerateThumbnails, data: { id: 'raw-1' } },
+        { name: JobName.AssetGenerateThumbnails, data: { id: 'raw-2' } },
+      ]);
+      expect(mocks.systemMetadata.set).toHaveBeenCalledWith(SystemMetadataKey.RawPreviews, { extractEmbedded: true });
+    });
+
+    it('should not make them again for someone who had already turned it on', async () => {
+      mockRawPreviews(mocks, undefined, { image: { extractEmbedded: true } });
+
+      await sut.onConfigInit({ newConfig: { image: { extractEmbedded: true } } as SystemConfig });
+
+      expect(mocks.job.queueAll).not.toHaveBeenCalled();
+      expect(mocks.systemMetadata.set).toHaveBeenCalledWith(SystemMetadataKey.RawPreviews, { extractEmbedded: true });
+    });
+
+    it('should not make them again when they were made as the setting says', async () => {
+      mockRawPreviews(mocks, { extractEmbedded: true });
+
+      await sut.onConfigInit({ newConfig: { image: { extractEmbedded: true } } as SystemConfig });
+
+      expect(mocks.job.queueAll).not.toHaveBeenCalled();
+      expect(mocks.systemMetadata.set).not.toHaveBeenCalled();
+    });
+
+    it('should make them again when the setting is changed', async () => {
+      mockRawPreviews(mocks, { extractEmbedded: true });
+
+      await sut.onConfigUpdate({
+        newConfig: { image: { extractEmbedded: false } } as SystemConfig,
+        oldConfig: { image: { extractEmbedded: true } } as SystemConfig,
+      });
+
+      expect(mocks.assetJob.streamRawImages).toHaveBeenCalled();
+      expect(mocks.job.queueAll).toHaveBeenCalledTimes(1);
+      expect(mocks.systemMetadata.set).toHaveBeenCalledWith(SystemMetadataKey.RawPreviews, { extractEmbedded: false });
+    });
+
+    it('should leave them when another setting is changed', async () => {
+      mockRawPreviews(mocks, { extractEmbedded: true });
+
+      await sut.onConfigUpdate({
+        newConfig: { image: { extractEmbedded: true } } as SystemConfig,
+        oldConfig: { image: { extractEmbedded: true } } as SystemConfig,
+      });
+
+      expect(mocks.job.queueAll).not.toHaveBeenCalled();
+    });
   });
 
   // TODO these should all become medium tests of either the service or the repository.

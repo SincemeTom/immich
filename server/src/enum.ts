@@ -384,6 +384,7 @@ export enum SystemMetadataKey {
   IntegrityChecksumCheckpoint = 'integrity-checksum-checkpoint',
   NetworkShares = 'network-shares',
   NetworkShareErrors = 'network-share-errors',
+  RawPreviews = 'raw-previews',
 }
 
 export enum UserMetadataKey {
@@ -1027,6 +1028,7 @@ export enum DatabaseLock {
   IntegrityCheck = 67,
   VersionCheck = 800,
   HlsSessionCleanup = 850,
+  RawPreviews = 860,
 }
 
 export enum MaintenanceAction {

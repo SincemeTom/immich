@@ -53,7 +53,7 @@ The default configuration looks like this:
   },
   "image": {
     "colorspace": "p3",
-    "extractEmbedded": false,
+    "extractEmbedded": true,
     "fullsize": {
       "enabled": false,
       "format": "jpeg",
