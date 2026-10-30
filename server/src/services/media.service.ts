@@ -42,6 +42,7 @@ import { AssetJobRepository } from 'src/repositories/asset-job.repository.js';
 import { BoundingBox } from 'src/repositories/machine-learning.repository.js';
 import { BaseService } from 'src/services/base.service.js';
 import { getAssetFile, getDimensions } from 'src/utils/asset.util.js';
+import { clearConfigCache } from 'src/utils/config.js';
 import { checkFaceVisibility, checkOcrVisibility } from 'src/utils/editor.js';
 import { BaseConfig, ThumbnailConfig } from 'src/utils/media.js';
 import { mimeTypes } from 'src/utils/mime-types.js';
@@ -91,6 +92,8 @@ export class MediaService extends BaseService {
       const previous = state?.extractEmbedded ?? saved?.image?.extractEmbedded ?? false;
 
       if (previous !== extractEmbedded) {
+        // the jobs read the config, which this worker may still hold as it was: they start before it hears of the change
+        clearConfigCache();
         let count = 0;
         for await (const assets of batched(this.assetJobRepository.streamRawImages())) {
           await this.jobRepository.queueAll(
