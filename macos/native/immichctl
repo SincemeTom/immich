@@ -14,7 +14,13 @@
 # Services stopped with `stop` come back at the next login, since their LaunchAgents stay in ~/Library/LaunchAgents.
 set -euo pipefail
 
-home="$(cd "$(dirname "$0")/.." && pwd)"
+# follows the ~/.local/bin link to the install's bin directory
+self="$0"
+while [ -L "$self" ]; do
+  target="$(readlink "$self")"
+  case "$target" in /*) self="$target" ;; *) self="$(dirname "$self")/$target" ;; esac
+done
+home="$(cd "$(dirname "$self")/.." && pwd)"
 # shellcheck source=/dev/null
 . "$home/config/native.env"
 
