@@ -28,6 +28,11 @@ type EventMap = {
   AppRestart: [AppRestartEvent];
 
   ConfigInit: [{ newConfig: SystemConfig }];
+
+  /** the storage locations changed: each worker reads them again */
+  StorageLocationUpdate: [];
+  /** the minute's check of the network shares: which of them can be used, by id */
+  NetworkSharesChecked: [{ available: Record<string, boolean> }];
   // config events
   ConfigUpdate: [
     {

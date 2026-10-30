@@ -24,6 +24,7 @@ import { MediaService } from 'src/services/media.service.js';
 import { MemoryService } from 'src/services/memory.service.js';
 import { MetadataService } from 'src/services/metadata.service.js';
 import { NetworkShareService } from 'src/services/network-share.service.js';
+import { StorageLocationService } from 'src/services/storage-location.service.js';
 import { NotificationAdminService } from 'src/services/notification-admin.service.js';
 import { NotificationService } from 'src/services/notification.service.js';
 import { OcrService } from 'src/services/ocr.service.js';
@@ -80,6 +81,7 @@ export const services = [
   MemoryService,
   MetadataService,
   NetworkShareService,
+  StorageLocationService,
   NotificationService,
   NotificationAdminService,
   OcrService,

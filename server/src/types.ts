@@ -1,6 +1,7 @@
 import { ShallowDehydrateObject } from 'kysely';
 import { Mocked } from 'vitest';
 import type { NetworkShare, NetworkShareErrorReason } from 'src/utils/network-share.js';
+import type { StorageLocationState, StorageLocations } from 'src/utils/storage-location.js';
 import { VECTOR_EXTENSIONS } from 'src/constants.js';
 import { AssetFile } from 'src/database.js';
 import { UploadFieldName } from 'src/dtos/asset-media.dto.js';
@@ -375,6 +376,7 @@ export type JobItem =
   // Migration
   | { name: JobName.FileMigrationQueueAll; data?: IBaseJob }
   | { name: JobName.AssetFileMigration; data: IEntityJob }
+  | { name: JobName.StorageLocationMigration; data?: IBaseJob }
   | { name: JobName.PersonFileMigration; data: IPersonJob }
 
   // Metadata Extraction
@@ -575,6 +577,8 @@ export interface SystemMetadata extends Record<SystemMetadataKey, Record<string,
   [SystemMetadataKey.NetworkShareErrors]: {
     errors: Record<string, { reason: NetworkShareErrorReason; message: string }>;
   };
+  [SystemMetadataKey.StorageLocations]: StorageLocations;
+  [SystemMetadataKey.StorageLocationState]: StorageLocationState;
 }
 
 export type UserPreferences = {

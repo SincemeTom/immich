@@ -411,6 +411,51 @@ describe(NetworkShareService.name, () => {
       expect(spawned('/sbin/umount')).toHaveLength(0);
     });
 
+    it('should make a mount point read-only before mounting on it, and never a mounted share', async () => {
+      shares = [share(), share({ id: 'up', folder: 'Up' })];
+      mounted.add(`${location}/Up`);
+
+      await sut.handleMountAll();
+
+      expect(mocks.storage.chmod).toHaveBeenCalledTimes(1);
+      expect(mocks.storage.chmod).toHaveBeenCalledWith(`${location}/NAS photos`, 0o555);
+      const chmodAt = mocks.storage.chmod.mock.invocationCallOrder[0];
+      const mountAt =
+        mocks.process.spawn.mock.invocationCallOrder[
+          mocks.process.spawn.mock.calls.findIndex((call) => call[0] === '/sbin/mount_nfs')
+        ];
+      expect(chmodAt).toBeLessThan(mountAt);
+    });
+
+    it('should report which shares can be used', async () => {
+      shares = [
+        share(),
+        share({ id: 'off', folder: 'Off', enabled: false }),
+        share({ id: 'up', folder: 'Up' }),
+        share({ id: 'away', folder: 'Away' }),
+      ];
+      mounted.add(`${location}/Up`);
+      mounted.add(`${location}/Away`);
+      mocks.process.spawn.mockImplementation(((command: string, args: string[]) => {
+        if (command === '/sbin/mount') {
+          return child({ stdout: [...mounted].map((path) => `nas:/x on ${path} (nfs, nodev)`).join('\n') });
+        }
+        if (command === '/bin/ls' && args.at(-1) === `${location}/Away`) {
+          return child({ code: 1, stderr: 'ls: fts_read: Operation timed out' });
+        }
+        if (command === '/sbin/mount_nfs') {
+          mounted.add(args.at(-1)!);
+        }
+        return child({});
+      }) as any);
+
+      await sut.handleMountAll();
+
+      expect(mocks.event.emit).toHaveBeenCalledWith('NetworkSharesChecked', {
+        available: { 'share-id': true, off: false, up: true, away: false },
+      });
+    });
+
     it('should mount at startup, and check every minute', async () => {
       shares = [share()];
       mocks.cron.create.mockReturnValue(void 0);
@@ -462,6 +507,32 @@ describe(NetworkShareService.name, () => {
       await sut.update('share-id', { name: 'Photos' });
       expect(spawned('/sbin/mount_nfs')).toHaveLength(0);
       expect(shares[0]).toMatchObject({ name: 'Photos', folder: 'NAS photos' });
+    });
+  });
+
+  describe('storage locations', () => {
+    beforeEach(() => {
+      shares = [share()];
+      mocks.systemMetadata.get.mockImplementation(
+        (key) =>
+          Promise.resolve(
+            key === SystemMetadataKey.NetworkShares
+              ? { shares }
+              : key === SystemMetadataKey.StorageLocations
+                ? { folders: { thumbs: { shareId: 'share-id', path: 'immich/thumbs' } }, users: {}, pending: {} }
+                : undefined,
+          ) as any,
+      );
+    });
+
+    it('should refuse to remove a share Immich keeps files on', async () => {
+      await expect(sut.delete('share-id')).rejects.toThrow('keeps files Immich stores (thumbs)');
+      expect(shares).toHaveLength(1);
+    });
+
+    it('should refuse to make it read-only', async () => {
+      await expect(sut.update('share-id', { readOnly: true })).rejects.toBeInstanceOf(BadRequestException);
+      expect(shares[0].readOnly).toBe(false);
     });
   });
 

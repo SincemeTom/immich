@@ -275,8 +275,18 @@ export class UserService extends BaseService {
 
     this.logger.log(`Deleting user: ${user.id}`);
 
+    const libraryFolder = StorageCore.getLibraryFolder(user);
+    if (libraryFolder === StorageCore.getDefaultLibraryFolder(user)) {
+      this.logger.warn(`Removing user from filesystem: ${libraryFolder}`);
+      await this.storageRepository.unlinkDir(libraryFolder, { recursive: true, force: true });
+    } else {
+      // a folder on a NAS, which its owner may have put files of their own in: only what deleting the user's assets
+      // left of it goes
+      this.logger.warn(`Removing the empty folders of ${libraryFolder}`);
+      await this.storageRepository.removeEmptyDirs(libraryFolder).catch((error) => this.logger.warn(String(error)));
+    }
+
     const folders = [
-      StorageCore.getLibraryFolder(user),
       StorageCore.getFolderLocation(StorageFolder.Upload, user.id),
       StorageCore.getFolderLocation(StorageFolder.Profile, user.id),
       StorageCore.getFolderLocation(StorageFolder.Thumbnails, user.id),

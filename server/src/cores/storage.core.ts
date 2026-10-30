@@ -21,6 +21,7 @@ import { StorageRepository } from 'src/repositories/storage.repository.js';
 import { SystemMetadataRepository } from 'src/repositories/system-metadata.repository.js';
 import { getAssetFile } from 'src/utils/asset.util.js';
 import { getConfig } from 'src/utils/config.js';
+import { RelocatableFolder, ResolvedStorageLocations, isWithin } from 'src/utils/storage-location.js';
 
 export interface MoveRequest {
   entityId: string;
@@ -48,6 +49,9 @@ export type ImagePathOptions = { fileType: AssetFileType; format: ImageFormat | 
 let instance: StorageCore | null;
 
 let mediaLocation: string | undefined;
+
+/** folders kept on a network share in place of the media location's, and users' originals (StorageLocationService) */
+let storageLocations: ResolvedStorageLocations = { folders: {}, users: {}, pending: {} };
 
 export class StorageCore {
   private constructor(
@@ -91,6 +95,7 @@ export class StorageCore {
 
   static reset() {
     instance = null;
+    storageLocations = { folders: {}, users: {}, pending: {} };
   }
 
   static getMediaLocation(): string {
@@ -105,16 +110,34 @@ export class StorageCore {
     mediaLocation = location;
   }
 
+  static setStorageLocations(locations: ResolvedStorageLocations) {
+    storageLocations = locations;
+  }
+
+  static getStorageLocations(): ResolvedStorageLocations {
+    return storageLocations;
+  }
+
+  /** Where a folder is when it is kept in the media location, as it is unless moved to a network share */
+  static getDefaultBaseFolder(folder: StorageFolder) {
+    return join(StorageCore.getMediaLocation(), folder);
+  }
+
+  /** Where a user's originals go when they are kept in the media location */
+  static getDefaultLibraryFolder(user: { storageLabel: string | null; id: string }) {
+    return join(StorageCore.getDefaultBaseFolder(StorageFolder.Library), user.storageLabel || user.id);
+  }
+
   static getFolderLocation(folder: StorageFolder, userId: string) {
     return join(StorageCore.getBaseFolder(folder), userId);
   }
 
   static getLibraryFolder(user: { storageLabel: string | null; id: string }) {
-    return join(StorageCore.getBaseFolder(StorageFolder.Library), user.storageLabel || user.id);
+    return storageLocations.users[user.id] ?? StorageCore.getDefaultLibraryFolder(user);
   }
 
   static getBaseFolder(folder: StorageFolder) {
-    return join(StorageCore.getMediaLocation(), folder);
+    return storageLocations.folders[folder as RelocatableFolder] ?? StorageCore.getDefaultBaseFolder(folder);
   }
 
   static getPersonThumbnailPath(person: PersonThumbnailPathEntity) {
@@ -146,11 +169,27 @@ export class StorageCore {
   }
 
   static isAndroidMotionPath(originalPath: string) {
-    return originalPath.startsWith(StorageCore.getBaseFolder(StorageFolder.EncodedVideo));
+    // where encoded videos are, and where they were while they are being moved
+    const folders = new Set([
+      StorageCore.getBaseFolder(StorageFolder.EncodedVideo),
+      StorageCore.getDefaultBaseFolder(StorageFolder.EncodedVideo),
+      ...(storageLocations.pending[StorageFolder.EncodedVideo] ?? []),
+    ]);
+    return [...folders].some((folder) => originalPath.startsWith(folder));
+  }
+
+  /** Whether a path is in a folder kept on a network share: of thumbnails, or a user's originals, say */
+  static isInStorageLocation(path: string) {
+    const resolvedPath = resolve(path);
+    const locations = [...Object.values(storageLocations.folders), ...Object.values(storageLocations.users)];
+    return locations.some((location) => isWithin(resolvedPath, location));
   }
 
   static isImmichPath(path: string) {
     const resolvedPath = resolve(path);
+    if (StorageCore.isInStorageLocation(resolvedPath)) {
+      return true;
+    }
     const resolvedAppMediaLocation = StorageCore.getMediaLocation();
     const normalizedPath = resolvedPath.endsWith('/') ? resolvedPath : resolvedPath + '/';
     const normalizedAppMediaLocation = resolvedAppMediaLocation.endsWith('/')

@@ -3,6 +3,7 @@ import { Stats } from 'node:fs';
 import { vitest } from 'vitest';
 import type { ILibraryBulkIdsJob, ILibraryFileJob } from 'src/types.js';
 import { JOBS_LIBRARY_PAGINATION_SIZE } from 'src/constants.js';
+import { StorageCore } from 'src/cores/storage.core.js';
 import { SystemConfig, defaults } from 'src/dtos/config.dto.js';
 import { mapLibrary } from 'src/dtos/library.dto.js';
 import { AssetType, AssetVisibility, ChecksumAlgorithm, CronJob, ImmichWorker, JobName, JobStatus } from 'src/enum.js';
@@ -180,6 +181,26 @@ describe(LibraryService.name, () => {
   });
 
   describe('handleQueueSyncFiles', () => {
+    it('should leave out the folders Immich keeps its own files in', async () => {
+      const library = factory.library({ importPaths: ['/nas/me/Photos'] });
+      StorageCore.setStorageLocations({ folders: {}, users: { 'user-id': '/nas/me/Photos/Immich' }, pending: {} });
+      mocks.library.get.mockResolvedValue(library);
+      mocks.storage.walk.mockImplementation(async function* () {
+        await Promise.resolve();
+        yield ['/nas/me/Photos/2024/a.jpg', '/nas/me/Photos/Immich/2026/10/b.jpg', '/nas/me/Photos/Immich2/c.jpg'];
+      });
+      mocks.storage.stat.mockResolvedValue({ isDirectory: () => true } as Stats);
+      mocks.storage.checkFileExists.mockResolvedValue(true);
+      mocks.asset.filterNewExternalAssetPaths.mockImplementation((_, paths) => Promise.resolve(paths));
+
+      await sut.handleQueueSyncFiles({ id: library.id });
+
+      expect(mocks.asset.filterNewExternalAssetPaths).toHaveBeenCalledWith(library.id, [
+        '/nas/me/Photos/2024/a.jpg',
+        '/nas/me/Photos/Immich2/c.jpg',
+      ]);
+    });
+
     it('should queue refresh of a new asset', async () => {
       const library = factory.library({ importPaths: ['/foo', '/bar'] });
 

@@ -95,6 +95,10 @@ export class StorageRepository {
     return fs.rename(source, target);
   }
 
+  chmod(filepath: string, mode: number) {
+    return fs.chmod(filepath, mode);
+  }
+
   utimes(filepath: string, atime: Date, mtime: Date) {
     return fs.utimes(filepath, atime, mtime);
   }

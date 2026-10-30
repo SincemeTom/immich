@@ -1,4 +1,5 @@
 import { BadRequestException, InternalServerErrorException, NotFoundException } from '@nestjs/common';
+import { StorageCore } from 'src/cores/storage.core.js';
 import { UserAdmin } from 'src/database.js';
 import { CacheControl, JobName, UserMetadataKey } from 'src/enum.js';
 import { UserService } from 'src/services/user.service.js';
@@ -285,6 +286,22 @@ describe(UserService.name, () => {
       );
       expect(mocks.album.deleteAll).toHaveBeenCalledWith(user.id);
       expect(mocks.user.delete).toHaveBeenCalledWith(user, true);
+    });
+
+    it("should only clear the empty folders of originals kept on a NAS, which may hold the owner's own files", async () => {
+      const user = { id: 'deleted-user', deletedAt: makeDeletedAt(10), storageLabel: null } as UserAdmin;
+      StorageCore.setStorageLocations({ folders: {}, users: { 'deleted-user': '/nas/me/Photos/Immich' }, pending: {} });
+      mocks.user.get.mockResolvedValue(user);
+      mocks.storage.removeEmptyDirs.mockResolvedValue();
+
+      await sut.handleUserDelete({ id: user.id });
+
+      expect(mocks.storage.unlinkDir).not.toHaveBeenCalledWith('/nas/me/Photos/Immich', expect.anything());
+      expect(mocks.storage.removeEmptyDirs).toHaveBeenCalledWith('/nas/me/Photos/Immich');
+      expect(mocks.storage.unlinkDir).toHaveBeenCalledWith(expect.stringContaining('/data/upload/deleted-user'), {
+        force: true,
+        recursive: true,
+      });
     });
 
     it('should delete the library path for a storage label', async () => {

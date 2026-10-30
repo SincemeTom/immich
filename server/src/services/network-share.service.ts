@@ -76,18 +76,25 @@ export class NetworkShareService extends BaseService {
       const shares = await this.getShares();
       const mounts = await this.getMounts();
       const errors = await this.getErrors();
+      const available: Record<string, boolean> = {};
       let changed = false;
       for (const share of shares) {
+        available[share.id] = false;
         if (!share.enabled) {
           continue;
         }
 
         const mountPath = await this.getMountPath(share);
-        if (mounts.has(mountPath) && !(await this.shouldRemount(share, mountPath))) {
-          continue;
+        if (mounts.has(mountPath)) {
+          const health = await this.checkMounted(share, mountPath);
+          if (health !== 'remount') {
+            available[share.id] = health === 'healthy';
+            continue;
+          }
         }
 
         const result = await this.mount(share);
+        available[share.id] = result.success;
         const previous = errors[share.id];
         if (result.success) {
           this.logger.log(`Mounted network share ${share.name} (${share.host}:${share.exportPath})`);
@@ -105,33 +112,35 @@ export class NetworkShareService extends BaseService {
       if (changed) {
         await this.systemMetadataRepository.set(SystemMetadataKey.NetworkShareErrors, { errors });
       }
+      // folders kept on the shares (StorageLocationService) pause what uses them while they can't be
+      await this.eventRepository.emit('NetworkSharesChecked', { available });
     } finally {
       this.checking = false;
     }
   }
 
   /**
-   * Whether a mounted share has stopped working, and is to be unmounted and mounted again: its file handles are stale
-   * (the NAS restarted, or its shared folder was recreated), or it hasn't answered in two checks (the NAS is away;
-   * unmounted, reads fail at once rather than after NFS timeouts, and each check tries to mount it again).
+   * Whether a mounted share works, or has stopped working and is to be unmounted and mounted again: its file handles
+   * are stale (the NAS restarted, or its shared folder was recreated), or it hasn't answered in two checks (the NAS is
+   * away; unmounted, reads fail at once rather than after NFS timeouts, and each check tries to mount it again).
    */
-  private async shouldRemount(share: NetworkShare, mountPath: string) {
+  private async checkMounted(share: NetworkShare, mountPath: string): Promise<'healthy' | 'failing' | 'remount'> {
     const probe = await this.probe(mountPath, READ_TIMEOUT);
     if (probe.success) {
       this.probeFailures.delete(share.id);
-      return false;
+      return 'healthy';
     }
 
     const failures = (this.probeFailures.get(share.id) ?? 0) + 1;
     if (!probe.stale && failures < PROBE_FAILURES) {
       this.probeFailures.set(share.id, failures);
-      return false;
+      return 'failing';
     }
 
     this.probeFailures.delete(share.id);
     this.logger.warn(`Network share ${share.name} stopped working (${probe.message}), mounting it again`);
     await this.unmount(mountPath, { force: true });
-    return true;
+    return 'remount';
   }
 
   async getAll(): Promise<NetworkShareResponseDto[]> {
@@ -244,6 +253,12 @@ export class NetworkShareService extends BaseService {
     }
 
     const updated: NetworkShare = { ...share, ...dto };
+    const uses = await this.getStorageLocationUses(id);
+    if (updated.readOnly && !share.readOnly && uses.length > 0) {
+      throw new BadRequestException(
+        'The share keeps files Immich writes (Administration > Storage locations): it cannot be read-only',
+      );
+    }
     const reconnect = (['host', 'exportPath', 'nfsVersion', 'readOnly'] as const).some(
       (key) => updated[key] !== share[key],
     );
@@ -296,6 +311,12 @@ export class NetworkShareService extends BaseService {
         `The share is used by external libraries: ${libraries.map((library) => library.name).join(', ')}. Remove their import paths on it first.`,
       );
     }
+    const uses = await this.getStorageLocationUses(id);
+    if (uses.length > 0) {
+      throw new BadRequestException(
+        `The share keeps files Immich stores (${uses.join(', ')}). Move them elsewhere in Administration > Storage locations first.`,
+      );
+    }
 
     const result = await this.unmount(mountPath);
     if (!result.success) {
@@ -329,6 +350,17 @@ export class NetworkShareService extends BaseService {
   private map(share: NetworkShare) {
     const { id, name, protocol, host, exportPath, nfsVersion, readOnly, enabled } = share;
     return { id, name, protocol, host, exportPath, nfsVersion, readOnly, enabled };
+  }
+
+  /** What Immich keeps on a share: "thumbs", "user:<id>" (StorageLocationService) */
+  private async getStorageLocationUses(id: string) {
+    const locations = await this.systemMetadataRepository.get(SystemMetadataKey.StorageLocations);
+    return [
+      ...Object.entries(locations?.folders ?? {}).filter(([, location]) => location?.shareId === id),
+      ...Object.entries(locations?.users ?? {})
+        .filter(([, location]) => location.shareId === id)
+        .map(([userId]) => [`user:${userId}`]),
+    ].map(([key]) => key);
   }
 
   private async getShares(): Promise<NetworkShare[]> {
@@ -385,6 +417,13 @@ export class NetworkShareService extends BaseService {
 
     const mountPath = await this.getMountPath(share);
     this.storageRepository.mkdirSync(mountPath);
+    const mounts = await this.getMounts();
+    if (!mounts.has(mountPath)) {
+      // read-only while nothing is mounted on it, so that a file meant for the NAS can never be written to the Mac
+      // instead, where it would fill the disk and then be hidden by the share; mounted, the share's own permissions
+      // apply. Never the share's: changing them on a mounted one would change the NAS folder's.
+      await this.storageRepository.chmod(mountPath, 0o555);
+    }
     const { networkSharesNfsPort } = this.configRepository.getEnv().storage;
     const mounted = await this.run(
       '/sbin/mount_nfs',
