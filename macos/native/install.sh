@@ -331,6 +331,8 @@ IMMICH_NATIVE_DB_PORT=$DB_PORT
 IMMICH_NATIVE_REDIS_PORT=$REDIS_PORT
 IMMICH_NATIVE_DB_PASSWORD=$(shq "$DB_PASSWORD")
 IMMICH_NATIVE_PG_PREFIX=$(shq "$PG_PREFIX")
+# 1 once the installer has turned on VideoToolbox transcoding, which it then leaves to the web UI's setting
+IMMICH_NATIVE_VIDEO_ACCEL_SET=${IMMICH_NATIVE_VIDEO_ACCEL_SET:-}
 EOF
 chmod 600 "$IMMICH_HOME/config/native.env"
 
@@ -460,6 +462,14 @@ else
   "$ctl" start ml
   "$ctl" start server
 
+  # Videos transcode on the GPU (macos/verification/m2-videotoolbox.md): set for a new library, and once for one from
+  # before this existed. Not on later runs, which could not tell "disabled" chosen in the web UI from never set, as
+  # Immich stores only what differs from its defaults.
+  if [ -n "$fresh_database" ] || [ "${IMMICH_NATIVE_VIDEO_ACCEL_SET:-}" != 1 ]; then
+    step "Video transcoding on the GPU (VideoToolbox)"
+    "$ctl" video-accel videotoolbox | sed 's/^/    /'
+    sed -i '' 's/^IMMICH_NATIVE_VIDEO_ACCEL_SET=.*/IMMICH_NATIVE_VIDEO_ACCEL_SET=1/' "$IMMICH_HOME/config/native.env"
+  fi
   # the smart search model: the multilingual default for a new library, otherwise only when asked for. Changing it
   # on a library with photos means re-indexing them, which the web UI's Jobs page starts.
   if [ -n "$fresh_database" ] || [ -n "$opt_clip_model" ]; then

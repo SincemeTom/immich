@@ -134,6 +134,12 @@ export class BaseConfig implements VideoCodecSWConfig {
           : new RkmppSwDecodeConfig(config, interfaces, tune);
         break;
       }
+      case TranscodeHardwareAcceleration.VideoToolbox: {
+        handler = config.accelDecode
+          ? new VideoToolboxHwDecodeConfig(config, interfaces, tune)
+          : new VideoToolboxSwDecodeConfig(config, interfaces, tune);
+        break;
+      }
       default: {
         throw new Error(`${config.accel.toUpperCase()} acceleration is unsupported`);
       }
@@ -1139,5 +1145,79 @@ export class RkmppHwDecodeConfig extends RkmppSwDecodeConfig {
       return [`scale_rkrga=${this.getScaling(videoStream)}:format=nv12:afbc=1:async_depth=4`];
     }
     return [];
+  }
+}
+
+// Apple's media engine on macOS. Software decoding keeps the CPU filters of BaseConfig, whose yuv420p output the encoder takes as is.
+export class VideoToolboxSwDecodeConfig extends BaseHWConfig {
+  // VideoToolbox picks its own device; there is no /dev/dri on macOS
+  getDevice() {
+    return '';
+  }
+
+  // VideoToolbox has no presets
+  getPresetOptions() {
+    return [];
+  }
+
+  getBitrateOptions() {
+    const options = ['-q:v', String(this.getQuality())];
+    const bitrates = this.getBitrateDistribution();
+    if (bitrates.max > 0) {
+      options.push('-maxrate', `${bitrates.max}${bitrates.unit}`, '-bufsize', `${bitrates.max * 2}${bitrates.unit}`);
+    }
+    return options;
+  }
+
+  // VideoToolbox's constant quality runs from 1 to 100, higher being better, and only exists on Apple silicon.
+  // 100 - 2 × CRF gives about the perceptual quality (XPSNR) of libx264 and libx265 at that CRF.
+  getQuality() {
+    return Math.min(100, Math.max(1, 100 - 2 * this.config.crf));
+  }
+
+  getEncoderOptions(): string[] {
+    // VideoToolbox has no option for a fixed GOP, but honours forced key frames
+    return this.tune.strictGop ? ['-force_key_frames', `expr:gte(n,n_forced*${this.getGopSize()})`] : [];
+  }
+}
+
+// Decodes and scales on the GPU. HDR frames come back to the CPU for BaseConfig's tone mapping: tonemap_videotoolbox
+// made real iPhone HLG videos about 15% brighter than it, so brighter than their own thumbnails, which use it too
+// (macos/verification/m2-videotoolbox.md).
+export class VideoToolboxHwDecodeConfig extends VideoToolboxSwDecodeConfig {
+  getBaseInputOptions() {
+    return ['-hwaccel', 'videotoolbox', '-hwaccel_output_format', 'videotoolbox_vld', '-noautorotate'];
+  }
+
+  // -noautorotate keeps frames in their stored orientation
+  isFrameVertical(videoStream: VideoStreamInfo) {
+    return videoStream.height > videoStream.width;
+  }
+
+  getFilterOptions(videoStream: VideoStreamInfo) {
+    const options = [];
+    const tonemapOptions = this.getToneMapping(videoStream);
+    const size = this.shouldScale(videoStream) ? [this.getScaling(videoStream)] : [];
+    if (tonemapOptions.length > 0) {
+      // tone mapping reads 10 bits, whatever the depth decoded
+      options.push(`scale_vt=${[...size, 'format=p010'].join(':')}`, ...tonemapOptions);
+    } else if (!videoStream.pixelFormat.endsWith('420p')) {
+      options.push(`scale_vt=${[...size, 'format=nv12'].join(':')}`);
+    } else if (size.length > 0) {
+      options.push(`scale_vt=${size[0]}`);
+    }
+    return options;
+  }
+
+  // scale_vt takes exact sizes only, not -2
+  getScaling(videoStream: VideoStreamInfo) {
+    const target = this.getTargetResolution(videoStream);
+    const { width, height } = getOutputSize({ ...videoStream, rotation: 0 }, target);
+    return `w=${width}:h=${height}`;
+  }
+
+  getToneMapping(videoStream: VideoStreamInfo) {
+    const tonemapOptions = super.getToneMapping(videoStream);
+    return tonemapOptions.length > 0 ? ['hwdownload', 'format=p010le', ...tonemapOptions] : [];
   }
 }

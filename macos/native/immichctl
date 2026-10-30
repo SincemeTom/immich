@@ -8,6 +8,7 @@
 #   immichctl psql [args]               a psql session on the Immich database
 #   immichctl warm                      downloads and prepares the machine learning models the settings name
 #   immichctl clip-model [NAME]         shows, or switches, the smart search model; then prepares it
+#   immichctl video-accel [videotoolbox|disabled]  shows, or switches, video transcoding on the GPU
 #   immichctl doctor                    checks that the Mac keeps Immich running unattended
 #   immichctl uninstall [--purge]       removes the services; --purge also deletes the install (never the library)
 #
@@ -332,14 +333,7 @@ cmd_clip_model() {
     echo "unknown smart search model: $model (the ones Immich knows are in server/src/constants.ts, CLIP_MODEL_INFO)" >&2
     return 64
   fi
-  if grep -qE '^[[:space:]]*IMMICH_CONFIG_FILE=' "$home/config/server.env" 2>/dev/null; then
-    echo "server.env sets IMMICH_CONFIG_FILE, so the settings come from that file: set the model there" >&2
-    return 1
-  fi
-  if [ -z "$(db -At -c "SELECT to_regclass('system_metadata')")" ]; then
-    echo "the database has no tables yet: start the server once (immichctl start), then run this again" >&2
-    return 1
-  fi
+  settings_writable || return 1
   if [ "$model" = "$current" ]; then
     echo "smart search already uses $model"
   else
@@ -366,6 +360,67 @@ EOF
   fi
 }
 
+# whether this script can change the settings, which the web UI otherwise keeps in the database
+settings_writable() {
+  if grep -qE '^[[:space:]]*IMMICH_CONFIG_FILE=' "$home/config/server.env" 2>/dev/null; then
+    echo "server.env sets IMMICH_CONFIG_FILE, so the settings come from that file: change them there" >&2
+    return 1
+  fi
+  if [ -z "$(db -At -c "SELECT to_regclass('system_metadata')")" ]; then
+    echo "the database has no tables yet: start the server once (immichctl start), then run this again" >&2
+    return 1
+  fi
+}
+
+cmd_video_accel() {
+  local current accel="${1:-}" stored concurrency
+  current="$(release_node "
+    const { defaults } = await import(dist + '/dtos/config.dto.js');
+    console.log(JSON.parse(process.env.IMMICH_STORED_CONFIG || '{}').ffmpeg?.accel ?? defaults.ffmpeg.accel);")"
+  if [ -z "$accel" ]; then
+    echo "$current"
+    return
+  fi
+  case "$accel" in
+    videotoolbox | disabled) ;;
+    *) echo "unknown video acceleration: $accel (videotoolbox or disabled; the others need hardware a Mac lacks)" >&2; return 64 ;;
+  esac
+  settings_writable || return 1
+  if [ "$accel" != "$current" ]; then
+    # merged into the stored settings, as saving it in Settings > Video Transcoding > Hardware Acceleration does
+    db -v accel="$accel" <<'SQL'
+INSERT INTO system_metadata (key, value)
+VALUES ('system-config', jsonb_build_object('ffmpeg', jsonb_build_object('accel', :'accel')))
+ON CONFLICT (key) DO UPDATE SET value = system_metadata.value || jsonb_build_object('ffmpeg',
+  coalesce(system_metadata.value -> 'ffmpeg', '{}'::jsonb) || jsonb_build_object('accel', :'accel'));
+SQL
+    stored="$(stored_config)"
+    case "$stored" in *"\"accel\": \"$accel\""*) ;; *) echo "the setting did not take: $stored" >&2; return 1 ;; esac
+    echo "video transcoding: $current -> $accel"
+  else
+    echo "video transcoding already uses: $accel"
+  fi
+  # One transcode leaves Apple's media engine half idle: two together run twice as fast, about what the whole CPU
+  # manages (macos/verification/m2-videotoolbox.md). Set unless the web UI's Jobs settings chose a number.
+  concurrency=""
+  if [ "$accel" = videotoolbox ]; then
+    concurrency="$(db -At <<'SQL'
+UPDATE system_metadata SET value = value || jsonb_build_object('job', coalesce(value -> 'job', '{}'::jsonb)
+  || jsonb_build_object('videoConversion', jsonb_build_object('concurrency', 2)))
+WHERE key = 'system-config' AND value #> '{job,videoConversion,concurrency}' IS NULL
+RETURNING 2;
+SQL
+)"
+    echo "video transcodes at once: $(db -At -c "SELECT coalesce(value #>> '{job,videoConversion,concurrency}', '1') FROM system_metadata WHERE key = 'system-config'")"
+  fi
+  [ "$accel" != "$current" ] || [ -n "$concurrency" ] || return 0
+  # the server reads its settings when it starts
+  if is_loaded server; then
+    stop_one server >/dev/null
+    start_one server
+  fi
+}
+
 command="${1:-status}"
 [ $# -gt 0 ] && shift
 # service names have no spaces, so the word splitting of $(selected) is the list itself
@@ -387,7 +442,8 @@ case "$command" in
   doctor) cmd_doctor ;;
   warm) cmd_warm ;;
   clip-model) cmd_clip_model "$@" ;;
+  video-accel) cmd_video_accel "$@" ;;
   uninstall) cmd_uninstall "$@" ;;
-  -h | --help | help) sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//' ;;
+  -h | --help | help) sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//' ;;
   *) echo "unknown command: $command (see immichctl help)" >&2; exit 64 ;;
 esac
