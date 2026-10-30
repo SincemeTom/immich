@@ -181,7 +181,8 @@ class TransformManager implements EditToolManager {
   }
 
   async onActivate(asset: AssetResponseDto, edits: EditActions): Promise<void> {
-    this.canCrop = asset.type !== AssetTypeEnum.Video;
+    // a live photo turns with its motion, which cannot be cropped
+    this.canCrop = asset.type !== AssetTypeEnum.Video && !asset.livePhotoVideoId;
     const originalSize = getDimensions(asset.exifInfo!);
     this.originalImageSize = { width: originalSize.width ?? 0, height: originalSize.height ?? 0 };
 

@@ -859,6 +859,33 @@ describe(AssetService.name, () => {
       });
     });
 
+    it('should rotate a live photo, and refuse to crop it, as its motion cannot be', async () => {
+      video();
+      mocks.asset.getForEdit.mockResolvedValue({
+        type: AssetType.Image,
+        livePhotoVideoId: 'motion-id',
+        originalPath: '/original/IMG_0001.HEIC',
+        originalFileName: 'IMG_0001.HEIC',
+        exifImageWidth: 4032,
+        exifImageHeight: 3024,
+        orientation: '6',
+        projectionType: null,
+      });
+
+      await sut.editAsset(authStub.admin, 'asset-1', {
+        edits: [{ action: AssetEditAction.Rotate, parameters: { angle: 90 } }],
+      });
+      expect(mocks.assetEdit.replaceAll).toHaveBeenCalledWith('asset-1', [
+        { action: AssetEditAction.Rotate, parameters: { angle: 90 } },
+      ]);
+
+      await expect(
+        sut.editAsset(authStub.admin, 'asset-1', {
+          edits: [{ action: AssetEditAction.Crop, parameters: { x: 0, y: 0, width: 100, height: 100 } }],
+        }),
+      ).rejects.toThrow('Live photos can only be rotated and mirrored');
+    });
+
     it('should refuse to crop a video', async () => {
       video();
       await expect(

@@ -308,7 +308,6 @@ export const getAssetActions = (
     isOwner &&
     !asset.isTrashed &&
     (asset.type === AssetTypeEnum.Image || asset.type === AssetTypeEnum.Video) &&
-    !asset.livePhotoVideoId &&
     asset.exifInfo?.projectionType !== ProjectionType.EQUIRECTANGULAR &&
     !asset.originalPath.toLowerCase().endsWith('.insp') &&
     !asset.originalPath.toLowerCase().endsWith('.gif') &&

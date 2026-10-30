@@ -596,8 +596,9 @@ export class AssetService extends BaseService {
       throw new BadRequestException('Videos can only be rotated and mirrored');
     }
 
-    if (asset.livePhotoVideoId) {
-      throw new BadRequestException('Editing live photos is not supported');
+    // a live photo turns with its motion, which, a video, cannot be cropped
+    if (asset.livePhotoVideoId && dto.edits.some((edit) => !isVideoEdit(edit as AssetEditActionItem))) {
+      throw new BadRequestException('Live photos can only be rotated and mirrored');
     }
 
     if (isPanorama(asset)) {
