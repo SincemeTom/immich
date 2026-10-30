@@ -28,9 +28,12 @@ const MOUNT_TIMEOUT = 30_000;
 const READ_TIMEOUT = 10_000;
 const STAT_TIMEOUT = 5000;
 const TEST_ENTRIES = 20;
+/** checks in a row a mounted share must fail before it is mounted again: a NAS waking its disks takes a while */
+const PROBE_FAILURES = 2;
 
 type ShareError = { reason: NetworkShareErrorReason; message: string };
 type MountResult = { success: true; entries: string[] } | ({ success: false } & ShareError);
+type ProbeResult = { success: true } | { success: false; stale: boolean; message: string };
 
 /**
  * Network shares the server mounts itself, natively on macOS, where a NAS folder would otherwise have to be mounted
@@ -40,6 +43,8 @@ type MountResult = { success: true; entries: string[] } | ({ success: false } & 
 @Injectable()
 export class NetworkShareService extends BaseService {
   private checking = false;
+  /** failed checks in a row of mounted shares, by id */
+  private probeFailures = new Map<string, number>();
 
   @OnEvent({
     name: 'AppBootstrap',
@@ -73,7 +78,12 @@ export class NetworkShareService extends BaseService {
       const errors = await this.getErrors();
       let changed = false;
       for (const share of shares) {
-        if (!share.enabled || mounts.has(await this.getMountPath(share))) {
+        if (!share.enabled) {
+          continue;
+        }
+
+        const mountPath = await this.getMountPath(share);
+        if (mounts.has(mountPath) && !(await this.shouldRemount(share, mountPath))) {
           continue;
         }
 
@@ -100,6 +110,30 @@ export class NetworkShareService extends BaseService {
     }
   }
 
+  /**
+   * Whether a mounted share has stopped working, and is to be unmounted and mounted again: its file handles are stale
+   * (the NAS restarted, or its shared folder was recreated), or it hasn't answered in two checks (the NAS is away;
+   * unmounted, reads fail at once rather than after NFS timeouts, and each check tries to mount it again).
+   */
+  private async shouldRemount(share: NetworkShare, mountPath: string) {
+    const probe = await this.probe(mountPath, READ_TIMEOUT);
+    if (probe.success) {
+      this.probeFailures.delete(share.id);
+      return false;
+    }
+
+    const failures = (this.probeFailures.get(share.id) ?? 0) + 1;
+    if (!probe.stale && failures < PROBE_FAILURES) {
+      this.probeFailures.set(share.id, failures);
+      return false;
+    }
+
+    this.probeFailures.delete(share.id);
+    this.logger.warn(`Network share ${share.name} stopped working (${probe.message}), mounting it again`);
+    await this.unmount(mountPath, { force: true });
+    return true;
+  }
+
   async getAll(): Promise<NetworkShareResponseDto[]> {
     this.requireSupport();
     const shares = await this.getShares();
@@ -120,14 +154,17 @@ export class NetworkShareService extends BaseService {
         };
 
         if (mounts.has(mountPath)) {
-          const space = await this.getSpace(mountPath);
-          if (space) {
+          // statfs, what df reads, may answer from a cache after the NAS has gone; reading the folder does not
+          const probe = await this.probe(mountPath, STAT_TIMEOUT);
+          if (probe.success) {
             response.status = NetworkShareStatus.Mounted;
-            response.totalBytes = space.total;
-            response.availableBytes = space.available;
+            const space = await this.getSpace(mountPath);
+            response.totalBytes = space?.total;
+            response.availableBytes = space?.available;
           } else {
             response.status = NetworkShareStatus.Unresponsive;
             response.errorReason = NetworkShareErrorReason.Unreachable;
+            response.message = probe.message;
           }
         } else if (share.enabled && errors[share.id]) {
           response.errorReason = errors[share.id].reason;
@@ -385,14 +422,26 @@ export class NetworkShareService extends BaseService {
     return { success: true, entries };
   }
 
-  private async unmount(mountPath: string): Promise<{ success: boolean; message?: string }> {
+  /** Whether a mounted share answers: reading its top level */
+  private async probe(mountPath: string, timeout: number): Promise<ProbeResult> {
+    const result = await this.run('/bin/ls', ['-1A', mountPath], timeout);
+    if (result.code === 0) {
+      return { success: true };
+    }
+    const message = result.timedOut
+      ? `No answer within ${timeout / 1000} s`
+      : result.stderr.trim() || `ls exited with ${result.code}`;
+    return { success: false, stale: /stale nfs file handle/i.test(message), message };
+  }
+
+  private async unmount(mountPath: string, { force = false } = {}): Promise<{ success: boolean; message?: string }> {
     const mounts = await this.getMounts();
     if (!mounts.has(mountPath)) {
       return { success: true };
     }
 
-    let result = await this.run('/sbin/umount', [mountPath], MOUNT_TIMEOUT);
-    if (result.code !== 0) {
+    let result = await this.run('/sbin/umount', force ? ['-f', mountPath] : [mountPath], MOUNT_TIMEOUT);
+    if (result.code !== 0 && !force) {
       // a NAS that is gone, or a file the server holds open on it
       result = await this.run('/sbin/umount', ['-f', mountPath], MOUNT_TIMEOUT);
     }

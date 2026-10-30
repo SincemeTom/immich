@@ -322,11 +322,15 @@ describe(NetworkShareService.name, () => {
       try {
         shares = [share()];
         mounted.add(`${location}/NAS photos`);
-        replies.df = { hang: true };
+        replies.ls = { hang: true };
         const result = sut.getAll();
-        await vi.waitFor(() => expect(spawned('/bin/df')).toHaveLength(1));
+        await vi.waitFor(() => expect(spawned('/bin/ls')).toHaveLength(1));
         await vi.advanceTimersByTimeAsync(5000);
-        await expect(result).resolves.toEqual([expect.objectContaining({ status: NetworkShareStatus.Unresponsive })]);
+        await expect(result).resolves.toEqual([
+          expect.objectContaining({ status: NetworkShareStatus.Unresponsive, message: 'No answer within 5 s' }),
+        ]);
+        // df answers from a cache after the NAS has gone: it is not asked
+        expect(spawned('/bin/df')).toHaveLength(0);
       } finally {
         vi.useRealTimers();
       }
@@ -367,6 +371,44 @@ describe(NetworkShareService.name, () => {
       delete replies.mount_nfs;
       await sut.handleMountAll();
       expect(errors).toEqual({});
+    });
+
+    it('should mount again at once a share whose file handles went stale', async () => {
+      shares = [share()];
+      mounted.add(`${location}/NAS photos`);
+      replies.ls = { code: 1, stderr: `ls: ${location}/NAS photos: Stale NFS file handle` };
+
+      await sut.handleMountAll();
+
+      expect(spawned('/sbin/umount')).toEqual([['-f', `${location}/NAS photos`]]);
+      expect(spawned('/sbin/mount_nfs')).toHaveLength(1);
+      expect(mocks.logger.warn).toHaveBeenCalledWith(expect.stringContaining('Stale NFS file handle'));
+    });
+
+    it('should mount again a share that fails two checks in a row, not one', async () => {
+      shares = [share()];
+      mounted.add(`${location}/NAS photos`);
+      replies.ls = { code: 1, stderr: 'ls: fts_read: Operation timed out' };
+
+      await sut.handleMountAll();
+      expect(spawned('/sbin/umount')).toHaveLength(0);
+
+      await sut.handleMountAll();
+      expect(spawned('/sbin/umount')).toEqual([['-f', `${location}/NAS photos`]]);
+      expect(spawned('/sbin/mount_nfs')).toHaveLength(1);
+    });
+
+    it('should forget a failed check once the share answers', async () => {
+      shares = [share()];
+      mounted.add(`${location}/NAS photos`);
+      replies.ls = { code: 1, stderr: 'ls: fts_read: Operation timed out' };
+      await sut.handleMountAll();
+      delete replies.ls;
+      await sut.handleMountAll();
+      replies.ls = { code: 1, stderr: 'ls: fts_read: Operation timed out' };
+      await sut.handleMountAll();
+
+      expect(spawned('/sbin/umount')).toHaveLength(0);
     });
 
     it('should mount at startup, and check every minute', async () => {
