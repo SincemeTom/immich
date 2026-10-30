@@ -373,7 +373,7 @@ settings_writable() {
 }
 
 cmd_video_accel() {
-  local current accel="${1:-}" stored
+  local current accel="${1:-}" stored concurrency
   current="$(release_node "
     const { defaults } = await import(dist + '/dtos/config.dto.js');
     console.log(JSON.parse(process.env.IMMICH_STORED_CONFIG || '{}').ffmpeg?.accel ?? defaults.ffmpeg.accel);")"
@@ -386,20 +386,34 @@ cmd_video_accel() {
     *) echo "unknown video acceleration: $accel (videotoolbox or disabled; the others need hardware a Mac lacks)" >&2; return 64 ;;
   esac
   settings_writable || return 1
-  if [ "$accel" = "$current" ]; then
-    echo "video transcoding already uses: $accel"
-    return
-  fi
-  # merged into the stored settings, as saving it in Settings > Video Transcoding > Hardware Acceleration does
-  db -v accel="$accel" <<'SQL'
+  if [ "$accel" != "$current" ]; then
+    # merged into the stored settings, as saving it in Settings > Video Transcoding > Hardware Acceleration does
+    db -v accel="$accel" <<'SQL'
 INSERT INTO system_metadata (key, value)
 VALUES ('system-config', jsonb_build_object('ffmpeg', jsonb_build_object('accel', :'accel')))
 ON CONFLICT (key) DO UPDATE SET value = system_metadata.value || jsonb_build_object('ffmpeg',
   coalesce(system_metadata.value -> 'ffmpeg', '{}'::jsonb) || jsonb_build_object('accel', :'accel'));
 SQL
-  stored="$(stored_config)"
-  case "$stored" in *"\"accel\": \"$accel\""*) ;; *) echo "the setting did not take: $stored" >&2; return 1 ;; esac
-  echo "video transcoding: $current -> $accel"
+    stored="$(stored_config)"
+    case "$stored" in *"\"accel\": \"$accel\""*) ;; *) echo "the setting did not take: $stored" >&2; return 1 ;; esac
+    echo "video transcoding: $current -> $accel"
+  else
+    echo "video transcoding already uses: $accel"
+  fi
+  # One transcode leaves Apple's media engine half idle: two together run twice as fast, about what the whole CPU
+  # manages (macos/verification/m2-videotoolbox.md). Set unless the web UI's Jobs settings chose a number.
+  concurrency=""
+  if [ "$accel" = videotoolbox ]; then
+    concurrency="$(db -At <<'SQL'
+UPDATE system_metadata SET value = value || jsonb_build_object('job', coalesce(value -> 'job', '{}'::jsonb)
+  || jsonb_build_object('videoConversion', jsonb_build_object('concurrency', 2)))
+WHERE key = 'system-config' AND value #> '{job,videoConversion,concurrency}' IS NULL
+RETURNING 2;
+SQL
+)"
+    echo "video transcodes at once: $(db -At -c "SELECT coalesce(value #>> '{job,videoConversion,concurrency}', '1') FROM system_metadata WHERE key = 'system-config'")"
+  fi
+  [ "$accel" != "$current" ] || [ -n "$concurrency" ] || return 0
   # the server reads its settings when it starts
   if is_loaded server; then
     stop_one server >/dev/null
