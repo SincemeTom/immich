@@ -22,6 +22,7 @@ export class StackFactory {
     return new StackFactory({
       createdAt: newDate(),
       id: newUuid(),
+      isAutomatic: false,
       ownerId: newUuid(),
       primaryAssetId: newUuid(),
       updatedAt: newDate(),

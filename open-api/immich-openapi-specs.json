@@ -6570,6 +6570,101 @@
         "x-immich-state": "Stable"
       }
     },
+    "/auto-stacks": {
+      "delete": {
+        "description": "Remove the stacks auto stacking made for the user. Their assets are kept.",
+        "operationId": "removeAutoStacks",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AutoStackRemoveResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "cookie": []
+          },
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "Remove automatic stacks",
+        "tags": [
+          "Stacks"
+        ],
+        "x-immich-history": [
+          {
+            "version": "v3.3.5",
+            "state": "Added"
+          },
+          {
+            "version": "v3.3.5",
+            "state": "Alpha"
+          }
+        ],
+        "x-immich-permission": "stack.delete",
+        "x-immich-state": "Alpha"
+      }
+    },
+    "/auto-stacks/run": {
+      "post": {
+        "description": "Stack the assets of the user, as their auto stacking preferences say, in the background. Assets taken out of a stack that auto stacking made are left alone, unless `force` is set.",
+        "operationId": "runAutoStack",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AutoStackRunDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "cookie": []
+          },
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "Stack my assets automatically",
+        "tags": [
+          "Stacks"
+        ],
+        "x-immich-history": [
+          {
+            "version": "v3.3.5",
+            "state": "Added"
+          },
+          {
+            "version": "v3.3.5",
+            "state": "Alpha"
+          }
+        ],
+        "x-immich-permission": "stack.create",
+        "x-immich-state": "Alpha"
+      }
+    },
     "/cluster-groups/requests": {
       "get": {
         "description": "Retrieve the pending requests for the current user to join a cluster group.",
@@ -21990,6 +22085,112 @@
         ],
         "type": "object"
       },
+      "AutoStackRemoveResponseDto": {
+        "properties": {
+          "count": {
+            "description": "Number of stacks removed",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "count"
+        ],
+        "type": "object"
+      },
+      "AutoStackResponse": {
+        "properties": {
+          "burst": {
+            "description": "Whether to stack the photos of a burst",
+            "type": "boolean"
+          },
+          "edited": {
+            "description": "Whether to stack an edited copy with its original",
+            "type": "boolean"
+          },
+          "enabled": {
+            "description": "Whether photos are stacked automatically",
+            "type": "boolean"
+          },
+          "maxDistance": {
+            "description": "Largest CLIP distance of similar photos",
+            "format": "double",
+            "type": "number"
+          },
+          "maxSeconds": {
+            "description": "Most seconds apart similar photos may be taken",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "rawJpeg": {
+            "description": "Whether to stack a raw file with its JPEG or HEIC",
+            "type": "boolean"
+          },
+          "similar": {
+            "description": "Whether to stack similar photos taken within seconds",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "burst",
+          "edited",
+          "enabled",
+          "maxDistance",
+          "maxSeconds",
+          "rawJpeg",
+          "similar"
+        ],
+        "type": "object"
+      },
+      "AutoStackRunDto": {
+        "properties": {
+          "force": {
+            "description": "Also stack again the assets taken out of a stack that auto stacking made",
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "AutoStackUpdate": {
+        "properties": {
+          "burst": {
+            "description": "Whether to stack the photos of a burst",
+            "type": "boolean"
+          },
+          "edited": {
+            "description": "Whether to stack an edited copy with its original",
+            "type": "boolean"
+          },
+          "enabled": {
+            "description": "Whether photos are stacked automatically",
+            "type": "boolean"
+          },
+          "maxDistance": {
+            "description": "Largest CLIP distance of similar photos",
+            "format": "double",
+            "maximum": 0.1,
+            "minimum": 0.001,
+            "type": "number"
+          },
+          "maxSeconds": {
+            "description": "Most seconds apart similar photos may be taken",
+            "maximum": 600,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "rawJpeg": {
+            "description": "Whether to stack a raw file with its JPEG or HEIC",
+            "type": "boolean"
+          },
+          "similar": {
+            "description": "Whether to stack similar photos taken within seconds",
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
       "AvatarUpdate": {
         "properties": {
           "color": {
@@ -23244,6 +23445,8 @@
           "AssetFileMigration",
           "AssetGenerateThumbnailsQueueAll",
           "AssetGenerateThumbnails",
+          "AssetAutoStackQueueAll",
+          "AssetAutoStack",
           "AuditTableCleanup",
           "DatabaseBackup",
           "FacialRecognitionQueueAll",
@@ -26871,7 +27074,8 @@
           "ocr",
           "workflow",
           "integrityCheck",
-          "editor"
+          "editor",
+          "autoStack"
         ],
         "type": "string"
       },
@@ -26987,6 +27191,9 @@
       },
       "QueuesResponseLegacyDto": {
         "properties": {
+          "autoStack": {
+            "$ref": "#/components/schemas/QueueResponseLegacyDto"
+          },
           "backgroundTask": {
             "$ref": "#/components/schemas/QueueResponseLegacyDto"
           },
@@ -27046,6 +27253,7 @@
           }
         },
         "required": [
+          "autoStack",
           "backgroundTask",
           "backupDatabase",
           "duplicateDetection",
@@ -34166,6 +34374,9 @@
           "albums": {
             "$ref": "#/components/schemas/AlbumsResponse"
           },
+          "autoStack": {
+            "$ref": "#/components/schemas/AutoStackResponse"
+          },
           "cast": {
             "$ref": "#/components/schemas/CastResponse"
           },
@@ -34202,6 +34413,7 @@
         },
         "required": [
           "albums",
+          "autoStack",
           "cast",
           "download",
           "emailNotifications",
@@ -34220,6 +34432,9 @@
         "properties": {
           "albums": {
             "$ref": "#/components/schemas/AlbumsUpdate"
+          },
+          "autoStack": {
+            "$ref": "#/components/schemas/AutoStackUpdate"
           },
           "avatar": {
             "$ref": "#/components/schemas/AvatarUpdate"

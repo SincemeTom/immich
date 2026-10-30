@@ -90,6 +90,10 @@ describe(JobService.name, () => {
         jobs: [],
       },
       {
+        item: { name: JobName.SmartSearch, data: { id: 'asset-1', source: 'upload' } },
+        jobs: [JobName.AssetDetectDuplicates, JobName.AssetAutoStack],
+      },
+      {
         item: { name: JobName.AssetDetectFaces, data: { id: 'asset-1' } },
         jobs: [],
       },

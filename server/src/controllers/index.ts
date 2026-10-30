@@ -7,6 +7,7 @@ import { AssetMediaController } from 'src/controllers/asset-media.controller.js'
 import { AssetController } from 'src/controllers/asset.controller.js';
 import { AuthAdminController } from 'src/controllers/auth-admin.controller.js';
 import { AuthController } from 'src/controllers/auth.controller.js';
+import { AutoStackController } from 'src/controllers/auto-stack.controller.js';
 import { ClusterGroupController } from 'src/controllers/cluster-group.controller.js';
 import { ConfigAdminController } from 'src/controllers/config-admin.controller.js';
 import { ConfigPublicController } from 'src/controllers/config-public.controller.js';
@@ -56,6 +57,7 @@ export const controllers = [
   AssetMediaController,
   AuthController,
   AuthAdminController,
+  AutoStackController,
   ClusterGroupController,
   ConfigUserController,
   ConfigAdminController,

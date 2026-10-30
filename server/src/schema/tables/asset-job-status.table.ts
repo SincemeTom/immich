@@ -17,4 +17,8 @@ export class AssetJobStatusTable {
 
   @Column({ type: 'timestamp with time zone', nullable: true })
   ocrAt!: Timestamp | null;
+
+  /** when it was stacked automatically: one taken out of its stack again is then left alone */
+  @Column({ type: 'timestamp with time zone', nullable: true })
+  autoStackedAt!: Timestamp | null;
 }

@@ -719,6 +719,22 @@ export type CalendarHeatmapResponseDto = {
 export type AlbumsResponse = {
     defaultAssetOrder: AssetOrder;
 };
+export type AutoStackResponse = {
+    /** Whether to stack the photos of a burst */
+    burst: boolean;
+    /** Whether to stack an edited copy with its original */
+    edited: boolean;
+    /** Whether photos are stacked automatically */
+    enabled: boolean;
+    /** Largest CLIP distance of similar photos */
+    maxDistance: number;
+    /** Most seconds apart similar photos may be taken */
+    maxSeconds: number;
+    /** Whether to stack a raw file with its JPEG or HEIC */
+    rawJpeg: boolean;
+    /** Whether to stack similar photos taken within seconds */
+    similar: boolean;
+};
 export type CastResponse = {
     /** Whether Google Cast is enabled */
     gCastEnabled: boolean;
@@ -788,6 +804,7 @@ export type TagsResponse = {
 };
 export type UserPreferencesResponseDto = {
     albums: AlbumsResponse;
+    autoStack: AutoStackResponse;
     cast: CastResponse;
     download: DownloadResponse;
     emailNotifications: EmailNotificationsResponse;
@@ -802,6 +819,22 @@ export type UserPreferencesResponseDto = {
 };
 export type AlbumsUpdate = {
     defaultAssetOrder?: AssetOrder;
+};
+export type AutoStackUpdate = {
+    /** Whether to stack the photos of a burst */
+    burst?: boolean;
+    /** Whether to stack an edited copy with its original */
+    edited?: boolean;
+    /** Whether photos are stacked automatically */
+    enabled?: boolean;
+    /** Largest CLIP distance of similar photos */
+    maxDistance?: number;
+    /** Most seconds apart similar photos may be taken */
+    maxSeconds?: number;
+    /** Whether to stack a raw file with its JPEG or HEIC */
+    rawJpeg?: boolean;
+    /** Whether to stack similar photos taken within seconds */
+    similar?: boolean;
 };
 export type AvatarUpdate = {
     color?: UserAvatarColor;
@@ -875,6 +908,7 @@ export type TagsUpdate = {
 };
 export type UserPreferencesUpdateDto = {
     albums?: AlbumsUpdate;
+    autoStack?: AutoStackUpdate;
     avatar?: AvatarUpdate;
     cast?: CastUpdate;
     download?: DownloadUpdate;
@@ -1597,6 +1631,14 @@ export type ValidateAccessTokenResponseDto = {
     /** Authentication status */
     authStatus: boolean;
 };
+export type AutoStackRemoveResponseDto = {
+    /** Number of stacks removed */
+    count: number;
+};
+export type AutoStackRunDto = {
+    /** Also stack again the assets taken out of a stack that auto stacking made */
+    force?: boolean;
+};
 export type ClusterGroupRequestResponseDto = {
     /** Cluster group the user is invited to join */
     clusterGroupId: string;
@@ -1840,6 +1882,7 @@ export type QueueResponseLegacyDto = {
     queueStatus: QueueStatusLegacyDto;
 };
 export type QueuesResponseLegacyDto = {
+    autoStack: QueueResponseLegacyDto;
     backgroundTask: QueueResponseLegacyDto;
     backupDatabase: QueueResponseLegacyDto;
     duplicateDetection: QueueResponseLegacyDto;
@@ -5458,6 +5501,30 @@ export function validateAccessToken(opts?: Oazapfts.RequestOpts) {
     }));
 }
 /**
+ * Remove automatic stacks
+ */
+export function removeAutoStacks(opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchJson<{
+        status: 200;
+        data: AutoStackRemoveResponseDto;
+    }>("/auto-stacks", {
+        ...opts,
+        method: "DELETE"
+    }));
+}
+/**
+ * Stack my assets automatically
+ */
+export function runAutoStack({ autoStackRunDto }: {
+    autoStackRunDto: AutoStackRunDto;
+}, opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchText("/auto-stacks/run", oazapfts.json({
+        ...opts,
+        method: "POST",
+        body: autoStackRunDto
+    })));
+}
+/**
  * Retrieve cluster group requests
  */
 export function getClusterGroupRequests(opts?: Oazapfts.RequestOpts) {
@@ -8579,7 +8646,8 @@ export enum QueueName {
     Ocr = "ocr",
     Workflow = "workflow",
     IntegrityCheck = "integrityCheck",
-    Editor = "editor"
+    Editor = "editor",
+    AutoStack = "autoStack"
 }
 export enum QueueCommand {
     Start = "start",
@@ -8640,6 +8708,8 @@ export enum JobName {
     AssetFileMigration = "AssetFileMigration",
     AssetGenerateThumbnailsQueueAll = "AssetGenerateThumbnailsQueueAll",
     AssetGenerateThumbnails = "AssetGenerateThumbnails",
+    AssetAutoStackQueueAll = "AssetAutoStackQueueAll",
+    AssetAutoStack = "AssetAutoStack",
     AuditTableCleanup = "AuditTableCleanup",
     DatabaseBackup = "DatabaseBackup",
     FacialRecognitionQueueAll = "FacialRecognitionQueueAll",
