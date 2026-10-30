@@ -4,7 +4,8 @@ photos taken seconds apart, an edited copy made of one of them, and a burst.
   an external library (the NAS) with the user's auto stacking on: raw + JPEG, edited copies, the burst are stacked,
     with the right cover; a raw file of the same name from another shoot is not
   an upload of a raw + JPEG pair, into folders of their own: stacked after the upload
-  similar photos turned on: the shots seconds apart join, those further apart or less alike do not
+  similar photos turned on: the shots seconds apart join, those further apart or less alike do not; two raw + JPEG
+    stacks shot seconds apart (CAM00088, CAM00089) are merged into one
   a photo taken out of an automatic stack stays out; a stack made by hand is never touched
   removing the automatic stacks, stacking again, the job queue's "all", auto stacking turned off
 
@@ -32,6 +33,8 @@ E2E = REPO / "e2e/test-assets"
 RAW_PAIRS = [f"CAM000{n}" for n in range(74, 80)]
 IPHONE = [f"IMG_55{n}" for n in range(66, 74)]
 UPLOADED_PAIR = "CAM00081"
+# two raw + JPEG pairs shot 3.4 s apart, their JPEGs at a distance of 0.0455
+MERGED_PAIRS = ["CAM00088", "CAM00089"]
 
 results: list[tuple[str, bool, str]] = []
 
@@ -149,13 +152,13 @@ def main() -> None:
                      machineLearning__ocr__enabled=False)
 
     print("== the NAS")
-    files = main_library([f"{n}.{e}" for n in RAW_PAIRS + [UPLOADED_PAIR] for e in ("ARW", "JPG")]
+    files = main_library([f"{n}.{e}" for n in RAW_PAIRS + MERGED_PAIRS + [UPLOADED_PAIR] for e in ("ARW", "JPG")]
                          + [f"{n}.HEIC" for n in IPHONE] + ["CAM00080.ARW"])
     shutil.rmtree(args.nas, ignore_errors=True)
     shoot, iphone, other, burst = (args.nas / d for d in ("2026-10-28 A7C2", "2026-09 iPhone", "2025 other", "burst"))
     for folder in (shoot, iphone, other, burst):
         folder.mkdir(parents=True)
-    for name in RAW_PAIRS:
+    for name in RAW_PAIRS + MERGED_PAIRS:
         for ext in ("ARW", "JPG"):
             shutil.copy2(files[f"{name}.{ext}"], shoot / f"{name}.{ext}")
     for name in IPHONE:
@@ -178,7 +181,7 @@ def main() -> None:
     prefs = c.get("/api/users/me/preferences").json()["autoStack"]
     check("defaults: bursts, raw + JPEG, edited copies; not similar photos",
           prefs == {"enabled": True, "burst": True, "rawJpeg": True, "edited": True, "similar": False,
-                    "maxDistance": 0.02, "maxSeconds": 10}, str(prefs))
+                    "maxDistance": 0.06, "maxSeconds": 10}, str(prefs))
     library = c.post("/api/libraries", json={"ownerId": user_id, "importPaths": [str(args.nas)], "name": "NAS"}).json()
     start = time.time()
     c.post(f"/api/libraries/{library['id']}/scan").raise_for_status()
@@ -186,7 +189,7 @@ def main() -> None:
     immich.wait()
     print(f"    imported and processed in {time.time() - start:.0f}s")
     stacks = immich.stacks()
-    for name in RAW_PAIRS:
+    for name in RAW_PAIRS + MERGED_PAIRS:
         expect_stack(stacks, f"{name}: raw + JPEG, the JPEG as cover", {f"{name}.ARW", f"{name}.JPG"}, f"{name}.JPG")
     expect_stack(stacks, "IMG_E5571: the edited copy with its original, as cover", {"IMG_E5571.JPG", "IMG_5571.HEIC"},
                  "IMG_E5571.JPG")
@@ -195,7 +198,7 @@ def main() -> None:
     other_raw = immich.sql("select coalesce(\"stackId\"::text, 'none') from asset "
                            "where \"originalPath\" like '%/2025 other/CAM00074.ARW'")
     check("a raw file of the same name from another shoot stays out", other_raw == [["none"]], str(other_raw))
-    check("nothing else stacked", len(stacks) == len(RAW_PAIRS) + 2, f"{len(stacks)} stacks")
+    check("nothing else stacked", len(stacks) == len(RAW_PAIRS) + len(MERGED_PAIRS) + 2, f"{len(stacks)} stacks")
     lone = immich.sql("select count(*) from asset a join asset_job_status j on j.\"assetId\" = a.id "
                       "where a.\"stackId\" is null and j.\"autoStackedAt\" is not null")[0][0]
     check("only stacked photos are marked as stacked", lone == "0", lone)
@@ -217,7 +220,7 @@ def main() -> None:
                                                       immich.asset_id("IMG_5567.HEIC")]}).json()
     check("made", bool(manual.get("id")))
 
-    print("== similar photos on (recommended: 0.02, 10 s)")
+    print("== similar photos on (recommended: 0.06, 10 s)")
     immich.preferences(similar=True)
     immich.run()
     stacks = immich.stacks()
@@ -227,6 +230,10 @@ def main() -> None:
                                       "and \"originalFileName\" like 'IMG_55%' and visibility = 'timeline'")}
     check("IMG_5568, IMG_5569, IMG_5570 (10 to 27 s apart) stay out", {"IMG_5568.HEIC", "IMG_5569.HEIC",
                                                                        "IMG_5570.HEIC"} <= loose, str(sorted(loose)))
+    expect_stack(stacks, "the raw + JPEG stacks of CAM00088 and CAM00089, 3.4 s apart, merged into one",
+                 {"CAM00088.ARW", "CAM00088.JPG", "CAM00089.ARW", "CAM00089.JPG"}, "CAM00088.JPG")
+    check("the raw + JPEG stacks further apart stay apart",
+          all(frozenset({f"{n}.ARW", f"{n}.JPG"}) in stacks for n in RAW_PAIRS), f"{len(stacks)} stacks")
     check("the stack made by hand is untouched",
           stacks.get(frozenset({"IMG_5566.HEIC", "IMG_5567.HEIC"}), {}).get("auto") is False)
 
@@ -240,15 +247,17 @@ def main() -> None:
     print("== removing the automatic stacks")
     removed = c.delete("/api/auto-stacks").json()["count"]
     stacks = immich.stacks()
-    check("all of them removed, the photos kept", removed == len(RAW_PAIRS) + 3 and list(stacks) == [
+    check("all of them removed, the photos kept", removed == len(RAW_PAIRS) + 4 and list(stacks) == [
         frozenset({"IMG_5566.HEIC", "IMG_5567.HEIC"})], f"{removed} removed, left: {[sorted(k) for k in stacks]}")
     check("no photo deleted", immich.sql("select count(*) from asset where \"deletedAt\" is null "
-                                         "and visibility = 'timeline'")[0][0] == str(len(RAW_PAIRS) * 2 + len(IPHONE) + 1 + 1 + 3 + 2))
+                                         "and visibility = 'timeline'")[0][0] == str((len(RAW_PAIRS) + len(MERGED_PAIRS)) * 2 + len(IPHONE) + 1 + 1 + 3 + 2))
 
     print("== stacking again")
     immich.run()
     stacks = immich.stacks()
-    check("the same stacks again", len(stacks) == len(RAW_PAIRS) + 4, f"{len(stacks)} stacks")
+    check("the same stacks again", len(stacks) == len(RAW_PAIRS) + 5
+          and frozenset({"CAM00088.ARW", "CAM00088.JPG", "CAM00089.ARW", "CAM00089.JPG"}) in stacks,
+          f"{len(stacks)} stacks")
     check("the photo taken out stays out", frozenset({"IMG_E5571.JPG", "IMG_5571.HEIC", "IMG_5572.HEIC"}) in stacks)
 
     print("== the job queue's all")

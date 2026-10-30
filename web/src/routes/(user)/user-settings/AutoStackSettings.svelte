@@ -24,15 +24,15 @@
   let rawJpeg = $state(saved?.rawJpeg ?? true);
   let edited = $state(saved?.edited ?? true);
   let similar = $state(saved?.similar ?? false);
-  let maxDistance = $state(String(saved?.maxDistance ?? 0.02));
+  let maxDistance = $state(String(saved?.maxDistance ?? 0.06));
   let maxSeconds = $state<number | undefined>(saved?.maxSeconds ?? 10);
   let busy = $state(false);
 
-  const presets = ['0.01', '0.02', '0.03'];
+  const presets = ['0.03', '0.06', '0.1'];
   const similarityOptions = $derived([
-    { label: $t('auto_stack_similarity_strict'), value: '0.01' },
-    { label: $t('auto_stack_similarity_default'), value: '0.02' },
-    { label: $t('auto_stack_similarity_loose'), value: '0.03' },
+    { label: $t('auto_stack_similarity_strict'), value: '0.03' },
+    { label: $t('auto_stack_similarity_default'), value: '0.06' },
+    { label: $t('auto_stack_similarity_loose'), value: '0.1' },
     ...(presets.includes(maxDistance) ? [] : [{ label: maxDistance, value: maxDistance }]),
   ]);
 

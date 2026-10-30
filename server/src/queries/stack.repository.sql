@@ -179,12 +179,15 @@ select
   "asset_job_status"."autoStackedAt",
   "asset"."visibility",
   "asset"."deletedAt",
-  "smart_search"."embedding"
+  "smart_search"."embedding",
+  "stack"."isAutomatic",
+  "stack"."primaryAssetId"
 from
   "asset"
   left join "asset_exif" on "asset_exif"."assetId" = "asset"."id"
   left join "asset_job_status" on "asset_job_status"."assetId" = "asset"."id"
   left join "smart_search" on "smart_search"."assetId" = "asset"."id"
+  left join "stack" on "stack"."id" = "asset"."stackId"
 where
   "asset"."id" = $1::uuid
 
@@ -255,14 +258,58 @@ select
 from
   "asset"
   left join "asset_job_status" on "asset_job_status"."assetId" = "asset"."id"
+  left join "stack" on "stack"."id" = "asset"."stackId"
 where
   "asset"."visibility" in ('archive', 'timeline')
   and "asset"."ownerId" = any ($1::uuid[])
   and "asset"."deletedAt" is null
-  and "asset"."stackId" is null
-  and "asset_job_status"."autoStackedAt" is null
+  and (
+    "stack"."isAutomatic" = $2
+    or (
+      "asset"."stackId" is null
+      and "asset_job_status"."autoStackedAt" is null
+    )
+  )
 order by
   "asset"."fileCreatedAt"
+
+-- StackRepository.getAutoStackMembers
+select
+  "asset"."id",
+  "asset"."ownerId",
+  "asset"."type",
+  "asset"."originalFileName",
+  "asset"."originalPath",
+  "asset"."fileCreatedAt",
+  "asset"."isFavorite",
+  "asset"."width",
+  "asset"."height",
+  "asset"."stackId",
+  "asset_exif"."dateTimeOriginal",
+  "asset_exif"."model",
+  "asset_exif"."rating",
+  "asset_exif"."autoStackId",
+  "asset_job_status"."autoStackedAt"
+from
+  "asset"
+  left join "asset_exif" on "asset_exif"."assetId" = "asset"."id"
+  left join "asset_job_status" on "asset_job_status"."assetId" = "asset"."id"
+where
+  "asset"."stackId" = any ($1::uuid[])
+  and "asset"."deletedAt" is null
+
+-- StackRepository.mergeInto
+begin
+update "asset"
+set
+  "stackId" = $1,
+  "updatedAt" = $2
+where
+  "stackId" = any ($3::uuid[])
+delete from "stack"
+where
+  "id" = any ($1::uuid[])
+commit
 
 -- StackRepository.addAssets
 update "asset"

@@ -117,7 +117,7 @@ const AutoStackUpdateSchema = z
     maxDistance: z
       .number()
       .min(0.001)
-      .max(0.1)
+      .max(0.2)
       .optional()
       .describe('Largest CLIP distance of similar photos')
       .meta({ format: 'double' }),
