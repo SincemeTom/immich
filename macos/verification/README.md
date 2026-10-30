@@ -26,6 +26,7 @@
 | M1-3 | 第二台 Mac 从零安装（macOS 26.7）与真实照片库 | [m1-second-mac.md](m1-second-mac.md) | 通过：修复 SDK 问题后安装成功，完全不经过 Docker；真实上传 1204 个文件，4 分 11 秒全部处理完，0 失败。端到端脚本没跑完，备份恢复未复测 |
 | M1-4 | 中文智能搜索模型 XLM-Roberta-Large-ViT-H-14 与模型预热（分支 `mac/feat/ml-warm-clip`） | [m1-clip-model.md](m1-clip-model.md) | 通过：中文 recall@1 从 6.7% 提高到 90.0%，英文不变；设为默认并在安装时预热；端到端 42/42，恢复 3/3，切换模型 3/3 与 5/5，预热中断后能续传 |
 | M1-5 | 外部库（群晖）与手机备份：重复照片（分支 `mac/feat/external-checksum`） | [m1-external-dedupe.md](m1-external-dedupe.md) | 通过：修复前 5/5 复现，修复后 24/24。外部库改为按内容算指纹，手机备份不再重复上传；已有的重复归入"重复项"页面，默认保留外部库原件，相册和收藏随之合并。另外修复了上游的实况照片交叉配对 bug |
+| M1-6 | 删除后清理缩略图和转码文件（分支 `mac/fix/offline-trash`） | [m1-delete-cleanup.md](m1-delete-cleanup.md) | 普通删除本来就能清理干净。修复外部库的离线文件清空回收站清不掉的问题，并防止群晖断开超过 30 天时照片被删。修复前 5 项失败，修复后 23/23 |
 
 ## M2 视频转码用 Apple 硬件
 
@@ -54,6 +55,9 @@
 | 新：外部库照片会被手机备份重复上传 | **已修复**：外部库按内容算指纹，上传查重同时查外部库 | [m1-external-dedupe.md](m1-external-dedupe.md) |
 | 新（上游 bug）：实况照片同时在外部库和上传库时被交叉配对，清理重复后外部库照片的动态视频被删 | **已修复**：优先配本库的视频；扫描时纠正已经配错的 | [m1-external-dedupe.md](m1-external-dedupe.md) |
 | 新：Immich 会往外部库目录写 `.xmp` 文件 | 上游原有行为，**待你决定**是否改为不写 | [m1-external-dedupe.md](m1-external-dedupe.md) |
+| 新：外部库离线文件清空回收站清不掉，缩略图和转码文件一直留着 | **已修复** | [m1-delete-cleanup.md](m1-delete-cleanup.md) |
+| 新（上游）：群晖断开超过回收站天数，照片记录连同相册、人脸被删 | **已修复**：外部库不能访问时不删离线照片 | [m1-delete-cleanup.md](m1-delete-cleanup.md) |
+| 上游行为：读写挂载时，在 Immich 里删除外部库照片会删掉群晖上的原文件 | **待你决定**：只读挂载、加"不删原文件"开关，或保持现状 | [m1-delete-cleanup.md](m1-delete-cleanup.md) |
 
 ## 后续事项
 

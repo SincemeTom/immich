@@ -827,7 +827,8 @@ where
 -- AssetJobRepository.streamForDeletedJob
 select
   "id",
-  "isOffline"
+  "isOffline",
+  "libraryId"
 from
   "asset"
 where

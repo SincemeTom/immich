@@ -50,6 +50,7 @@ import {
 } from 'src/utils/asset.util.js';
 import { updateLockedColumns } from 'src/utils/database.js';
 import { extractTimeZone } from 'src/utils/date.js';
+import { isLibraryReachable } from 'src/utils/library.js';
 import { batched, findOrFail } from 'src/utils/misc.js';
 import { transformOcrBoundingBox } from 'src/utils/transform.js';
 
@@ -297,15 +298,41 @@ export class AssetService extends BaseService {
       .minus(Duration.fromObject({ days: trashedDays }))
       .toJSDate();
 
+    // An external library's files went offline when a scan didn't find them. While the library can't be reached,
+    // they may only be on a share that is unmounted, and are kept until it is back, however long that takes.
+    const reachable = new Map<string, boolean>();
+    const isReachable = async (libraryId: string) => {
+      if (!reachable.has(libraryId)) {
+        const library = await this.libraryRepository.get(libraryId);
+        reachable.set(libraryId, !!library && (await isLibraryReachable(this.storageRepository, library.importPaths)));
+      }
+      return reachable.get(libraryId)!;
+    };
+
     let count = 0;
+    let kept = 0;
     for await (const assets of batched(this.assetJobRepository.streamForDeletedJob(trashedBefore))) {
+      const expired = [];
+      for (const asset of assets) {
+        if (asset.isOffline && asset.libraryId && !(await isReachable(asset.libraryId))) {
+          kept++;
+          continue;
+        }
+        expired.push(asset);
+      }
       await this.jobRepository.queueAll(
-        assets.map(({ id, isOffline }) => ({ name: JobName.AssetDelete, data: { id, deleteOnDisk: !isOffline } })),
+        expired.map(({ id, isOffline }) => ({ name: JobName.AssetDelete, data: { id, deleteOnDisk: !isOffline } })),
       );
-      count += assets.length;
+      count += expired.length;
     }
     if (count > 0) {
       this.logger.log(`Automatically queued ${count} expired trash asset(s) for deletion`);
+    }
+    if (kept > 0) {
+      const libraries = [...reachable].filter(([, ok]) => !ok).map(([id]) => id);
+      this.logger.warn(
+        `Kept ${kept} expired offline asset(s) of libraries that cannot be reached: ${libraries.join(', ')}`,
+      );
     }
 
     return JobStatus.Success;

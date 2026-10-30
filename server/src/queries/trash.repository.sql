@@ -9,6 +9,29 @@ where
   "ownerId" = $3
   and "status" = $4
 
+-- TrashRepository.getOfflineLibraryIds
+select distinct
+  "libraryId"
+from
+  "asset"
+where
+  "ownerId" = $1
+  and "status" = $2
+  and "isOffline" = $3
+  and "deletedAt" is not null
+  and "libraryId" is not null
+
+-- TrashRepository.emptyOffline
+update "asset"
+set
+  "status" = $1
+where
+  "ownerId" = $2
+  and "status" = $3
+  and "isOffline" = $4
+  and "deletedAt" is not null
+  and "libraryId" in ($5)
+
 -- TrashRepository.empty
 update "asset"
 set

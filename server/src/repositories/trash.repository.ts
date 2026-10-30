@@ -23,6 +23,46 @@ export class TrashRepository {
     return Number(numUpdatedRows);
   }
 
+  /**
+   * The external libraries with files of this user that went offline: a scan put them in the trash, but as active
+   * assets, which empty() leaves, as a library whose share isn't mounted has every file offline
+   */
+  @GenerateSql({ params: [DummyValue.UUID] })
+  async getOfflineLibraryIds(userId: string): Promise<string[]> {
+    const rows = await this.db
+      .selectFrom('asset')
+      .select('libraryId')
+      .distinct()
+      .where('ownerId', '=', userId)
+      .where('status', '=', AssetStatus.Active)
+      .where('isOffline', '=', true)
+      .where('deletedAt', 'is not', null)
+      .where('libraryId', 'is not', null)
+      .execute();
+
+    return rows.map(({ libraryId }) => libraryId!);
+  }
+
+  /** Empties the offline files of these libraries from the trash, as empty() does the rest */
+  @GenerateSql({ params: [DummyValue.UUID, [DummyValue.UUID]] })
+  async emptyOffline(userId: string, libraryIds: string[]): Promise<number> {
+    if (libraryIds.length === 0) {
+      return 0;
+    }
+
+    const { numUpdatedRows } = await this.db
+      .updateTable('asset')
+      .where('ownerId', '=', userId)
+      .where('status', '=', AssetStatus.Active)
+      .where('isOffline', '=', true)
+      .where('deletedAt', 'is not', null)
+      .where('libraryId', 'in', libraryIds)
+      .set({ status: AssetStatus.Deleted })
+      .executeTakeFirst();
+
+    return Number(numUpdatedRows);
+  }
+
   @GenerateSql({ params: [DummyValue.UUID] })
   async empty(userId: string): Promise<number> {
     const { numUpdatedRows } = await this.db
