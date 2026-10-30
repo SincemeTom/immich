@@ -422,7 +422,9 @@ export function withEdits(eb: ExpressionBuilder<DB, 'asset'>): AliasedEditAction
     eb
       .selectFrom('asset_edit')
       .select(['asset_edit.action', 'asset_edit.parameters'])
-      .whereRef('asset_edit.assetId', '=', 'asset.id'),
+      .whereRef('asset_edit.assetId', '=', 'asset.id')
+      // in the order they apply: a mirror and a rotation make another picture the other way round
+      .orderBy('asset_edit.sequence', 'asc'),
   ).as('edits') as AliasedEditActions;
 }
 

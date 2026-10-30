@@ -766,8 +766,12 @@ describe(AssetMediaService.name, () => {
         .build();
       mocks.access.asset.checkOwnerAccess.mockResolvedValue(new Set([asset.id]));
       mocks.asset.getForVideo.mockResolvedValue({
+        id: asset.id,
+        ownerId: asset.ownerId,
         originalPath: asset.originalPath,
         encodedVideoPath: asset.files[0].path,
+        editedVideoPath: null,
+        editedVideoFileId: null,
       });
 
       await expect(sut.playbackVideo(authStub.admin, asset.id)).resolves.toEqual(
@@ -779,12 +783,33 @@ describe(AssetMediaService.name, () => {
       );
     });
 
+    it('should play a rotated or mirrored video as edited', async () => {
+      const asset = AssetFactory.create({ type: AssetType.Video, originalPath: '/original/path.mov' });
+      mocks.access.asset.checkOwnerAccess.mockResolvedValue(new Set([asset.id]));
+      mocks.asset.getForVideo.mockResolvedValue({
+        id: asset.id,
+        ownerId: asset.ownerId,
+        originalPath: asset.originalPath,
+        encodedVideoPath: '/encoded/video.mp4',
+        editedVideoPath: '/encoded/video_edited.mp4',
+        editedVideoFileId: 'file-id',
+      });
+
+      await expect(sut.playbackVideo(authStub.admin, asset.id)).resolves.toMatchObject({
+        path: '/encoded/video_edited.mp4',
+      });
+    });
+
     it('should fall back to the original path', async () => {
       const asset = AssetFactory.create({ type: AssetType.Video, originalPath: '/original/path.ext' });
       mocks.access.asset.checkOwnerAccess.mockResolvedValue(new Set([asset.id]));
       mocks.asset.getForVideo.mockResolvedValue({
+        id: asset.id,
+        ownerId: asset.ownerId,
         originalPath: asset.originalPath,
         encodedVideoPath: null,
+        editedVideoPath: null,
+        editedVideoFileId: null,
       });
 
       await expect(sut.playbackVideo(authStub.admin, asset.id)).resolves.toEqual(

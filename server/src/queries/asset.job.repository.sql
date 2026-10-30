@@ -281,6 +281,8 @@ select
           "asset_edit"
         where
           "asset_edit"."assetId" = "asset"."id"
+        order by
+          "asset_edit"."sequence" asc
       ) as agg
   ) as "edits",
   to_json("asset_exif") as "exifInfo",

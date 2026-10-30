@@ -1,4 +1,5 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { AssetEditAction, AssetEditActionItem, MirrorAxis } from 'src/dtos/editing.dto.js';
 import { HlsVideoResolution, VideoCodec } from 'src/enum.js';
 import { HlsService } from 'src/services/hls.service.js';
 import { eiffelTower, train, waterfall } from 'test/fixtures/media.stub.js';
@@ -196,12 +197,13 @@ describe(HlsService.name, () => {
       asset: typeof eiffelTower | typeof waterfall,
       videoCodecs?: VideoCodec[],
       resolutions?: HlsVideoResolution[],
+      edits: AssetEditActionItem[] = [],
     ) => {
       mocks.access.asset.checkOwnerAccess.mockResolvedValue(new Set([assetId]));
       mocks.systemMetadata.get.mockResolvedValue({
         ffmpeg: { realtime: { enabled: true, videoCodecs, resolutions } },
       });
-      mocks.videoStream.getForMainPlaylist.mockResolvedValue(asset);
+      mocks.videoStream.getForMainPlaylist.mockResolvedValue({ ...asset, edits });
       mocks.crypto.randomUUID.mockReturnValue(sessionId);
       mocks.websocket.serverSend.mockImplementation((event, ...rest) => {
         if (event !== 'HlsSessionRequest') {
@@ -220,6 +222,19 @@ describe(HlsService.name, () => {
 
     it('omits AV1 when it is not in the configured codecs', async () => {
       setup(eiffelTower);
+      await expect(sut.getMainPlaylist(auth, assetId)).resolves.toBe(eiffelExpectedMasterNoAv1);
+    });
+
+    it('sizes the variants of a video rotated a quarter turn as it shows', async () => {
+      setup(eiffelTower, undefined, undefined, [{ action: AssetEditAction.Rotate, parameters: { angle: 90 } }]);
+      const playlist = await sut.getMainPlaylist(auth, assetId);
+      expect(playlist).toBe(eiffelExpectedMasterNoAv1.replaceAll(/RESOLUTION=(\d+)x(\d+)/g, 'RESOLUTION=$2x$1'));
+    });
+
+    it('sizes the variants of a mirrored video as they were', async () => {
+      setup(eiffelTower, undefined, undefined, [
+        { action: AssetEditAction.Mirror, parameters: { axis: MirrorAxis.Horizontal } },
+      ]);
       await expect(sut.getMainPlaylist(auth, assetId)).resolves.toBe(eiffelExpectedMasterNoAv1);
     });
 

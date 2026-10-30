@@ -3,7 +3,7 @@ import { OutputInfo } from 'sharp';
 import type { AudioStreamInfo, JobCounts, RawImageInfo, VideoFormat, VideoStreamInfo } from 'src/types.js';
 import { Exif } from 'src/database.js';
 import { SystemConfig } from 'src/dtos/config.dto.js';
-import { AssetEditAction } from 'src/dtos/editing.dto.js';
+import { AssetEditAction, AssetEditActionItem } from 'src/dtos/editing.dto.js';
 import {
   AssetFileType,
   AssetPathType,
@@ -42,6 +42,13 @@ const mockRawPreviews = (mocks: ServiceMocks, state?: { extractEmbedded: boolean
   mocks.systemMetadata.get.mockImplementation(
     (key) => Promise.resolve(key === SystemMetadataKey.RawPreviews ? state : saved) as any,
   );
+
+/** what ffprobe finds in a 4K video shown rotated this much */
+const probed = (rotation: number) => ({
+  format: probeStub.videoStream2160p.format,
+  videoStreams: [{ ...probeStub.videoStream2160p.videoStream, rotation }],
+  audioStreams: [],
+});
 
 describe(MediaService.name, () => {
   let sut: MediaService;
@@ -1434,12 +1441,123 @@ describe(MediaService.name, () => {
       mocks.media.getImageMetadata.mockResolvedValue({ width: 100, height: 100, isTransparent: false });
     });
 
-    it('should skip videos', async () => {
-      const asset = AssetFactory.from({ type: AssetType.Video }).exif().build();
-      mocks.assetJob.getForGenerateThumbnailJob.mockResolvedValue(getForGenerateThumbnail(asset));
+    describe('a video', () => {
+      const rotate90 = { action: AssetEditAction.Rotate, parameters: { angle: 90 } } as const;
+      // eslint-disable-next-line unicorn/consistent-function-scoping
+      const video = (edits: AssetEditActionItem[]) => {
+        const asset = AssetFactory.from({ type: AssetType.Video, originalPath: '/original/video.mov' })
+          .exif({ exifImageWidth: 1920, exifImageHeight: 1080 })
+          .files([{ type: AssetFileType.Preview, isEdited: false, path: '/thumbs/preview.jpeg' }])
+          .build();
+        mocks.assetJob.getForGenerateThumbnailJob.mockResolvedValue({
+          ...getForGenerateThumbnail(asset),
+          edits,
+          ...probeStub.videoStream2160p,
+        });
+        mocks.assetEdit.getAll.mockResolvedValue(edits.map((edit, i) => ({ id: `edit-${i}`, ...edit })) as any);
+        mocks.asset.getForVideo.mockResolvedValue({
+          id: asset.id,
+          ownerId: asset.ownerId,
+          originalPath: '/original/video.mov',
+          encodedVideoPath: null,
+          editedVideoPath: null,
+          editedVideoFileId: null,
+        });
+        mocks.media.probe.mockResolvedValue(probed(0));
+        mocks.media.generateThumbhash.mockResolvedValue(Buffer.from('thumbhash'));
+        return asset;
+      };
 
-      await expect(sut.handleAssetEditThumbnailGeneration({ id: asset.id })).resolves.toBe(JobStatus.Success);
-      expect(mocks.media.generateThumbnail).not.toHaveBeenCalled();
+      it('should copy its stream with the display matrix its edits make, then make its thumbnails as it shows', async () => {
+        const asset = video([rotate90]);
+
+        await expect(sut.handleAssetEditThumbnailGeneration({ id: asset.id })).resolves.toBe(JobStatus.Success);
+
+        const edited = `/data/encoded-video/${asset.ownerId}/${asset.id.slice(0, 2)}/${asset.id.slice(2, 4)}/${asset.id}_edited.mp4`;
+        expect(mocks.media.transcode).toHaveBeenCalledWith('/original/video.mov', edited, {
+          inputOptions: ['-display_rotation', '270'],
+          outputOptions: ['-map', '0:v:0', '-map', '0:a:0?', '-c', 'copy', '-movflags', '+faststart'],
+          twoPass: false,
+          progress: { frameCount: 0, percentInterval: 0 },
+        });
+        expect(mocks.asset.upsertFile).toHaveBeenCalledWith({
+          assetId: asset.id,
+          type: AssetFileType.EncodedVideo,
+          path: edited,
+          isEdited: true,
+        });
+        // the thumbnails read the original as the edits show it, and are sized so
+        expect(mocks.media.transcode).toHaveBeenCalledWith(
+          '/original/video.mov',
+          expect.stringContaining('_preview_edited.'),
+          expect.objectContaining({
+            inputOptions: expect.arrayContaining(['-display_rotation', '270']),
+            outputOptions: expect.arrayContaining([expect.stringContaining('scale=1440:-2')]),
+          }),
+        );
+        expect(mocks.asset.upsertFiles).toHaveBeenCalledWith(
+          expect.arrayContaining([
+            expect.objectContaining({ type: AssetFileType.Preview, isEdited: true }),
+            expect.objectContaining({ type: AssetFileType.Thumbnail, isEdited: true }),
+          ]),
+        );
+        expect(mocks.asset.update).toHaveBeenCalledWith({ id: asset.id, width: 1080, height: 1920 });
+      });
+
+      it('should copy the encoded stream, as its own rotation is', async () => {
+        const asset = video([rotate90]);
+        mocks.asset.getForVideo.mockResolvedValue({
+          id: asset.id,
+          ownerId: asset.ownerId,
+          originalPath: '/original/video.mov',
+          encodedVideoPath: '/encoded/video.mp4',
+          editedVideoPath: null,
+          editedVideoFileId: null,
+        });
+        mocks.media.probe.mockResolvedValue(probed(-90));
+
+        await sut.handleAssetEditThumbnailGeneration({ id: asset.id });
+
+        // shown turned 90° clockwise, then turned 90° clockwise more
+        expect(mocks.media.transcode).toHaveBeenCalledWith(
+          '/encoded/video.mp4',
+          expect.stringContaining('_edited.mp4'),
+          expect.objectContaining({ inputOptions: ['-display_rotation', '180'] }),
+        );
+      });
+
+      it('should remove its edited stream and thumbnails with its edits', async () => {
+        const asset = video([]);
+        mocks.asset.getForVideo.mockResolvedValue({
+          id: asset.id,
+          ownerId: asset.ownerId,
+          originalPath: '/original/video.mov',
+          encodedVideoPath: null,
+          editedVideoPath: '/encoded/video_edited.mp4',
+          editedVideoFileId: 'edited-file',
+        });
+
+        await sut.handleAssetEditThumbnailGeneration({ id: asset.id });
+
+        expect(mocks.media.transcode).not.toHaveBeenCalled();
+        expect(mocks.asset.deleteFiles).toHaveBeenCalledWith([{ id: 'edited-file' }]);
+        expect(mocks.job.queue).toHaveBeenCalledWith({
+          name: JobName.FileDelete,
+          data: { files: ['/encoded/video_edited.mp4'] },
+        });
+        // the thumbhash of its own preview, not of the video file
+        expect(mocks.media.decodeImage).toHaveBeenCalledWith('/thumbs/preview.jpeg', expect.anything());
+        expect(mocks.asset.update).toHaveBeenCalledWith({ id: asset.id, width: 1920, height: 1080 });
+      });
+
+      it('should keep the video as it was if its stream cannot be rewritten', async () => {
+        const asset = video([rotate90]);
+        mocks.media.transcode.mockRejectedValueOnce(new Error('codec not currently supported in container'));
+
+        await expect(sut.handleAssetEditThumbnailGeneration({ id: asset.id })).resolves.toBe(JobStatus.Success);
+
+        expect(mocks.asset.upsertFile).not.toHaveBeenCalled();
+      });
     });
 
     it('should upsert 3 edited files for edit jobs', async () => {

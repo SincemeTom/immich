@@ -156,6 +156,11 @@ export class StorageCore {
     return StorageCore.getNestedPath(StorageFolder.EncodedVideo, asset.ownerId, `${asset.id}.mp4`);
   }
 
+  /** A video rotated or mirrored: the stream it plays, copied with the display matrix its edits make */
+  static getEditedVideoPath(asset: ThumbnailPathEntity) {
+    return StorageCore.getNestedPath(StorageFolder.EncodedVideo, asset.ownerId, `${asset.id}_edited.mp4`);
+  }
+
   static getHlsSessionFolder({ ownerId, sessionId }: HlsSessionFolder) {
     return StorageCore.getNestedPath(StorageFolder.EncodedVideo, ownerId, sessionId);
   }

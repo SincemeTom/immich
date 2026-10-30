@@ -8,11 +8,13 @@ import { StorageCore } from 'src/cores/storage.core.js';
 import { OnEvent } from 'src/decorators.js';
 import { AuthDto } from 'src/dtos/auth.dto.js';
 import { ConfigFFmpegDto } from 'src/dtos/config.dto.js';
+import { AssetEditActionItem } from 'src/dtos/editing.dto.js';
 import { CacheControl, ImmichWorker, Permission } from 'src/enum.js';
 import { BaseService } from 'src/services/base.service.js';
 import { PendingEvents } from 'src/utils/event.js';
 import { ImmichFileResponse } from 'src/utils/file.js';
 import { getCodecString, getOutputSize } from 'src/utils/media.js';
+import { withVideoEdits } from 'src/utils/video-edit.js';
 
 type AssetWithStreamInfo = { videoStream: VideoStreamInfo & { timeBase: number }; packets: VideoPacketInfo };
 type Segmentation = { fps: number; framesPerSegment: number; segmentCount: number; segmentDuration: number };
@@ -65,7 +67,9 @@ export class HlsService extends BaseService {
     await this.pendingSessions.wait(sessionId);
     this.trackSession(sessionId);
 
-    return this.generateMainPlaylist(sessionId, ffmpeg, asset);
+    // a rotated video's variants are sized as it shows
+    const { videoStream } = withVideoEdits(asset.videoStream, asset.edits as AssetEditActionItem[]);
+    return this.generateMainPlaylist(sessionId, ffmpeg, { ...asset, videoStream });
   }
 
   async getMediaPlaylist(auth: AuthDto, assetId: string, sessionId: string, variantIndex: number, position?: number) {

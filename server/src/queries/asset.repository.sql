@@ -601,9 +601,9 @@ from
   "asset"
   left join "asset_file" on "asset"."id" = "asset_file"."assetId"
   and "asset_file"."isEdited" = $1
-  and "asset_file"."type" = $2
+  and "asset_file"."type" in ($2, $3)
 where
-  "asset"."id" in ($3)
+  "asset"."id" in ($4)
 
 -- AssetRepository.getForOriginals
 select
@@ -615,9 +615,9 @@ from
   "asset"
   left join "asset_file" on "asset"."id" = "asset_file"."assetId"
   and "asset_file"."isEdited" = $1
-  and "asset_file"."type" = $2
+  and "asset_file"."type" in ($2, $3)
 where
-  "asset"."id" in ($3)
+  "asset"."id" in ($4)
 
 -- AssetRepository.getForThumbnail
 select
@@ -635,6 +635,8 @@ order by
 
 -- AssetRepository.getForVideo
 select
+  "asset"."id",
+  "asset"."ownerId",
   "asset"."originalPath",
   (
     select
@@ -645,7 +647,27 @@ select
       "asset_file"."assetId" = "asset"."id"
       and "asset_file"."type" = 'encoded_video'
       and "asset_file"."isEdited" = false
-  ) as "encodedVideoPath"
+  ) as "encodedVideoPath",
+  (
+    select
+      "asset_file"."path"
+    from
+      "asset_file"
+    where
+      "asset_file"."assetId" = "asset"."id"
+      and "asset_file"."type" = 'encoded_video'
+      and "asset_file"."isEdited" = true
+  ) as "editedVideoPath",
+  (
+    select
+      "asset_file"."id"
+    from
+      "asset_file"
+    where
+      "asset_file"."assetId" = "asset"."id"
+      and "asset_file"."type" = 'encoded_video'
+      and "asset_file"."isEdited" = true
+  ) as "editedVideoFileId"
 from
   "asset"
 where
@@ -666,6 +688,8 @@ select
           "asset_edit"
         where
           "asset_edit"."assetId" = "asset"."id"
+        order by
+          "asset_edit"."sequence" asc
       ) as agg
   ) as "edits",
   "asset_exif"."exifImageWidth",
@@ -718,6 +742,8 @@ select
           "asset_edit"
         where
           "asset_edit"."assetId" = "asset"."id"
+        order by
+          "asset_edit"."sequence" asc
       ) as agg
   ) as "edits"
 from

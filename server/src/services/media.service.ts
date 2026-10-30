@@ -16,7 +16,7 @@ import { ImagePathOptions, StorageCore, ThumbnailPathEntity } from 'src/cores/st
 import { AssetFile } from 'src/database.js';
 import { OnEvent, OnJob } from 'src/decorators.js';
 import { ConfigFFmpegDto, SystemConfig } from 'src/dtos/config.dto.js';
-import { AssetEditAction, CropParameters } from 'src/dtos/editing.dto.js';
+import { AssetEditAction, AssetEditActionItem, CropParameters } from 'src/dtos/editing.dto.js';
 import {
   AssetFileType,
   AssetType,
@@ -48,6 +48,13 @@ import { BaseConfig, ThumbnailConfig } from 'src/utils/media.js';
 import { mimeTypes } from 'src/utils/mime-types.js';
 import { batched, clamp } from 'src/utils/misc.js';
 import { getOutputDimensions } from 'src/utils/transform.js';
+import {
+  VideoDisplayTransform,
+  getDisplayOptions,
+  getVideoDisplayTransform,
+  isVideoEdit,
+  toStreamRotation,
+} from 'src/utils/video-edit.js';
 
 interface UpsertFileOptions {
   assetId: string;
@@ -208,6 +215,11 @@ export class MediaService extends BaseService {
       return JobStatus.Failed;
     }
 
+    if (asset.type === AssetType.Video) {
+      // the stream it plays, before the thumbnails: a stream that cannot be rewritten leaves the video as it was
+      await this.syncEditedVideo(asset.id);
+    }
+
     const generated = await this.generateEditedThumbnails(asset, config);
     await this.syncFiles(
       asset.files.filter((file) => file.isEdited),
@@ -215,6 +227,18 @@ export class MediaService extends BaseService {
     );
 
     let thumbhash: Buffer | undefined = generated?.thumbhash;
+    if (!thumbhash && asset.type === AssetType.Video) {
+      // edits removed: the thumbhash of the video's own preview
+      const preview = getAssetFile(asset.files, AssetFileType.Preview, { isEdited: false });
+      if (preview) {
+        const options = {
+          colorspace: config.image.colorspace,
+          processInvalidImages: process.env.IMMICH_PROCESS_INVALID_IMAGES === 'true',
+        };
+        const decoded = await this.mediaRepository.decodeImage(preview.path, options);
+        thumbhash = await this.mediaRepository.generateThumbhash(decoded, options);
+      }
+    }
     if (!thumbhash) {
       const extractedImage = await this.extractOriginalImage(asset, config.image);
       const { info, data, colorspace } = extractedImage;
@@ -537,32 +561,47 @@ export class MediaService extends BaseService {
     };
   }
 
-  private async generateVideoThumbnails(asset: ThumbnailAsset, { ffmpeg, image }: SystemConfig) {
+  /** The video's thumbnails, or with a display transform, the ones of the video as its edits show it */
+  private async generateVideoThumbnails(
+    asset: ThumbnailAsset,
+    { ffmpeg, image }: SystemConfig,
+    display?: VideoDisplayTransform,
+  ) {
+    const isEdited = !!display;
     const previewFile = this.getImageFile(asset, {
       fileType: AssetFileType.Preview,
       format: image.preview.format,
-      isEdited: false,
+      isEdited,
       isProgressive: false,
       isTransparent: false,
     });
     const thumbnailFile = this.getImageFile(asset, {
       fileType: AssetFileType.Thumbnail,
       format: image.thumbnail.format,
-      isEdited: false,
+      isEdited,
       isProgressive: false,
       isTransparent: false,
     });
     this.storageCore.ensureFolders(previewFile.path);
 
-    const { videoStream, format } = asset;
+    const { format } = asset;
+    let { videoStream } = asset;
     if (!videoStream || !format) {
       throw new Error(`Missing video metadata for asset ${asset.id}`);
+    }
+    if (display) {
+      // frames turn as the display matrix says, which sizing needs to know
+      videoStream = { ...videoStream, rotation: toStreamRotation(display) };
     }
 
     const previewConfig = ThumbnailConfig.create({ ...ffmpeg, targetResolution: image.preview.size.toString() });
     const thumbConfig = ThumbnailConfig.create({ ...ffmpeg, targetResolution: image.thumbnail.size.toString() });
     const previewOptions = previewConfig.getCommand(TranscodeTarget.Video, videoStream, undefined, format ?? undefined);
     const thumbnailOptions = thumbConfig.getCommand(TranscodeTarget.Video, videoStream, undefined, format ?? undefined);
+    if (display) {
+      previewOptions.inputOptions = [...getDisplayOptions(display), ...previewOptions.inputOptions];
+      thumbnailOptions.inputOptions = [...getDisplayOptions(display), ...thumbnailOptions.inputOptions];
+    }
 
     await this.mediaRepository.transcode(asset.originalPath, previewFile.path, previewOptions);
     await this.mediaRepository.transcode(asset.originalPath, thumbnailFile.path, thumbnailOptions);
@@ -580,8 +619,57 @@ export class MediaService extends BaseService {
     return {
       files: [previewFile, thumbnailFile],
       thumbhash,
-      fullsizeDimensions: { width: videoStream.width, height: videoStream.height },
+      fullsizeDimensions: display
+        ? getOutputDimensions(asset.edits, getDimensions(asset.exifInfo!))
+        : { width: videoStream.width, height: videoStream.height },
     };
+  }
+
+  /**
+   * A rotated or mirrored video's stream, as it plays: the stream it would play otherwise (the encoded video, else
+   * the original) copied with the display matrix its edits make, which every player honours, and which takes seconds
+   * and loses nothing. Removed with the edits.
+   */
+  private async syncEditedVideo(id: string) {
+    const video = await this.assetRepository.getForVideo(id);
+    if (!video) {
+      return;
+    }
+
+    const edits = (await this.assetEditRepository.getAll(id)) as AssetEditActionItem[];
+    if (edits.every((edit) => !isVideoEdit(edit))) {
+      if (video.editedVideoFileId && video.editedVideoPath) {
+        await this.assetRepository.deleteFiles([{ id: video.editedVideoFileId }]);
+        await this.jobRepository.queue({ name: JobName.FileDelete, data: { files: [video.editedVideoPath] } });
+      }
+      return;
+    }
+
+    const source = video.encodedVideoPath || video.originalPath;
+    const output = StorageCore.getEditedVideoPath(video);
+    this.storageCore.ensureFolders(output);
+
+    const probed = await this.mediaRepository.probe(source);
+    const display = getVideoDisplayTransform(probed.videoStreams[0]?.rotation ?? 0, edits);
+    try {
+      await this.mediaRepository.transcode(source, output, {
+        inputOptions: getDisplayOptions(display),
+        outputOptions: ['-map', '0:v:0', '-map', '0:a:0?', '-c', 'copy', '-movflags', '+faststart'],
+        twoPass: false,
+        progress: { frameCount: 0, percentInterval: 0 },
+      });
+    } catch (error: any) {
+      this.logger.error(`Could not rewrite video ${id} with its edits: ${error?.message ?? error}`);
+      return;
+    }
+
+    this.logger.log(`Video ${id} shown rotated ${display.rotation}°${display.hflip ? ', mirrored' : ''}`);
+    await this.assetRepository.upsertFile({
+      assetId: id,
+      type: AssetFileType.EncodedVideo,
+      path: output,
+      isEdited: true,
+    });
   }
 
   @OnJob({ name: JobName.AssetEncodeVideoQueueAll, queue: QueueName.VideoConversion })
@@ -627,6 +715,7 @@ export class MediaService extends BaseService {
         this.logger.log(`Transcoded video exists for asset ${asset.id}, but is no longer required. Deleting...`);
         await this.jobRepository.queue({ name: JobName.FileDelete, data: { files: [encodedVideo.path] } });
         await this.assetRepository.deleteFiles([encodedVideo]);
+        await this.queueEditedVideo(asset);
       } else {
         this.logger.verbose(`Asset ${asset.id} does not require transcoding based on current policy, skipping`);
       }
@@ -680,8 +769,16 @@ export class MediaService extends BaseService {
       path: output,
       isEdited: false,
     });
+    await this.queueEditedVideo(asset);
 
     return JobStatus.Success;
+  }
+
+  /** A rotated or mirrored video's stream is copied from the encoded one: made again when that changes */
+  private async queueEditedVideo(asset: { id: string; files: AssetFile[] }) {
+    if (getAssetFile(asset.files, AssetFileType.EncodedVideo, { isEdited: true })) {
+      await this.jobRepository.queue({ name: JobName.AssetEditThumbnailGeneration, data: { id: asset.id } });
+    }
   }
 
   private getTranscodeTarget(
@@ -871,6 +968,16 @@ export class MediaService extends BaseService {
   }
 
   private async generateEditedThumbnails(asset: ThumbnailAsset, config: SystemConfig) {
+    if (asset.type === AssetType.Video) {
+      if (asset.edits.length === 0 || !asset.videoStream) {
+        return;
+      }
+      // the edits in their order, which the matrices depend on
+      const edits = (await this.assetEditRepository.getAll(asset.id)) as AssetEditActionItem[];
+      const display = getVideoDisplayTransform(asset.videoStream.rotation, edits);
+      return this.generateVideoThumbnails({ ...asset, edits }, config, display);
+    }
+
     if (asset.type !== AssetType.Image || (asset.files.length === 0 && asset.edits.length === 0)) {
       return;
     }

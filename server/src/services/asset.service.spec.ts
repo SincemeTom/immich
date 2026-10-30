@@ -2,7 +2,7 @@ import { BadRequestException } from '@nestjs/common';
 import { DateTime } from 'luxon';
 import { Stats } from 'node:fs';
 import { AssetJobName, AssetStatsResponseDto } from 'src/dtos/asset.dto.js';
-import { AssetEditAction } from 'src/dtos/editing.dto.js';
+import { AssetEditAction, AssetEditActionItem, MirrorAxis } from 'src/dtos/editing.dto.js';
 import {
   AssetFileType,
   AssetMetadataKey,
@@ -825,6 +825,50 @@ describe(AssetService.name, () => {
   });
 
   describe('editAsset', () => {
+    // eslint-disable-next-line unicorn/consistent-function-scoping
+    const video = () => {
+      mocks.access.asset.checkOwnerAccess.mockResolvedValue(new Set(['asset-1']));
+      mocks.asset.getForEdit.mockResolvedValue({
+        type: AssetType.Video,
+        livePhotoVideoId: null,
+        originalPath: '/original/video.mov',
+        originalFileName: 'video.mov',
+        exifImageWidth: 1920,
+        exifImageHeight: 1080,
+        orientation: null,
+        projectionType: null,
+      });
+      mocks.assetEdit.replaceAll.mockImplementation((_, edits) =>
+        Promise.resolve(edits.map((edit, i) => ({ id: `edit-${i}`, ...edit })) as any),
+      );
+    };
+
+    it('should rotate and mirror a video', async () => {
+      video();
+      const edits = [
+        { action: AssetEditAction.Mirror, parameters: { axis: MirrorAxis.Horizontal } },
+        { action: AssetEditAction.Rotate, parameters: { angle: 90 } },
+      ] as AssetEditActionItem[];
+
+      await sut.editAsset(authStub.admin, 'asset-1', { edits });
+
+      expect(mocks.assetEdit.replaceAll).toHaveBeenCalledWith('asset-1', edits);
+      expect(mocks.job.queue).toHaveBeenCalledWith({
+        name: JobName.AssetEditThumbnailGeneration,
+        data: { id: 'asset-1' },
+      });
+    });
+
+    it('should refuse to crop a video', async () => {
+      video();
+      await expect(
+        sut.editAsset(authStub.admin, 'asset-1', {
+          edits: [{ action: AssetEditAction.Crop, parameters: { x: 0, y: 0, width: 100, height: 100 } }],
+        }),
+      ).rejects.toThrow('Videos can only be rotated and mirrored');
+      expect(mocks.assetEdit.replaceAll).not.toHaveBeenCalled();
+    });
+
     it('should enforce crop first', async () => {
       await expect(
         sut.editAsset(authStub.admin, 'asset-1', {

@@ -53,6 +53,7 @@ import { extractTimeZone } from 'src/utils/date.js';
 import { isLibraryReachable } from 'src/utils/library.js';
 import { batched, findOrFail } from 'src/utils/misc.js';
 import { transformOcrBoundingBox } from 'src/utils/transform.js';
+import { isVideoEdit } from 'src/utils/video-edit.js';
 
 @Injectable()
 export class AssetService extends BaseService {
@@ -586,8 +587,13 @@ export class AssetService extends BaseService {
       throw new BadRequestException('Asset not found');
     }
 
-    if (asset.type !== AssetType.Image) {
-      throw new BadRequestException('Only images can be edited');
+    if (asset.type !== AssetType.Image && asset.type !== AssetType.Video) {
+      throw new BadRequestException('Only images and videos can be edited');
+    }
+
+    // a video is rotated and mirrored by rewriting its display matrix, not encoded again, which cropping would need
+    if (asset.type === AssetType.Video && dto.edits.some((edit) => !isVideoEdit(edit as AssetEditActionItem))) {
+      throw new BadRequestException('Videos can only be rotated and mirrored');
     }
 
     if (asset.livePhotoVideoId) {
@@ -595,7 +601,9 @@ export class AssetService extends BaseService {
     }
 
     if (isPanorama(asset)) {
-      throw new BadRequestException('Editing panorama images is not supported');
+      throw new BadRequestException(
+        `Editing panorama ${asset.type === AssetType.Video ? 'videos' : 'images'} is not supported`,
+      );
     }
 
     if (asset.originalPath?.toLowerCase().endsWith('.gif')) {
