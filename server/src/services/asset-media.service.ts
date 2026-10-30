@@ -327,7 +327,12 @@ export class AssetMediaService extends BaseService {
     const checksumMap: Record<string, { id: string; isTrashed: boolean }> = {};
 
     for (const { id, deletedAt, checksum } of results) {
-      checksumMap[checksum.toString('hex')] = { id, isTrashed: !!deletedAt };
+      const key = checksum.toString('hex');
+      // an upload trashed as the duplicate of an external library's file doesn't hide the file
+      if (checksumMap[key] && !checksumMap[key].isTrashed) {
+        continue;
+      }
+      checksumMap[key] = { id, isTrashed: !!deletedAt };
     }
 
     return {

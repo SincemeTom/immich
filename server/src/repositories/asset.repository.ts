@@ -683,7 +683,8 @@ export class AssetRepository {
   /**
    * The asset a new upload with this checksum duplicates: an earlier upload, or else a file in one of the user's
    * external libraries that was hashed by its contents. Trashed and offline ones count, so that a library whose
-   * share is briefly unmounted doesn't get uploaded again.
+   * share is briefly unmounted doesn't get uploaded again, but one that isn't trashed comes first: once the copies
+   * uploaded of a library's files are trashed, the files are what the uploads duplicate.
    */
   @GenerateSql({ params: [DummyValue.UUID, DummyValue.BUFFER] })
   async getUploadAssetIdByChecksum(ownerId: string, checksum: Buffer): Promise<string | undefined> {
@@ -695,6 +696,7 @@ export class AssetRepository {
       .where((eb) =>
         eb.or([eb('libraryId', 'is', null), eb('checksumAlgorithm', '=', sql.lit(ChecksumAlgorithm.sha1File))]),
       )
+      .orderBy(sql`"deletedAt" is null`, 'desc')
       .orderBy(sql`"libraryId" is null`, 'desc')
       .limit(1)
       .executeTakeFirst();

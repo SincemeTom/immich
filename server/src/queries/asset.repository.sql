@@ -341,6 +341,7 @@ where
     or "checksumAlgorithm" = 'sha1'
   )
 order by
+  "deletedAt" is null desc,
   "libraryId" is null desc
 limit
   $3

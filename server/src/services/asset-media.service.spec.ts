@@ -867,6 +867,32 @@ describe(AssetMediaService.name, () => {
 
       expect(mocks.asset.getByChecksums).toHaveBeenCalledWith(authStub.admin.user.id, [file1, file2]);
     });
+
+    it.each([
+      { name: 'after', order: ['trashed', 'kept'] },
+      { name: 'before', order: ['kept', 'trashed'] },
+    ])('should answer with the asset that is not trashed, listed $name the trashed one', async ({ order }) => {
+      const file1 = Buffer.from('d2947b871a706081be194569951b7db246907957', 'hex');
+      const rows = {
+        trashed: { id: 'trashed-upload', checksum: file1, deletedAt: new Date() },
+        kept: { id: 'library-file', checksum: file1, deletedAt: null },
+      };
+      mocks.asset.getByChecksums.mockResolvedValue(order.map((key) => rows[key as keyof typeof rows]));
+
+      await expect(
+        sut.bulkUploadCheck(authStub.admin, { assets: [{ id: '1', checksum: file1.toString('hex') }] }),
+      ).resolves.toEqual({
+        results: [
+          {
+            id: '1',
+            assetId: 'library-file',
+            action: AssetUploadAction.REJECT,
+            reason: AssetRejectReason.DUPLICATE,
+            isTrashed: false,
+          },
+        ],
+      });
+    });
   });
 
   describe('onUploadError', () => {
