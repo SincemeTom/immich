@@ -129,18 +129,19 @@ export const classifyMountError = (message: string): NetworkShareErrorReason => 
   if (/operation not permitted|not permitted to access|eperm/.test(text)) {
     return NetworkShareErrorReason.MacPermission;
   }
-  if (/permission denied|access denied|authentication error|auth error/.test(text)) {
-    return NetworkShareErrorReason.Denied;
-  }
-  if (/no such file or directory|not exported|enoent/.test(text)) {
-    return NetworkShareErrorReason.NotFound;
-  }
+  // before the others: a host that doesn't resolve also ends in "No such file or directory"
   if (
     /timed out|connection refused|can't connect|host is down|no route|unknown host|can't resolve|nodename nor servname|rpc|unreachable|not responding/.test(
       text,
     )
   ) {
     return NetworkShareErrorReason.Unreachable;
+  }
+  if (/permission denied|access denied|authentication error|auth error/.test(text)) {
+    return NetworkShareErrorReason.Denied;
+  }
+  if (/no such file or directory|not exported|enoent/.test(text)) {
+    return NetworkShareErrorReason.NotFound;
   }
   return NetworkShareErrorReason.Other;
 };

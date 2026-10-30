@@ -78,6 +78,11 @@ describe('network shares', () => {
         NetworkShareErrorReason.NotFound,
       ],
       [
+        "mount_nfs: can't resolve host: nas.invalid\nmount_nfs: can't mount /x from nas.invalid onto /x: No such file or directory",
+        NetworkShareErrorReason.Unreachable,
+      ],
+      ["mount_nfs: can't mount / from 127.0.0.1 onto /x: Connection refused", NetworkShareErrorReason.Unreachable],
+      [
         "mount_nfs: can't mount /volume1/photo from nas onto /x: Operation timed out",
         NetworkShareErrorReason.Unreachable,
       ],
