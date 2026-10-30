@@ -176,8 +176,9 @@ def main() -> None:
     export.parent.mkdir()
     subprocess.run(["sips", "-s", "format", "jpeg", "-s", "formatOptions", "80", "-Z", "2048",
                     str(files["IMG_5568.HEIC"]), "--out", str(export)], check=True, capture_output=True)
-    subprocess.run([str(EXIFTOOL), "-q", "-overwrite_original", "-all=", "-DateTimeOriginal=2027:09:30 13:52:58",
-                    "-CreateDate=2027:09:30 13:52:58", str(export)], check=True)
+    # its metadata, orientation included, but dated a year later
+    subprocess.run([str(EXIFTOOL), "-q", "-overwrite_original", "-TagsFromFile", str(files["IMG_5568.HEIC"]),
+                    "-all:all", "-AllDates=2027:09:30 13:52:58", "-OffsetTime*=+08:00", str(export)], check=True)
     # a raw file of the same name as one of the shoot's, from another day
     shutil.copy2(files["CAM00080.ARW"], other / "CAM00074.ARW")
     # a burst, as Google Camera marks one
@@ -191,7 +192,7 @@ def main() -> None:
     prefs = c.get("/api/users/me/preferences").json()["autoStack"]
     check("defaults: bursts, raw + JPEG, edited copies; not similar photos",
           prefs == {"enabled": True, "burst": True, "rawJpeg": True, "edited": True, "similar": False,
-                    "maxDistance": 0.06, "maxSeconds": 10}, str(prefs))
+                    "maxDistance": 0.06, "maxSeconds": 10, "anytime": False, "anytimeDistance": 0.02}, str(prefs))
     library = c.post("/api/libraries", json={"ownerId": user_id, "importPaths": [str(args.nas)], "name": "NAS"}).json()
     start = time.time()
     c.post(f"/api/libraries/{library['id']}/scan").raise_for_status()
