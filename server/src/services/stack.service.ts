@@ -41,7 +41,13 @@ export class StackService extends BaseService {
       throw new BadRequestException('Primary asset must be in the stack');
     }
 
-    const updatedStack = await this.stackRepository.update(id, { id, primaryAssetId: dto.primaryAssetId });
+    // a cover someone chose is theirs: auto stacking then only adds to the stack, and never changes its cover
+    const chosen = !!dto.primaryAssetId && dto.primaryAssetId !== stack.primaryAssetId;
+    const updatedStack = await this.stackRepository.update(id, {
+      id,
+      primaryAssetId: dto.primaryAssetId,
+      ...(chosen && { isAutomatic: false }),
+    });
 
     await this.eventRepository.emit('StackUpdate', { stackId: id, userId: auth.user.id });
 

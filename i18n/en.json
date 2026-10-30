@@ -638,7 +638,7 @@
   "auto_stack_anytime_strict": "Identical only",
   "auto_stack_burst": "Bursts",
   "auto_stack_burst_description": "Photos the camera or phone marked as one burst",
-  "auto_stack_description": "Photos that belong together are put in one stack, with the best of them as its cover. This runs in the background after each upload and library scan. It only ever adds to stacks: nothing is deleted, stacks you made yourself are only added to, and a photo you take out of an automatic stack stays out. Automatic stacks are merged when their photos turn out to belong together.",
+  "auto_stack_description": "Photos that belong together are put in one stack, with the best of them as its cover. This runs in the background after each upload and library scan. It only ever adds to stacks: nothing is deleted, stacks you made yourself, or whose cover you chose, are only added to, and a photo you take out of an automatic stack stays out. Automatic stacks are merged when their photos turn out to belong together.",
   "auto_stack_edited": "Edited copies",
   "auto_stack_edited_description": "An edited copy and its original: IMG_E1234 and IMG_1234 (iPhone), IMG_1234-edited and IMG_1234; the edited copy is the cover",
   "auto_stack_note": "After saving, your existing photos are stacked in the background. To try other settings, use \"Stack again\": it removes the automatic stacks and stacks everything again with the new settings.",
