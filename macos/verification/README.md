@@ -26,6 +26,12 @@
 | M1-3 | 第二台 Mac 从零安装（macOS 26.7）与真实照片库 | [m1-second-mac.md](m1-second-mac.md) | 通过：修复 SDK 问题后安装成功，完全不经过 Docker；真实上传 1204 个文件，4 分 11 秒全部处理完，0 失败。端到端脚本没跑完，备份恢复未复测 |
 | M1-4 | 中文智能搜索模型 XLM-Roberta-Large-ViT-H-14 与模型预热（分支 `mac/feat/ml-warm-clip`） | [m1-clip-model.md](m1-clip-model.md) | 通过：中文 recall@1 从 6.7% 提高到 90.0%，英文不变；设为默认并在安装时预热；端到端 42/42，恢复 3/3，切换模型 3/3 与 5/5，预热中断后能续传 |
 
+## M2 视频转码用 Apple 硬件
+
+| 编号 | 验证项 | 文件 | 结论 |
+|---|---|---|---|
+| M2 | VideoToolbox 转码（分支 `mac/feat/videotoolbox`） | [m2-videotoolbox.md](m2-videotoolbox.md) | 通过：端到端 17/17（真实 iPhone HDR、实况照片、2.7K 无人机视频及 10 种衍生格式），亮度、方向、帧数与软件一致；CPU 用量降 83%；长的高码率 H.264 单个转得慢约 1 倍。原生安装默认打开，一次转 2 个 |
+
 ## 风险跟踪
 
 | 风险 | 状态 | 结论文件 |
@@ -41,6 +47,9 @@
 | 新：首次使用时模型下载太慢，服务端请求 300 秒超时 | **已修复**：安装时预热（下载可续传，再预编译 CoreML） | [m1-clip-model.md](m1-clip-model.md) |
 | 新：Immich 默认的智能搜索模型只懂英文 | **已解决**：原生安装默认用 XLM-Roberta-Large-ViT-H-14；代价是约 14 GB 磁盘、约 7 GB 内存 | [m1-clip-model.md](m1-clip-model.md) |
 | 新：模型下载中断后，服务会删掉整个模型目录从头下载 | **已规避**：预热先用 Hugging Face 续传下载 | [m1-clip-model.md](m1-clip-model.md) |
+| 新：`tonemap_videotoolbox` 把真实 iPhone HDR 视频调亮 10%–19% | **已规避**：HDR 在 GPU 上解码、缩放，色调映射回到 CPU 用 `tonemapx`，亮度与软件版相差不到 0.3 | [m2-videotoolbox.md](m2-videotoolbox.md) |
+| 新：媒体引擎解码高码率 H.264 只有约 150–190 帧/秒，单个视频比软件慢约 1 倍 | **接受**：CPU 省 95%；一次转 2 个时总吞吐与软件相当；可在网页里关掉 | [m2-videotoolbox.md](m2-videotoolbox.md) |
+| 新：`immichctl` 经 `~/.local/bin` 链接运行时找不到安装目录 | **已修复**（`aa633c444`） | — |
 
 ## 后续事项
 
@@ -50,7 +59,8 @@
 | ~~M1~~ | ~~机器学习服务单进程启动；launchd 配置（`LC_ALL`、`DB_BIN_DIR`、GNU gzip）；进程组管理；安装流程；补测从备份恢复~~（已完成，见 M1-2） |
 | ~~M1~~ | ~~安装后预热机器学习模型~~（已完成，见 M1-4） |
 | M1 | 第二台 Mac：切换到 XLM 并重建索引；补测数据库备份、从备份恢复，完整跑一遍端到端脚本 |
-| M2 | VideoToolbox：SDR 走全硬件；HDR 走"硬件解码与缩放 + CPU `tonemapx` + 硬件编码"；校准 `-q:v` |
+| ~~M2~~ | ~~VideoToolbox：SDR 走全硬件；HDR 走"硬件解码与缩放 + CPU `tonemapx` + 硬件编码"；校准 `-q:v`~~（已完成，见 M2） |
+| M2 | 在浏览器里实际验证实时转码（网页播放时按需转码）走 VideoToolbox |
 | M3 | 打包 libvips 及其约 30 个依赖库，改写动态库引用路径；统一 `MACOSX_DEPLOYMENT_TARGET`；PostgreSQL 客户端工具与 GNU gzip 一并打包 |
 | M3 | 模型随包提供（4.8 GB 下载内容即可；CoreML 编译产物和路径绑定，安装时在本机编译，约 2 分钟） |
 | M3 | 系统级服务（LaunchDaemon），开机即运行，不依赖登录（FileVault 机器需要） |
