@@ -9,6 +9,7 @@ photos taken seconds apart, an edited copy made of one of them, and a burst.
   no matter when taken: a copy of IMG_5568 exported a year later joins it, and IMG_5569 and IMG_5570, 10.4 s apart
     and all but the same (0.019); CAM00083, 25 minutes from CAM00088 and only alike (0.056), does not
   a photo taken out of an automatic stack stays out; a stack made by hand is never touched
+  a cover someone chose (CAM00089.ARW) stays when the stack of CAM00088 is merged into it, and the stack is theirs
   removing the automatic stacks, stacking again, the job queue's "all", auto stacking turned off
 
 Smart search runs on the machine learning service of the main install, with its model, so that distances are those of
@@ -233,6 +234,13 @@ def main() -> None:
                                                       immich.asset_id("IMG_5567.HEIC")]}).json()
     check("made", bool(manual.get("id")))
 
+    print("== a cover chosen by hand")
+    chosen = immich.sql("select \"stackId\" from asset where \"originalFileName\" = 'CAM00089.ARW'")[0][0]
+    c.put(f"/api/stacks/{chosen}", json={"primaryAssetId": immich.asset_id("CAM00089.ARW")}).raise_for_status()
+    stack = immich.stacks()[frozenset({"CAM00089.ARW", "CAM00089.JPG"})]
+    check("CAM00089.ARW is the cover, and the stack is no longer automatic",
+          stack["cover"] == "CAM00089.ARW" and not stack["auto"], str(stack))
+
     print("== similar photos on (recommended: 0.06, 10 s)")
     immich.preferences(similar=True)
     immich.run()
@@ -243,8 +251,10 @@ def main() -> None:
                                       "and \"originalFileName\" like 'IMG_55%' and visibility = 'timeline'")}
     check("IMG_5568, IMG_5569, IMG_5570 (10 to 27 s apart) stay out", {"IMG_5568.HEIC", "IMG_5569.HEIC",
                                                                        "IMG_5570.HEIC"} <= loose, str(sorted(loose)))
-    expect_stack(stacks, "the raw + JPEG stacks of CAM00088 and CAM00089, 3.4 s apart, merged into one",
-                 {"CAM00088.ARW", "CAM00088.JPG", "CAM00089.ARW", "CAM00089.JPG"}, "CAM00088.JPG")
+    merged = stacks.get(frozenset({"CAM00088.ARW", "CAM00088.JPG", "CAM00089.ARW", "CAM00089.JPG"}))
+    check("the raw + JPEG stacks of CAM00088 and CAM00089, 3.4 s apart, merged into the one with the chosen cover",
+          bool(merged) and merged["id"] == chosen and merged["cover"] == "CAM00089.ARW" and not merged["auto"],
+          str(merged) if merged else f"stacks: {[sorted(k) for k in stacks]}")
     check("the raw + JPEG stacks further apart stay apart",
           all(frozenset({f"{n}.ARW", f"{n}.JPG"}) in stacks for n in RAW_PAIRS), f"{len(stacks)} stacks")
     check("the stack made by hand is untouched",
@@ -273,8 +283,10 @@ def main() -> None:
     print("== removing the automatic stacks")
     removed = c.delete("/api/auto-stacks").json()["count"]
     stacks = immich.stacks()
-    check("all of them removed, the photos kept", removed == len(RAW_PAIRS) + 6 and list(stacks) == [
-        frozenset({"IMG_5566.HEIC", "IMG_5567.HEIC"})], f"{removed} removed, left: {[sorted(k) for k in stacks]}")
+    check("all of them removed but those made or changed by hand, the photos kept", removed == len(RAW_PAIRS) + 5
+          and set(stacks) == {frozenset({"IMG_5566.HEIC", "IMG_5567.HEIC"}),
+                              frozenset({"CAM00088.ARW", "CAM00088.JPG", "CAM00089.ARW", "CAM00089.JPG"})},
+          f"{removed} removed, left: {[sorted(k) for k in stacks]}")
     check("no photo deleted", immich.sql("select count(*) from asset where \"deletedAt\" is null "
                                          "and visibility = 'timeline'")[0][0] == str((len(RAW_PAIRS) + len(MERGED_PAIRS)) * 2 + len(IPHONE) + 1 + 1 + 3 + 2 + 2))
 

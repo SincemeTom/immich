@@ -171,11 +171,29 @@ describe(StackService.name, () => {
       expect(mocks.stack.update).toHaveBeenCalledWith(stack.id, {
         id: stack.id,
         primaryAssetId: asset.id,
+        isAutomatic: false,
       });
       expect(mocks.event.emit).toHaveBeenCalledWith('StackUpdate', {
         stackId: stack.id,
         userId: auth.user.id,
       });
+    });
+
+    it('should leave a stack as it was made when its cover stays', async () => {
+      const auth = AuthFactory.create();
+      const primaryAsset = AssetFactory.from().exif().build();
+      const stack = StackFactory.from({ isAutomatic: true })
+        .primaryAsset(primaryAsset, (builder) => builder.exif())
+        .asset({}, (builder) => builder.exif())
+        .build();
+
+      mocks.access.stack.checkOwnerAccess.mockResolvedValue(new Set([stack.id]));
+      mocks.stack.getById.mockResolvedValue(getForStack(stack));
+      mocks.stack.update.mockResolvedValue(getForStack(stack));
+
+      await sut.update(auth, stack.id, { primaryAssetId: stack.primaryAssetId });
+
+      expect(mocks.stack.update).toHaveBeenCalledWith(stack.id, { id: stack.id, primaryAssetId: stack.primaryAssetId });
     });
   });
 
