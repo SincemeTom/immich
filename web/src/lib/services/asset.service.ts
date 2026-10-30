@@ -4,7 +4,10 @@ import {
   AssetTypeEnum,
   AssetVisibility,
   bulkTagAssets,
+  editAsset,
+  getAssetEdits,
   getAssetInfo,
+  removeAssetEdits,
   removeAssetFromAlbum,
   runAssetJobs,
   updateAsset,
@@ -36,6 +39,8 @@ import {
   mdiMotionPlayOutline,
   mdiPlus,
   mdiPresentationPlay,
+  mdiRotateLeft,
+  mdiRotateRight,
   mdiShareVariantOutline,
   mdiTagMultipleOutline,
   mdiTagPlusOutline,
@@ -55,8 +60,10 @@ import ProfileImageCropperModal from '$lib/modals/ProfileImageCropperModal.svelt
 import SharedLinkCreateModal from '$lib/modals/SharedLinkCreateModal.svelte';
 import { Route } from '$lib/route';
 import { SlideshowState, slideshowStore } from '$lib/stores/slideshow.store';
+import { waitForWebsocketEvent } from '$lib/stores/websocket';
 import { getAssetMediaUrl, getSharedLink, sleep } from '$lib/utils';
 import { downloadUrl } from '$lib/utils';
+import { getEditTimeout, rotateEdits } from '$lib/utils/asset-rotate';
 import { handleError } from '$lib/utils/handle-error';
 import { getFormatter } from '$lib/utils/i18n';
 
@@ -296,20 +303,40 @@ export const getAssetActions = (
     shortcuts: { key: 'p' },
   };
 
+  const isEditable = () =>
+    !sharedLink &&
+    isOwner &&
+    !asset.isTrashed &&
+    (asset.type === AssetTypeEnum.Image || asset.type === AssetTypeEnum.Video) &&
+    !asset.livePhotoVideoId &&
+    asset.exifInfo?.projectionType !== ProjectionType.EQUIRECTANGULAR &&
+    !asset.originalPath.toLowerCase().endsWith('.insp') &&
+    !asset.originalPath.toLowerCase().endsWith('.gif') &&
+    !asset.originalPath.toLowerCase().endsWith('.svg');
+
   const Edit: ActionItem = {
     title: $t('editor'),
     icon: mdiTune,
-    $if: () =>
-      !sharedLink &&
-      isOwner &&
-      asset.type === AssetTypeEnum.Image &&
-      !asset.livePhotoVideoId &&
-      asset.exifInfo?.projectionType !== ProjectionType.EQUIRECTANGULAR &&
-      !asset.originalPath.toLowerCase().endsWith('.insp') &&
-      !asset.originalPath.toLowerCase().endsWith('.gif') &&
-      !asset.originalPath.toLowerCase().endsWith('.svg'),
+    $if: isEditable,
     onAction: () => assetViewerManager.openEditor(),
     shortcuts: [{ key: 'e' }],
+  };
+
+  // turning a photo or a video while looking at it, kept like the editor's rotation, which undoes it
+  const RotateRight: ActionItem = {
+    title: $t('editor_rotate_right'),
+    icon: mdiRotateRight,
+    $if: isEditable,
+    onAction: () => handleRotateAsset(asset, 90),
+    shortcuts: [{ key: 'r' }],
+  };
+
+  const RotateLeft: ActionItem = {
+    title: $t('editor_rotate_left'),
+    icon: mdiRotateLeft,
+    $if: isEditable,
+    onAction: () => handleRotateAsset(asset, -90),
+    shortcuts: [{ key: 'r', shift: true }],
   };
 
   const SetProfilePicture: ActionItem = {
@@ -380,6 +407,8 @@ export const getAssetActions = (
     Tag,
     TagPeople,
     Edit,
+    RotateLeft,
+    RotateRight,
     SetProfilePicture,
     ViewInTimeline,
     ViewSimilar,
@@ -551,5 +580,36 @@ const handleRunAssetJob = async (dto: AssetJobsDto) => {
     toastManager.primary(getAssetJobMessage($t, dto.name));
   } catch (error) {
     handleError(error, $t('errors.unable_to_submit_job'));
+  }
+};
+
+let rotating = false;
+
+export const handleRotateAsset = async (asset: AssetResponseDto, degrees: number) => {
+  if (rotating) {
+    return;
+  }
+  rotating = true;
+  const $t = await getFormatter();
+  try {
+    const { edits } = await getAssetEdits({ id: asset.id });
+    const rotated = rotateEdits(
+      edits.map(({ action, parameters }) => ({ action, parameters }) as (typeof edits)[number]),
+      degrees,
+    );
+    const ready = waitForWebsocketEvent(
+      'AssetEditReadyV2',
+      (event) => event.asset.id === asset.id,
+      getEditTimeout(asset),
+    );
+    await (rotated.length === 0
+      ? removeAssetEdits({ id: asset.id })
+      : editAsset({ id: asset.id, assetEditsCreateDto: { edits: rotated } }));
+    await ready;
+    eventManager.emit('AssetEditsApplied', asset.id);
+  } catch (error) {
+    handleError(error, $t('editor_edits_applied_error'));
+  } finally {
+    rotating = false;
   }
 };

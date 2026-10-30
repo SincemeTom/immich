@@ -435,7 +435,10 @@
       return previewStackedAsset.type === AssetTypeEnum.Image ? 'PhotoViewer' : 'StackVideoViewer';
     }
     if (asset.type === AssetTypeEnum.Video) {
-      return 'VideoViewer';
+      // a video turns and flips in the editor on its preview, as a photo does
+      return assetViewerManager.isShowEditor && editManager.selectedTool?.type === EditToolType.Transform
+        ? 'CropArea'
+        : 'VideoViewer';
     }
     if (assetViewerManager.isPlayingMotionPhoto && asset.livePhotoVideoId) {
       return 'LiveVideoViewer';

@@ -1,4 +1,11 @@
-import { AssetEditAction, AssetMediaSize, MirrorAxis, type AssetResponseDto, type CropParameters } from '@immich/sdk';
+import {
+  AssetEditAction,
+  AssetMediaSize,
+  AssetTypeEnum,
+  MirrorAxis,
+  type AssetResponseDto,
+  type CropParameters,
+} from '@immich/sdk';
 import { clamp } from 'lodash-es';
 import { tick } from 'svelte';
 import { type EditActions, type EditToolManager } from '$lib/managers/edit/edit-manager.svelte';
@@ -61,6 +68,8 @@ class TransformManager implements EditToolManager {
   });
 
   imageRotation = $state(0);
+  /** videos turn and flip, but cannot be cropped without encoding them again */
+  canCrop = $state(true);
   mirrorHorizontal = $state(false);
   mirrorVertical = $state(false);
   normalizedRotation = $derived.by(() => {
@@ -97,7 +106,7 @@ class TransformManager implements EditToolManager {
 
   checkCropEdits() {
     return (
-      Math.abs(this.previewImageSize.width - this.region.width) > 2 ||
+      (this.canCrop && Math.abs(this.previewImageSize.width - this.region.width) > 2) ||
       Math.abs(this.previewImageSize.height - this.region.height) > 2
     );
   }
@@ -172,6 +181,7 @@ class TransformManager implements EditToolManager {
   }
 
   async onActivate(asset: AssetResponseDto, edits: EditActions): Promise<void> {
+    this.canCrop = asset.type !== AssetTypeEnum.Video;
     const originalSize = getDimensions(asset.exifInfo!);
     this.originalImageSize = { width: originalSize.width ?? 0, height: originalSize.height ?? 0 };
 

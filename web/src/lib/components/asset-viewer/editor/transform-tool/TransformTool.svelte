@@ -110,39 +110,41 @@
     />
   </HStack>
 
-  <div class="mt-6 flex h-10 w-full items-center justify-between text-sm">
-    <h2>{$t('crop')}</h2>
-  </div>
+  {#if transformManager.canCrop}
+    <div class="mt-6 flex h-10 w-full items-center justify-between text-sm">
+      <h2>{$t('crop')}</h2>
+    </div>
 
-  <!-- Aspect Ratio Grid -->
-  <div class="mb-4 grid grid-cols-2">
-    {#each aspectRatios as ratio (ratio.value)}
-      <HStack>
-        <Button
-          class="m-2 size-14"
-          shape="round"
-          onclick={() => selectAspectRatio(ratio)}
-          aria-label={ratio.label}
-          color={ratioSelected(ratio) ? 'primary' : 'secondary'}
-          variant={ratioSelected(ratio) ? 'filled' : 'outline'}
-        >
-          {#if ratio.isFree}
-            <!-- Free crop icon with dashed border -->
-            <div
-              class="size-6 shrink-0 rounded-xs border-2 border-dashed {ratioSelected(ratio)
-                ? 'border-black'
-                : 'border-white'}"
-            ></div>
-          {:else}
-            <!-- Aspect ratio box -->
-            <div
-              class="shrink-0 rounded-xs border-2 {ratioSelected(ratio) ? 'border-black' : 'border-white'}"
-              style="width: {ratio.width}px; height: {ratio.height}px;"
-            ></div>
-          {/if}
-        </Button>
-        <span class="text-sm text-white">{ratio.label}</span>
-      </HStack>
-    {/each}
-  </div>
+    <!-- Aspect Ratio Grid -->
+    <div class="mb-4 grid grid-cols-2">
+      {#each aspectRatios as ratio (ratio.value)}
+        <HStack>
+          <Button
+            class="m-2 size-14"
+            shape="round"
+            onclick={() => selectAspectRatio(ratio)}
+            aria-label={ratio.label}
+            color={ratioSelected(ratio) ? 'primary' : 'secondary'}
+            variant={ratioSelected(ratio) ? 'filled' : 'outline'}
+          >
+            {#if ratio.isFree}
+              <!-- Free crop icon with dashed border -->
+              <div
+                class="size-6 shrink-0 rounded-xs border-2 border-dashed {ratioSelected(ratio)
+                  ? 'border-black'
+                  : 'border-white'}"
+              ></div>
+            {:else}
+              <!-- Aspect ratio box -->
+              <div
+                class="shrink-0 rounded-xs border-2 {ratioSelected(ratio) ? 'border-black' : 'border-white'}"
+                style="width: {ratio.width}px; height: {ratio.height}px;"
+              ></div>
+            {/if}
+          </Button>
+          <span class="text-sm text-white">{ratio.label}</span>
+        </HStack>
+      {/each}
+    </div>
+  {/if}
 </div>
