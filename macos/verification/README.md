@@ -31,6 +31,7 @@
 | M1-8 | 网页上挂载群晖（分支 `mac/feat/network-shares`） | [m1-network-shares.md](m1-network-shares.md) | 通过：管理 → 网络共享里添加 NFS 共享并测试连接；开机自动挂载，群晖重启、断网、句柄失效后自动重连；建外部库时可直接选择；端到端 41/41 |
 | 问题 2 | 自动堆叠（分支 `mac/feat/auto-stack`） | [m1-auto-stack.md](m1-auto-stack.md) | 通过：每个用户在账户设置里开启，可选连拍、RAW+JPG、编辑版、相似照片（相似度 + 拍摄间隔）；上传和外部库扫描后自动执行；只加不删，移出的照片不再放回，可一键移除或重新堆叠；端到端 25/25 |
 | RAW 预览 | RAW 照片预览默认用相机内嵌 JPG（分支 `mac/feat/raw-embedded-preview`） | [m1-raw-preview.md](m1-raw-preview.md) | 通过："优先使用嵌入式预览"默认打开，RAW 显示与相机 JPG 一致；升级和切换开关时只自动重做 RAW 的预览；端到端 11/11 |
+| 默认设置 | 新安装、新用户按这台的配置（分支 `mac/feat/my-defaults`） | [m1-defaults.md](m1-defaults.md) | 通过：存储模板 `{{y}}/{{MM}}/{{filename}}`、文件夹/人物/回忆侧边栏、自动堆叠全部规则默认开启 |
 
 ## M2 视频转码用 Apple 硬件
 
