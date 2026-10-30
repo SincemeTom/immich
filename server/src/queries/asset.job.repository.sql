@@ -515,11 +515,36 @@ select
   "asset"."libraryId",
   "asset"."originalPath",
   "asset"."status",
-  "asset"."fileModifiedAt"
+  "asset"."fileModifiedAt",
+  "asset"."checksum",
+  "asset"."checksumAlgorithm"
 from
   "asset"
 where
   "asset"."id" = any ($1::uuid[])
+
+-- AssetJobRepository.getForFileChecksum
+select
+  "asset"."id",
+  "asset"."ownerId",
+  "asset"."libraryId",
+  "asset"."originalPath",
+  "asset"."checksum",
+  "asset"."checksumAlgorithm",
+  "asset"."isOffline",
+  "asset"."visibility",
+  "asset"."duplicateId",
+  "asset"."type",
+  "asset"."livePhotoVideoId",
+  "motion"."libraryId" as "livePhotoVideoLibraryId",
+  "asset_exif"."livePhotoCID"
+from
+  "asset"
+  left join "asset" as "motion" on "motion"."id" = "asset"."livePhotoVideoId"
+  left join "asset_exif" on "asset_exif"."assetId" = "asset"."id"
+where
+  "asset"."id" = $1
+  and "asset"."deletedAt" is null
 
 -- AssetJobRepository.getForAssetDeletion
 select

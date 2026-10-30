@@ -138,9 +138,10 @@ SDKROOT="$(xcrun --show-sdk-path 2>/dev/null)" && [ -d "$SDKROOT" ] \
   || die "no macOS SDK: install the Xcode command line tools with xcode-select --install"
 export SDKROOT
 free_gb="$(df -g "$HOME" | awk 'NR == 2 { print $4 }')"
-# the build, and the models with their CoreML copies (about 14 GB for the default smart search model)
+# the build, and the models with their CoreML copies (about 14 GB for the default smart search model), unless they
+# are already there or left for later
 need_gb=15
-[ -d "$IMMICH_HOME/data/models" ] || need_gb=35
+[ -d "$IMMICH_HOME/data/models" ] || [ -n "$no_warm" ] || need_gb=35
 [ "$free_gb" -ge "$need_gb" ] || die "at least $need_gb GB free is needed, there are $free_gb GB"
 info "$(sysctl -n machdep.cpu.brand_string), macOS $macos, $free_gb GB free"
 

@@ -5,7 +5,7 @@ import type { ILibraryBulkIdsJob, ILibraryFileJob } from 'src/types.js';
 import { JOBS_LIBRARY_PAGINATION_SIZE } from 'src/constants.js';
 import { SystemConfig, defaults } from 'src/dtos/config.dto.js';
 import { mapLibrary } from 'src/dtos/library.dto.js';
-import { AssetType, CronJob, ImmichWorker, JobName, JobStatus } from 'src/enum.js';
+import { AssetType, AssetVisibility, ChecksumAlgorithm, CronJob, ImmichWorker, JobName, JobStatus } from 'src/enum.js';
 import { LibraryService } from 'src/services/library.service.js';
 import { AssetFactory } from 'test/factories/asset.factory.js';
 import { authStub } from 'test/fixtures/auth.stub.js';
@@ -18,6 +18,15 @@ async function* mockWalk() {
   // eslint-disable-next-line unicorn/no-useless-promise-resolve-reject
   yield await Promise.resolve(['/data/user1/photo.jpg']);
 }
+
+const syncAssetsJob = (assetIds: string[]): ILibraryBulkIdsJob => ({
+  assetIds,
+  libraryId: 'library-id',
+  importPaths: ['/'],
+  exclusionPatterns: [],
+  totalAssets: assetIds.length,
+  progressCounter: assetIds.length,
+});
 
 describe(LibraryService.name, () => {
   let sut: LibraryService;
@@ -343,6 +352,62 @@ describe(LibraryService.name, () => {
   });
 
   describe('handleSyncAssets', () => {
+    it('should queue hashing the contents of files imported with a path hash', async () => {
+      const mtime = new Date('2023-01-01');
+      const pathHashed = AssetFactory.create({
+        libraryId: 'library-id',
+        isExternal: true,
+        originalPath: '/photos/a.jpg',
+        fileModifiedAt: mtime,
+        checksum: Buffer.from('path:/photos/a.jpg (hashed)'),
+        checksumAlgorithm: ChecksumAlgorithm.sha1Path,
+      });
+      const contentHashed = AssetFactory.create({
+        libraryId: 'library-id',
+        isExternal: true,
+        originalPath: '/photos/b.jpg',
+        fileModifiedAt: mtime,
+        checksumAlgorithm: ChecksumAlgorithm.sha1File,
+      });
+      const sameContents = AssetFactory.create({
+        libraryId: 'library-id',
+        isExternal: true,
+        originalPath: '/photos/c.jpg',
+        fileModifiedAt: mtime,
+        checksum: Buffer.from('same-contents:/photos/c.jpg (hashed)'),
+        checksumAlgorithm: ChecksumAlgorithm.sha1Path,
+      });
+      mocks.assetJob.getForSyncAssets.mockResolvedValue([pathHashed, contentHashed, sameContents]);
+      mocks.storage.stat.mockResolvedValue({ mtime } as Stats);
+
+      await expect(
+        sut.handleSyncAssets(syncAssetsJob([pathHashed.id, contentHashed.id, sameContents.id])),
+      ).resolves.toBe(JobStatus.Success);
+
+      expect(mocks.job.queueAll).toHaveBeenCalledTimes(1);
+      expect(mocks.job.queueAll).toHaveBeenCalledWith([
+        { name: JobName.LibraryAssetChecksum, data: { id: pathHashed.id } },
+      ]);
+    });
+
+    it('should queue hashing a changed file again, with its metadata extraction', async () => {
+      const asset = AssetFactory.create({
+        libraryId: 'library-id',
+        isExternal: true,
+        fileModifiedAt: new Date('2023-01-01'),
+        checksumAlgorithm: ChecksumAlgorithm.sha1File,
+      });
+      mocks.assetJob.getForSyncAssets.mockResolvedValue([asset]);
+      mocks.storage.stat.mockResolvedValue({ mtime: new Date('2024-01-01') } as Stats);
+
+      await sut.handleSyncAssets(syncAssetsJob([asset.id]));
+
+      expect(mocks.job.queueAll).toHaveBeenCalledWith([
+        { name: JobName.SidecarCheck, data: { id: asset.id, source: 'upload' } },
+      ]);
+      expect(mocks.job.queueAll).toHaveBeenCalledWith([{ name: JobName.LibraryAssetChecksum, data: { id: asset.id } }]);
+    });
+
     it('should offline assets no longer on disk', async () => {
       const asset = AssetFactory.create({ libraryId: 'library-id', isExternal: true });
       const mockAssetJob: ILibraryBulkIdsJob = {
@@ -590,6 +655,7 @@ describe(LibraryService.name, () => {
           },
         },
       ]);
+      expect(mocks.job.queueAll).toHaveBeenCalledWith([{ name: JobName.LibraryAssetChecksum, data: { id: asset.id } }]);
     });
 
     it('should not import an asset to a soft deleted library', async () => {
@@ -605,6 +671,188 @@ describe(LibraryService.name, () => {
       await expect(sut.handleSyncFiles(mockLibraryJob)).resolves.toBe(JobStatus.Failed);
 
       expect(mocks.asset.createAll.mock.calls).toEqual([]);
+    });
+  });
+
+  describe('handleAssetChecksum', () => {
+    const contents = Buffer.from('contents');
+    const external = {
+      id: 'asset-id',
+      ownerId: 'user-id',
+      libraryId: 'library-id',
+      originalPath: '/photos/a.jpg',
+      checksum: Buffer.from('path:/photos/a.jpg (hashed)'),
+      checksumAlgorithm: ChecksumAlgorithm.sha1Path,
+      isOffline: false,
+      visibility: AssetVisibility.Timeline,
+      duplicateId: null,
+      type: AssetType.Image,
+      livePhotoVideoId: null,
+      livePhotoVideoLibraryId: null,
+      livePhotoCID: null,
+    };
+
+    beforeEach(() => {
+      mocks.crypto.hashFile.mockResolvedValue(contents);
+    });
+
+    describe('a live photo paired with a video outside its library', () => {
+      const crossed = {
+        ...external,
+        livePhotoVideoId: 'uploaded-video',
+        livePhotoVideoLibraryId: null,
+        livePhotoCID: 'CID',
+      };
+
+      it('should pair it with the video in its own library', async () => {
+        mocks.assetJob.getForFileChecksum.mockResolvedValue(crossed);
+        mocks.asset.findLivePhotoMatch.mockResolvedValue({
+          id: 'library-video',
+          ownerId: 'user-id',
+          libraryId: 'library-id',
+        });
+
+        await sut.handleAssetChecksum({ id: external.id });
+
+        expect(mocks.asset.findLivePhotoMatch).toHaveBeenCalledWith({
+          ownerId: 'user-id',
+          libraryId: 'library-id',
+          livePhotoCID: 'CID',
+          otherAssetId: external.id,
+          type: AssetType.Video,
+        });
+        expect(mocks.asset.swapLivePhotoVideo).toHaveBeenCalledWith(external.id, 'library-video', 'uploaded-video');
+      });
+
+      it('should keep its video when its library has none', async () => {
+        mocks.assetJob.getForFileChecksum.mockResolvedValue(crossed);
+        mocks.asset.findLivePhotoMatch.mockResolvedValue({ id: 'uploaded-video', ownerId: 'user-id', libraryId: null });
+
+        await sut.handleAssetChecksum({ id: external.id });
+
+        expect(mocks.asset.swapLivePhotoVideo).not.toHaveBeenCalled();
+      });
+
+      it('should leave one paired within its library alone', async () => {
+        mocks.assetJob.getForFileChecksum.mockResolvedValue({ ...crossed, livePhotoVideoLibraryId: 'library-id' });
+
+        await sut.handleAssetChecksum({ id: external.id });
+
+        expect(mocks.asset.findLivePhotoMatch).not.toHaveBeenCalled();
+      });
+
+      it('should pair it even when its contents were hashed already', async () => {
+        mocks.assetJob.getForFileChecksum.mockResolvedValue({
+          ...crossed,
+          checksum: contents,
+          checksumAlgorithm: ChecksumAlgorithm.sha1File,
+        });
+        mocks.asset.findLivePhotoMatch.mockResolvedValue({
+          id: 'library-video',
+          ownerId: 'user-id',
+          libraryId: 'library-id',
+        });
+
+        await expect(sut.handleAssetChecksum({ id: external.id })).resolves.toBe(JobStatus.Skipped);
+
+        expect(mocks.asset.swapLivePhotoVideo).toHaveBeenCalledWith(external.id, 'library-video', 'uploaded-video');
+      });
+    });
+
+    it('should replace the path hash with a hash of the contents', async () => {
+      mocks.assetJob.getForFileChecksum.mockResolvedValue(external);
+
+      await expect(sut.handleAssetChecksum({ id: external.id })).resolves.toBe(JobStatus.Success);
+
+      expect(mocks.crypto.hashFile).toHaveBeenCalledWith('/photos/a.jpg');
+      expect(mocks.asset.update).toHaveBeenCalledWith({
+        id: external.id,
+        checksum: contents,
+        checksumAlgorithm: ChecksumAlgorithm.sha1File,
+      });
+      expect(mocks.asset.getUploadedCopies).toHaveBeenCalledWith('user-id', contents);
+      expect(mocks.duplicateRepository.merge).not.toHaveBeenCalled();
+    });
+
+    it('should leave an unchanged file alone', async () => {
+      mocks.assetJob.getForFileChecksum.mockResolvedValue({
+        ...external,
+        checksum: contents,
+        checksumAlgorithm: ChecksumAlgorithm.sha1File,
+      });
+
+      await expect(sut.handleAssetChecksum({ id: external.id })).resolves.toBe(JobStatus.Skipped);
+
+      expect(mocks.asset.update).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      { name: 'an upload', asset: { ...external, libraryId: null } },
+      { name: 'an offline file', asset: { ...external, isOffline: true } },
+      { name: 'a missing or trashed asset', asset: undefined },
+    ])('should skip $name', async ({ asset }) => {
+      mocks.assetJob.getForFileChecksum.mockResolvedValue(asset);
+
+      await expect(sut.handleAssetChecksum({ id: external.id })).resolves.toBe(JobStatus.Skipped);
+
+      expect(mocks.crypto.hashFile).not.toHaveBeenCalled();
+    });
+
+    it('should fail when the file cannot be read', async () => {
+      mocks.assetJob.getForFileChecksum.mockResolvedValue(external);
+      mocks.crypto.hashFile.mockRejectedValue(new Error('EIO'));
+
+      await expect(sut.handleAssetChecksum({ id: external.id })).resolves.toBe(JobStatus.Failed);
+
+      expect(mocks.asset.update).not.toHaveBeenCalled();
+    });
+
+    it('should mark a second file with the same contents, so that scans do not hash it again', async () => {
+      mocks.assetJob.getForFileChecksum.mockResolvedValue(external);
+      mocks.asset.update.mockRejectedValueOnce({ constraint_name: 'asset_ownerId_libraryId_checksum_idx' });
+
+      await expect(sut.handleAssetChecksum({ id: external.id })).resolves.toBe(JobStatus.Success);
+
+      expect(mocks.asset.update).toHaveBeenLastCalledWith({
+        id: external.id,
+        checksum: Buffer.from('same-contents:/photos/a.jpg (hashed)'),
+        checksumAlgorithm: ChecksumAlgorithm.sha1Path,
+      });
+      expect(mocks.asset.getUploadedCopies).not.toHaveBeenCalled();
+    });
+
+    it('should rethrow other database errors', async () => {
+      mocks.assetJob.getForFileChecksum.mockResolvedValue(external);
+      mocks.asset.update.mockRejectedValueOnce(new Error('connection lost'));
+
+      await expect(sut.handleAssetChecksum({ id: external.id })).rejects.toThrow('connection lost');
+    });
+
+    it('should group uploads with the same contents with the file, reusing a duplicate group', async () => {
+      mocks.assetJob.getForFileChecksum.mockResolvedValue(external);
+      mocks.asset.getUploadedCopies.mockResolvedValue([
+        { id: 'upload-1', duplicateId: null },
+        { id: 'upload-2', duplicateId: 'group-1' },
+      ]);
+      mocks.duplicateRepository.merge.mockResolvedValue();
+
+      await sut.handleAssetChecksum({ id: external.id });
+
+      expect(mocks.duplicateRepository.merge).toHaveBeenCalledWith({
+        targetId: 'group-1',
+        assetIds: [external.id, 'upload-1', 'upload-2'],
+        sourceIds: [],
+      });
+    });
+
+    it('should not group a hidden file, such as the video of a live photo', async () => {
+      mocks.assetJob.getForFileChecksum.mockResolvedValue({ ...external, visibility: AssetVisibility.Hidden });
+      mocks.asset.getUploadedCopies.mockResolvedValue([{ id: 'upload-1', duplicateId: null }]);
+
+      await sut.handleAssetChecksum({ id: external.id });
+
+      expect(mocks.asset.update).toHaveBeenCalled();
+      expect(mocks.duplicateRepository.merge).not.toHaveBeenCalled();
     });
   });
 

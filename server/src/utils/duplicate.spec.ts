@@ -119,6 +119,24 @@ describe('duplicate utils', () => {
       expect(suggestDuplicate([moreExif, lessExif])?.id).toBe('more-exif');
     });
 
+    it('should keep the external library file over an upload of the same size', () => {
+      const exif = { make: 'Apple', model: 'iPhone 16', city: 'Shanghai' };
+      const upload = createAsset('upload', 1000, exif);
+      const external = { ...createAsset('external', 1000, exif), libraryId: 'library-1' };
+      const uploadWithMoreExif = createAsset('upload-more-exif', 1000, { ...exif, state: 'Shanghai' });
+
+      expect(suggestDuplicate([upload, external])?.id).toBe('external');
+      expect(suggestDuplicate([external, upload])?.id).toBe('external');
+      expect(suggestDuplicate([uploadWithMoreExif, external])?.id).toBe('external');
+    });
+
+    it('should still prefer a larger upload over a smaller external file', () => {
+      const upload = createAsset('upload', 2000);
+      const external = { ...createAsset('external', 1000), libraryId: 'library-1' };
+
+      expect(suggestDuplicate([upload, external])?.id).toBe('upload');
+    });
+
     it('should handle assets with no exifInfo (treat as 0 file size)', () => {
       const noExif = createAsset('no-exif');
       noExif.exifInfo = undefined;

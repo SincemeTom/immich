@@ -243,13 +243,15 @@ where
 limit
   $3
 
--- AssetRepository.getLivePhotoCount
-select
-  count(*) as "count"
-from
-  "asset"
-where
+-- AssetRepository.swapLivePhotoVideo
+begin
+update "asset"
+set
   "livePhotoVideoId" = $1::uuid
+where
+  "livePhotoVideoId" = $2::uuid
+  and "id" != $3::uuid
+rollback
 
 -- AssetRepository.getFileSamples
 select
@@ -336,9 +338,46 @@ from
 where
   "ownerId" = $1::uuid
   and "checksum" = $2
-  and "libraryId" is null
+  and (
+    "libraryId" is null
+    or "checksumAlgorithm" = 'sha1'
+  )
+order by
+  "deletedAt" is null desc,
+  "libraryId" is null desc
 limit
   $3
+
+-- AssetRepository.getUploadedCopies
+select
+  "id",
+  "duplicateId"
+from
+  "asset"
+where
+  "ownerId" = $1::uuid
+  and "checksum" = $2
+  and "libraryId" is null
+  and "deletedAt" is null
+  and "visibility" in ('timeline', 'archive')
+
+-- AssetRepository.findLivePhotoMatch
+select
+  "asset"."id",
+  "asset"."ownerId",
+  "asset"."libraryId"
+from
+  "asset"
+  inner join "asset_exif" on "asset"."id" = "asset_exif"."assetId"
+where
+  "id" != $1::uuid
+  and "ownerId" = $2::uuid
+  and "type" = $3
+  and "asset_exif"."livePhotoCID" = $4
+order by
+  "libraryId" is not distinct from $5::uuid desc
+limit
+  $6
 
 -- AssetRepository.getCalendarHeatmap
 select

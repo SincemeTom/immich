@@ -146,6 +146,12 @@ export class AssetMediaService extends BaseService {
         );
       }
 
+      // The checksum constraint catches a second upload of a file, but not one of a file an external library holds
+      const existingId = await this.assetRepository.getUploadAssetIdByChecksum(auth.user.id, file.checksum);
+      if (existingId) {
+        return await this.onDuplicateUpload(auth, existingId, file, sidecarFile);
+      }
+
       asset = await this.assetRepository.create({
         ownerId: auth.user.id,
         libraryId: null,
@@ -321,7 +327,12 @@ export class AssetMediaService extends BaseService {
     const checksumMap: Record<string, { id: string; isTrashed: boolean }> = {};
 
     for (const { id, deletedAt, checksum } of results) {
-      checksumMap[checksum.toString('hex')] = { id, isTrashed: !!deletedAt };
+      const key = checksum.toString('hex');
+      // an upload trashed as the duplicate of an external library's file doesn't hide the file
+      if (checksumMap[key] && !checksumMap[key].isTrashed) {
+        continue;
+      }
+      checksumMap[key] = { id, isTrashed: !!deletedAt };
     }
 
     return {
@@ -343,6 +354,25 @@ export class AssetMediaService extends BaseService {
         };
       }),
     };
+  }
+
+  private async onDuplicateUpload(
+    auth: AuthDto,
+    duplicateId: string,
+    file: UploadFile,
+    sidecarFile?: UploadFile,
+  ): Promise<AssetMediaResponseDto> {
+    await this.jobRepository.queue({
+      name: JobName.FileDelete,
+      data: { files: [file.originalPath, sidecarFile?.originalPath] },
+    });
+
+    if (auth.sharedLink) {
+      await this.addToSharedLink(auth.sharedLink, duplicateId);
+    }
+
+    this.logger.debug(`Duplicate asset upload rejected: existing asset ${duplicateId}`);
+    return { status: AssetMediaStatus.DUPLICATE, id: duplicateId };
   }
 
   private async addToSharedLink(sharedLink: AuthSharedLink, assetId: string) {

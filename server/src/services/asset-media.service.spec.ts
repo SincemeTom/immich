@@ -370,13 +370,39 @@ describe(AssetMediaService.name, () => {
       (error as any).constraint_name = ASSET_CHECKSUM_CONSTRAINT;
 
       mocks.asset.create.mockRejectedValue(error);
-      mocks.asset.getUploadAssetIdByChecksum.mockResolvedValue(assetEntity.id);
+      // a concurrent upload of the same file: not there before the insert, there after it failed
+      mocks.asset.getUploadAssetIdByChecksum.mockResolvedValueOnce(undefined).mockResolvedValueOnce(assetEntity.id);
 
       await expect(sut.uploadAsset(authStub.user1, createDto, file)).resolves.toEqual({
         id: 'id_1',
         status: AssetMediaStatus.DUPLICATE,
       });
 
+      expect(mocks.job.queue).toHaveBeenCalledWith({
+        name: JobName.FileDelete,
+        data: { files: ['fake_path/asset_1.jpeg', undefined] },
+      });
+      expect(mocks.user.updateUsage).not.toHaveBeenCalled();
+    });
+
+    it('should reject an upload of a file an external library holds, before creating it', async () => {
+      const file = {
+        uuid: 'random-uuid',
+        originalPath: 'fake_path/asset_1.jpeg',
+        mimeType: 'image/jpeg',
+        checksum: Buffer.from('file hash', 'utf8'),
+        originalName: 'asset_1.jpeg',
+        size: 0,
+      };
+      mocks.asset.getUploadAssetIdByChecksum.mockResolvedValue('external-asset-id');
+
+      await expect(sut.uploadAsset(authStub.user1, createDto, file)).resolves.toEqual({
+        id: 'external-asset-id',
+        status: AssetMediaStatus.DUPLICATE,
+      });
+
+      expect(mocks.asset.getUploadAssetIdByChecksum).toHaveBeenCalledWith(authStub.user1.user.id, file.checksum);
+      expect(mocks.asset.create).not.toHaveBeenCalled();
       expect(mocks.job.queue).toHaveBeenCalledWith({
         name: JobName.FileDelete,
         data: { files: ['fake_path/asset_1.jpeg', undefined] },
@@ -840,6 +866,32 @@ describe(AssetMediaService.name, () => {
       });
 
       expect(mocks.asset.getByChecksums).toHaveBeenCalledWith(authStub.admin.user.id, [file1, file2]);
+    });
+
+    it.each([
+      { name: 'after', order: ['trashed', 'kept'] },
+      { name: 'before', order: ['kept', 'trashed'] },
+    ])('should answer with the asset that is not trashed, listed $name the trashed one', async ({ order }) => {
+      const file1 = Buffer.from('d2947b871a706081be194569951b7db246907957', 'hex');
+      const rows = {
+        trashed: { id: 'trashed-upload', checksum: file1, deletedAt: new Date() },
+        kept: { id: 'library-file', checksum: file1, deletedAt: null },
+      };
+      mocks.asset.getByChecksums.mockResolvedValue(order.map((key) => rows[key as keyof typeof rows]));
+
+      await expect(
+        sut.bulkUploadCheck(authStub.admin, { assets: [{ id: '1', checksum: file1.toString('hex') }] }),
+      ).resolves.toEqual({
+        results: [
+          {
+            id: '1',
+            assetId: 'library-file',
+            action: AssetUploadAction.REJECT,
+            reason: AssetRejectReason.DUPLICATE,
+            isTrashed: false,
+          },
+        ],
+      });
     });
   });
 

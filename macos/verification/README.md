@@ -25,6 +25,7 @@
 | M1-2 | 一键安装与 launchd 托管（分支 `mac/feat/native-install`） | [m1-native-install.md](m1-native-install.md) | 通过：端到端 40/40，从备份恢复 3/3，崩溃拉起、升级、卸载 |
 | M1-3 | 第二台 Mac 从零安装（macOS 26.7）与真实照片库 | [m1-second-mac.md](m1-second-mac.md) | 通过：修复 SDK 问题后安装成功，完全不经过 Docker；真实上传 1204 个文件，4 分 11 秒全部处理完，0 失败。端到端脚本没跑完，备份恢复未复测 |
 | M1-4 | 中文智能搜索模型 XLM-Roberta-Large-ViT-H-14 与模型预热（分支 `mac/feat/ml-warm-clip`） | [m1-clip-model.md](m1-clip-model.md) | 通过：中文 recall@1 从 6.7% 提高到 90.0%，英文不变；设为默认并在安装时预热；端到端 42/42，恢复 3/3，切换模型 3/3 与 5/5，预热中断后能续传 |
+| M1-5 | 外部库（群晖）与手机备份：重复照片（分支 `mac/feat/external-checksum`） | [m1-external-dedupe.md](m1-external-dedupe.md) | 通过：修复前 5/5 复现，修复后 24/24。外部库改为按内容算指纹，手机备份不再重复上传；已有的重复归入"重复项"页面，默认保留外部库原件，相册和收藏随之合并。另外修复了上游的实况照片交叉配对 bug |
 
 ## M2 视频转码用 Apple 硬件
 
@@ -50,6 +51,9 @@
 | 新：`tonemap_videotoolbox` 把真实 iPhone HDR 视频调亮 10%–19% | **已规避**：HDR 在 GPU 上解码、缩放，色调映射回到 CPU 用 `tonemapx`，亮度与软件版相差不到 0.3 | [m2-videotoolbox.md](m2-videotoolbox.md) |
 | 新：媒体引擎解码高码率 H.264 只有约 150–190 帧/秒，单个视频比软件慢约 1 倍 | **接受**：CPU 省 95%；一次转 2 个时总吞吐与软件相当；可在网页里关掉 | [m2-videotoolbox.md](m2-videotoolbox.md) |
 | 新：`immichctl` 经 `~/.local/bin` 链接运行时找不到安装目录 | **已修复**（`aa633c444`） | — |
+| 新：外部库照片会被手机备份重复上传 | **已修复**：外部库按内容算指纹，上传查重同时查外部库 | [m1-external-dedupe.md](m1-external-dedupe.md) |
+| 新（上游 bug）：实况照片同时在外部库和上传库时被交叉配对，清理重复后外部库照片的动态视频被删 | **已修复**：优先配本库的视频；扫描时纠正已经配错的 | [m1-external-dedupe.md](m1-external-dedupe.md) |
+| 新：Immich 会往外部库目录写 `.xmp` 文件 | 上游原有行为，**待你决定**是否改为不写 | [m1-external-dedupe.md](m1-external-dedupe.md) |
 
 ## 后续事项
 
@@ -61,6 +65,8 @@
 | M1 | 第二台 Mac：切换到 XLM 并重建索引；补测数据库备份、从备份恢复，完整跑一遍端到端脚本 |
 | ~~M2~~ | ~~VideoToolbox：SDR 走全硬件；HDR 走"硬件解码与缩放 + CPU `tonemapx` + 硬件编码"；校准 `-q:v`~~（已完成，见 M2） |
 | M2 | 在浏览器里实际验证实时转码（网页播放时按需转码）走 VideoToolbox |
+| 问题 2 | 自动堆叠：连拍、RAW+JPG、手机编辑版、高相似度 |
+| M1-5 | 在真实群晖 NFS 上用一个小目录验证一遍 |
 | M3 | 打包 libvips 及其约 30 个依赖库，改写动态库引用路径；统一 `MACOSX_DEPLOYMENT_TARGET`；PostgreSQL 客户端工具与 GNU gzip 一并打包 |
 | M3 | 模型随包提供（4.8 GB 下载内容即可；CoreML 编译产物和路径绑定，安装时在本机编译，约 2 分钟） |
 | M3 | 系统级服务（LaunchDaemon），开机即运行，不依赖登录（FileVault 机器需要） |

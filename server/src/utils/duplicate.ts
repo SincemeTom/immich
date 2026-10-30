@@ -17,7 +17,9 @@ export const getExifCount = (asset: AssetResponseDto): number => {
  *
  * The best asset is determined by the following criteria:
  *  1. Largest image file size in bytes
- *  2. Largest count of EXIF data (as tie-breaker)
+ *  2. In an external library rather than uploaded (as tie-breaker): the same file twice is an upload of a photo the
+ *     library already holds, which then stays where the user keeps it
+ *  3. Largest count of EXIF data (as tie-breaker)
  *
  * @param assets List of duplicate assets
  * @returns The best asset to keep, or undefined if empty list
@@ -37,6 +39,10 @@ export const suggestDuplicate = (assets: AssetResponseDto[]): AssetResponseDto |
 
   // Filter to keep only assets with the largest file size
   duplicateAssets = duplicateAssets.filter((asset) => (asset.exifInfo?.fileSizeInByte ?? 0) === largestFileSize);
+
+  if (duplicateAssets.some((asset) => asset.libraryId)) {
+    duplicateAssets = duplicateAssets.filter((asset) => asset.libraryId);
+  }
 
   // If there are multiple assets with the same file size, sort by EXIF count
   if (duplicateAssets.length >= 2) {

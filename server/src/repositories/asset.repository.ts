@@ -25,6 +25,7 @@ import {
   AssetType,
   AssetVisibility,
   CalendarHeatmapType,
+  ChecksumAlgorithm,
 } from 'src/enum.js';
 import { DB } from 'src/schema/index.js';
 import { AssetAudioTable, AssetKeyframeTable, AssetVideoTable } from 'src/schema/tables/asset-av.table.js';
@@ -544,6 +545,27 @@ export class AssetRepository {
   }
 
   @GenerateSql({ params: [DummyValue.UUID] })
+  /**
+   * Swaps the videos of two live photo stills: the still in an external library that was paired with an uploaded
+   * video gets its library's video, and the upload's still, which the library's video was paired with, its own.
+   */
+  @GenerateSql({ params: [DummyValue.UUID, DummyValue.UUID, DummyValue.UUID] })
+  async swapLivePhotoVideo(stillId: string, videoId: string, currentVideoId: string): Promise<void> {
+    await this.db.transaction().execute(async (tx) => {
+      await tx
+        .updateTable('asset')
+        .set({ livePhotoVideoId: asUuid(currentVideoId) })
+        .where('livePhotoVideoId', '=', asUuid(videoId))
+        .where('id', '!=', asUuid(stillId))
+        .execute();
+      await tx
+        .updateTable('asset')
+        .set({ livePhotoVideoId: asUuid(videoId) })
+        .where('id', '=', asUuid(stillId))
+        .execute();
+    });
+  }
+
   async getLivePhotoCount(motionId: string): Promise<number> {
     const [{ count }] = await this.db
       .selectFrom('asset')
@@ -679,6 +701,12 @@ export class AssetRepository {
       .execute();
   }
 
+  /**
+   * The asset a new upload with this checksum duplicates: an earlier upload, or else a file in one of the user's
+   * external libraries that was hashed by its contents. Trashed and offline ones count, so that a library whose
+   * share is briefly unmounted doesn't get uploaded again, but one that isn't trashed comes first: once the copies
+   * uploaded of a library's files are trashed, the files are what the uploads duplicate.
+   */
   @GenerateSql({ params: [DummyValue.UUID, DummyValue.BUFFER] })
   async getUploadAssetIdByChecksum(ownerId: string, checksum: Buffer): Promise<string | undefined> {
     const asset = await this.db
@@ -686,23 +714,61 @@ export class AssetRepository {
       .select('id')
       .where('ownerId', '=', asUuid(ownerId))
       .where('checksum', '=', checksum)
-      .where('libraryId', 'is', null)
+      .where((eb) =>
+        eb.or([eb('libraryId', 'is', null), eb('checksumAlgorithm', '=', sql.lit(ChecksumAlgorithm.sha1File))]),
+      )
+      .orderBy(sql`"deletedAt" is null`, 'desc')
+      .orderBy(sql`"libraryId" is null`, 'desc')
       .limit(1)
       .executeTakeFirst();
 
     return asset?.id;
   }
 
-  findLivePhotoMatch(options: LivePhotoSearchOptions) {
-    const { ownerId, otherAssetId, livePhotoCID, type } = options;
+  /** Uploads with the same contents as a file in an external library, which it makes redundant */
+  @GenerateSql({ params: [DummyValue.UUID, DummyValue.BUFFER] })
+  getUploadedCopies(ownerId: string, checksum: Buffer) {
     return this.db
       .selectFrom('asset')
-      .select(['asset.id', 'asset.ownerId'])
+      .select(['id', 'duplicateId'])
+      .where('ownerId', '=', asUuid(ownerId))
+      .where('checksum', '=', checksum)
+      .where('libraryId', 'is', null)
+      .where('deletedAt', 'is', null)
+      .where('visibility', 'in', [sql.lit(AssetVisibility.Timeline), sql.lit(AssetVisibility.Archive)])
+      .execute();
+  }
+
+  /**
+   * The other half of a live photo. One in the same library comes first (uploads count as a library): a photo backed
+   * up from a phone and also in an external library is two live photos, each of which keeps its own video when the
+   * other is deleted.
+   */
+  @GenerateSql({
+    params: [
+      {
+        ownerId: DummyValue.UUID,
+        libraryId: DummyValue.UUID,
+        livePhotoCID: DummyValue.STRING,
+        otherAssetId: DummyValue.UUID,
+        type: AssetType.Video,
+      },
+    ],
+  })
+  findLivePhotoMatch(options: LivePhotoSearchOptions) {
+    const { ownerId, libraryId, otherAssetId, livePhotoCID, type } = options;
+    return this.db
+      .selectFrom('asset')
+      .select(['asset.id', 'asset.ownerId', 'asset.libraryId'])
       .innerJoin('asset_exif', 'asset.id', 'asset_exif.assetId')
       .where('id', '!=', asUuid(otherAssetId))
       .where('ownerId', '=', asUuid(ownerId))
       .where('type', '=', type)
       .where('asset_exif.livePhotoCID', '=', livePhotoCID)
+      .orderBy(
+        libraryId ? sql`"libraryId" is not distinct from ${asUuid(libraryId)}` : sql`"libraryId" is null`,
+        'desc',
+      )
       .limit(1)
       .executeTakeFirst();
   }

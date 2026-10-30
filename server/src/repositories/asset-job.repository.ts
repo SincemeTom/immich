@@ -271,9 +271,37 @@ export class AssetJobRepository {
         'asset.originalPath',
         'asset.status',
         'asset.fileModifiedAt',
+        'asset.checksum',
+        'asset.checksumAlgorithm',
       ])
       .where('asset.id', '=', anyUuid(ids))
       .execute();
+  }
+
+  @GenerateSql({ params: [DummyValue.UUID] })
+  getForFileChecksum(id: string) {
+    return this.db
+      .selectFrom('asset')
+      .select([
+        'asset.id',
+        'asset.ownerId',
+        'asset.libraryId',
+        'asset.originalPath',
+        'asset.checksum',
+        'asset.checksumAlgorithm',
+        'asset.isOffline',
+        'asset.visibility',
+        'asset.duplicateId',
+        'asset.type',
+        'asset.livePhotoVideoId',
+      ])
+      .leftJoin('asset as motion', 'motion.id', 'asset.livePhotoVideoId')
+      .select('motion.libraryId as livePhotoVideoLibraryId')
+      .leftJoin('asset_exif', 'asset_exif.assetId', 'asset.id')
+      .select('asset_exif.livePhotoCID')
+      .where('asset.id', '=', id)
+      .where('asset.deletedAt', 'is', null)
+      .executeTakeFirst();
   }
 
   @GenerateSql({ params: [DummyValue.UUID] })
