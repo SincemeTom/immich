@@ -60,10 +60,10 @@
   });
 
   const classes = {
-    column1: 'w-3/12',
+    column1: 'w-2/12',
     column2: 'w-5/12',
     column3: 'w-3/12',
-    column4: 'w-1/12 flex justify-end',
+    column4: 'w-2/12 flex justify-end',
   };
 </script>
 
