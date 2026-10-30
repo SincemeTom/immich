@@ -36,6 +36,12 @@
 | RAW 预览 | RAW 照片预览默认用相机内嵌 JPG（分支 `mac/feat/raw-embedded-preview`） | [m1-raw-preview.md](m1-raw-preview.md) | 通过："优先使用嵌入式预览"默认打开，RAW 显示与相机 JPG 一致；升级和切换开关时只自动重做 RAW 的预览；端到端 11/11 |
 | 默认设置 | 新安装、新用户按这台的配置（分支 `mac/feat/my-defaults`） | [m1-defaults.md](m1-defaults.md) | 通过：存储模板 `{{y}}/{{MM}}/{{filename}}`、文件夹/人物/回忆侧边栏、自动堆叠全部规则默认开启 |
 
+## M3 安装包
+
+| 编号 | 内容 | 记录 | 结论 |
+|---|---|---|---|
+| M3-1 | 不需要 Homebrew 的 .pkg（分支 `mac/feat/pkg`） | [m3-pkg.md](m3-pkg.md) | 发布目录自带全部依赖（macOS 15+）；屏蔽 Homebrew 和外网后检查 16/16，新装端到端 36/36，接管一键安装版数据全部保留、端到端 36/36；装着 Homebrew 的 Mac 上也不会混加载 Homebrew 的库 |
+
 ## M2 视频转码用 Apple 硬件
 
 | 编号 | 验证项 | 文件 | 结论 |

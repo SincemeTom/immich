@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><style>
+body { font: 13px -apple-system, "PingFang SC", sans-serif; line-height: 1.55; }
+h2 { font-size: 15px; margin: 0 0 8px; }
+ul { padding-left: 18px; margin: 6px 0 10px; }
+code { font: 12px ui-monospace, Menlo, monospace; }
+</style></head>
+<body>
+<h2>Immich 已经在运行</h2>
+<ul>
+  <li><b>网页</b>：<code>http://localhost:2283</code>。手机 App 里服务器地址填 <code>http://这台Mac的IP:2283</code>（在“系统设置 → 网络”里查看 IP）。</li>
+  <li><b>第一次访问</b>某个网络共享（NAS）时，macOS 会询问 node 能否访问网络卷，请点“允许”。</li>
+  <li><b>管理</b>：在“终端”里运行 <code>immichctl status</code>（状态）、<code>immichctl logs</code>（日志）、<code>immichctl doctor</code>（检查这台 Mac 能否长期无人值守运行）。</li>
+  <li><b>日志</b>：<code>~/Library/Logs/Immich</code>。安装过程的记录在其中的 <code>install.log</code>。</li>
+  <li><b>升级</b>：直接安装新版本的安装包，数据都会保留。</li>
+  <li><b>卸载</b>：<code>immichctl uninstall</code> 停止并移除服务，保留数据；加 <code>--purge</code> 连同数据库和设置一起删除。照片库始终保留。</li>
+</ul>
+</body>
+</html>

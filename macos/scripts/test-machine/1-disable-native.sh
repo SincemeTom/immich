@@ -1,7 +1,8 @@
 #!/bin/bash
 # Turns off the one-click (install.sh) Immich on this Mac, so that it neither runs nor comes back at login, for a test
-# of the .pkg. Its data stays where it is, for the .pkg to take over; --fresh moves it aside too, for a test of a new
-# install. 3-restore.sh undoes all of it.
+# of the .pkg. Its data stays where it is, for the .pkg to take over, and what the .pkg then rewrites (its settings,
+# scripts and the release it runs) is saved; --fresh moves all of it aside instead, for a test of a new install.
+# 3-restore.sh undoes all of it.
 #
 # Usage: 1-disable-native.sh [--fresh] [--dry-run]
 set -euo pipefail
@@ -43,6 +44,20 @@ for plist in ${plists[@]+"${plists[@]}"}; do
   echo "  moving aside $(basename "$plist")"
   run mv "$plist" "$BACKUP/LaunchAgents/"
 done
+
+if [ "$FRESH" = 0 ] && [ -d "$HOME_DIR" ]; then
+  echo "==> Saving what the .pkg rewrites when it takes over"
+  run mkdir -p "$BACKUP/state"
+  for file in config/native.env bin/run-service bin/immichctl; do
+    [ -f "$HOME_DIR/$file" ] && run cp -p "$HOME_DIR/$file" "$BACKUP/state/$(basename "$file")"
+  done
+  # the release it runs, which the .pkg keeps as the one before its own
+  if [ "$DRY" = 1 ]; then
+    echo "  would save: current -> $(readlink "$HOME_DIR/current" 2>/dev/null || echo none)"
+  else
+    readlink "$HOME_DIR/current" >"$BACKUP/state/current" 2>/dev/null || true
+  fi
+fi
 
 if [ "$FRESH" = 1 ] && [ -d "$HOME_DIR" ]; then
   echo "==> Moving its data aside, for a test of a new install"

@@ -28,3 +28,6 @@ vite.config.js.timestamp-*
 .devcontainer/.env*
 *.tsbuildinfo
 *.tsbuildInfo
+
+# the .pkg build: releases, payloads and packages
+/macos/package/build/

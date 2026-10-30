@@ -1,0 +1,69 @@
+#!/bin/bash
+# The .pkg's postinstall, run by Installer as root once the payload is in place (in /Library/Application Support/Immich/
+# pkg/<release>): hands the release and the models to the user who is logged in, then configures and starts Immich for
+# them with the release's configure.sh, as install.sh does. A Homebrew-based (install.sh) install of theirs is taken
+# over: its database, settings and library are kept.
+#
+# Its output is in /var/log/install.log; configure.sh's also in ~/Library/Logs/Immich/install.log.
+set -euo pipefail
+
+RELEASE_ID="@RELEASE_ID@"
+STAGE="/Library/Application Support/Immich/pkg"
+PAYLOAD="$STAGE/$RELEASE_ID"
+export PATH=/usr/bin:/bin:/usr/sbin:/sbin
+
+log() { echo "immich postinstall: $*"; }
+cleanup() {
+  rm -rf "$PAYLOAD"
+  rmdir "$STAGE" "/Library/Application Support/Immich" 2>/dev/null || true
+}
+trap cleanup EXIT
+
+# Immich runs as LaunchAgents of the user logged in at the screen, whose session they need
+user="$(stat -f%Su /dev/console)"
+if [ -z "$user" ] || [ "$user" = root ] || [ "$user" = loginwindow ] || [ "$user" = _mbsetupuser ]; then
+  log "nobody is logged in at the screen: install while logged in as the user Immich is to run as"
+  exit 1
+fi
+uid="$(id -u "$user")"
+group="$(id -gn "$user")"
+home="$(dscl . -read "/Users/$user" NFSHomeDirectory | awk '{ print $2 }')"
+immich_home="$home/Library/Application Support/Immich"
+log "installing $RELEASE_ID for $user ($home)"
+
+# as the user, in their login session: launchctl reaches their LaunchAgents only from there
+as_user() {
+  launchctl asuser "$uid" sudo -u "$user" -H env -i HOME="$home" USER="$user" LOGNAME="$user" SHELL=/bin/zsh \
+    TMPDIR="$(sudo -u "$user" getconf DARWIN_USER_TEMP_DIR)" PATH="$PATH" LANG=en_US.UTF-8 "$@"
+}
+
+chown -R "$user:$group" "$PAYLOAD"
+
+# The models, unless the user has them already (a takeover, or the same .pkg again): a rename, on the same volume
+as_user mkdir -p "$immich_home/data/models"
+for model in "$PAYLOAD"/models/*/*; do
+  [ -d "$model" ] || continue
+  target="$immich_home/data/models/$(basename "$(dirname "$model")")/$(basename "$model")"
+  if [ -e "$target/.immich-native-downloaded" ]; then
+    log "model $(basename "$model"): there already"
+  else
+    as_user rm -rf "$target"
+    as_user mkdir -p "$(dirname "$target")"
+    as_user mv "$model" "$target"
+    log "model $(basename "$model"): installed"
+  fi
+done
+
+as_user "$PAYLOAD/release/native/configure.sh" --release "$PAYLOAD/release"
+
+# immichctl on every user's PATH: /usr/local/bin is on it from the first login, unlike ~/.local/bin
+link=/usr/local/bin/immichctl
+if [ ! -e "$link" ] || [ "$(basename "$(readlink "$link")")" = immichctl ]; then
+  mkdir -p /usr/local/bin
+  ln -sfn "$immich_home/bin/immichctl" "$link"
+fi
+
+# the web UI, for creating the admin account
+port="$(sed -n 's/^IMMICH_NATIVE_SERVER_PORT=//p' "$immich_home/config/native.env")"
+as_user open "http://localhost:${port:-2283}" || true
+log "done"

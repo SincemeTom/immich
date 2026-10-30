@@ -5,7 +5,7 @@
 # Usage: run-service postgres|valkey|ml|server [args]
 #        run-service ml-warm CLIP FACE OCR OCR_MAX_RESOLUTION     (immichctl warm)
 #
-# Everything comes from $IMMICH_HOME/config: native.env (written by install.sh) and server.env (yours, extra
+# Everything comes from $IMMICH_HOME/config: native.env (written by configure.sh) and server.env (yours, extra
 # Immich settings for the server). The release a service runs is the one `current` points at when it starts.
 set -euo pipefail
 
@@ -22,11 +22,23 @@ current_release() {
 # launchd starts jobs with LANG unset. Postgres then asks macOS for the locale, which starts a thread in the
 # postmaster, and it refuses to run ("postmaster became multithreaded during startup").
 export LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8
-# GNU gzip (Homebrew) ahead of macOS's, which rejects the --rsyncable that database backups use
-export PATH="/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin"
-
 service="${1:?usage: run-service postgres|valkey|ml|server [args]}"
 shift
+
+release="$(current_release)"
+if [ -d "$release/tools/bin" ]; then
+  # a self-contained release (the .pkg's) brings everything it runs, GNU gzip among them
+  export PATH="$release/tools/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+  valkey="$release/valkey/bin/valkey-server"
+else
+  # GNU gzip (Homebrew) ahead of macOS's, which rejects the --rsyncable that database backups use
+  export PATH="/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+  valkey=/opt/homebrew/bin/valkey-server
+fi
+# Named python either way, like the venv's: CoreML keeps the models it compiles in ~/Library/Caches/<process name>
+# (about 10 GB for the default ones), which the self-contained release then finds where an install.sh install left them
+python="$release/ml/python/bin/python"
+[ -x "$python" ] || python="$release/ml/venv/bin/python"
 
 case "$service" in
   postgres)
@@ -44,11 +56,10 @@ case "$service" in
     ;;
 
   valkey)
-    exec /opt/homebrew/bin/valkey-server "$home/config/valkey.conf"
+    exec "$valkey" "$home/config/valkey.conf"
     ;;
 
   ml | ml-warm)
-    release="$(current_release)"
     export PYTHONPATH="$release/ml"
     export MACHINE_LEARNING_CACHE_FOLDER="$home/data/models"
     export HF_HOME="$home/data/models/hf-cache"
@@ -67,7 +78,7 @@ case "$service" in
       # Downloaded first, apart from the service: Hugging Face resumes an interrupted download from its partial
       # files, while the service, finding a model it cannot load, deletes its folder and fetches all of it again,
       # which on a slow line is hours. A marker records a finished download, so later warm-ups need no network.
-      "$release/ml/venv/bin/python" - "$1" "$2" "$3" <<'PY' || echo "the download step failed, preparing what is there"
+      "$python" - "$1" "$2" "$3" <<'PY' || echo "the download step failed, preparing what is there"
 import sys
 
 from huggingface_hub import snapshot_download
@@ -92,13 +103,12 @@ PY
     cd "$release/ml"
     # uvicorn directly rather than `python -m immich_ml`, which forks a worker from gunicorn: a forked worker
     # compiling CoreML models aborted once in M0 (macos/verification/m0-ml-coreml.md). launchd restarts it instead.
-    exec "$release/ml/venv/bin/python" -m uvicorn immich_ml.main:app \
+    exec "$python" -m uvicorn immich_ml.main:app \
       --host 127.0.0.1 --port "$IMMICH_NATIVE_ML_PORT" \
       --timeout-keep-alive 2 --log-config "$release/ml/immich_ml/log_conf.json" "$@"
     ;;
 
   server)
-    release="$(current_release)"
     # your settings first, so that the ones the services depend on below take precedence
     set -a
     # shellcheck source=/dev/null
@@ -132,6 +142,15 @@ PY
     export IMMICH_NETWORK_SHARES_LOCATION="$home/mounts"
     # jellyfin-ffmpeg, which has the tonemapx filter the server uses for HDR video
     export PATH="$release/ffmpeg:$PATH"
+    if [ -d "$release/vips" ]; then
+      # A self-contained release's libvips, which looks for its modules (HEIC, JPEG XL, ImageMagick) under VIPSHOME;
+      # ImageMagick, for its coders (BMP, PSD), and fontconfig (text in SVGs) would otherwise look in Homebrew
+      export VIPSHOME="$release/vips"
+      magick_modules="$(echo "$release"/imagemagick/modules-*)"
+      export MAGICK_CODER_MODULE_PATH="$magick_modules/coders" MAGICK_CODER_FILTER_PATH="$magick_modules/filters"
+      export MAGICK_CONFIGURE_PATH="$release/imagemagick/etc"
+      export FONTCONFIG_FILE="$release/fontconfig/fonts.conf"
+    fi
     # macOS asks once whether a program may read network volumes (an external library on a NAS), and remembers the
     # answer for that program's path. The release's node has a new path at every upgrade, which would ask again and
     # leave the server waiting on the NAS until someone clicked; a copy of it at one path, replaced at upgrades, is

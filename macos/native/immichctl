@@ -37,6 +37,13 @@ plist() { echo "$HOME/Library/LaunchAgents/$(label "$1").plist"; }
 is_loaded() { launchctl print "$domain/$(label "$1")" >/dev/null 2>&1; }
 job_pid() { launchctl print "$domain/$(label "$1")" 2>/dev/null | awk '$1 == "pid" { print $3; exit }'; }
 
+# the release's own, for a self-contained release (the .pkg's), or Homebrew's
+valkey_cli() {
+  local cli="$home/current/valkey/bin/valkey-cli"
+  [ -x "$cli" ] || cli=/opt/homebrew/bin/valkey-cli
+  "$cli" "$@"
+}
+
 check_service() {
   case "$1" in
     postgres | valkey | ml | server) ;;
@@ -47,7 +54,7 @@ check_service() {
 healthy() {
   case "$1" in
     postgres) "$IMMICH_NATIVE_PG_PREFIX/bin/pg_isready" -q -h 127.0.0.1 -p "$IMMICH_NATIVE_DB_PORT" ;;
-    valkey) [ "$(/opt/homebrew/bin/valkey-cli -p "$IMMICH_NATIVE_REDIS_PORT" ping 2>/dev/null)" = PONG ] ;;
+    valkey) [ "$(valkey_cli -p "$IMMICH_NATIVE_REDIS_PORT" ping 2>/dev/null)" = PONG ] ;;
     ml) [ "$(curl -fsS -m 2 "http://127.0.0.1:$IMMICH_NATIVE_ML_PORT/ping" 2>/dev/null)" = pong ] ;;
     server) curl -fsS -m 2 "http://127.0.0.1:$IMMICH_NATIVE_SERVER_PORT/api/server/ping" 2>/dev/null | grep -q pong ;;
   esac
@@ -235,6 +242,15 @@ cmd_uninstall() {
     echo "kept $home (database, settings, models); \`immichctl uninstall --purge\` deletes it"
   fi
   echo "kept the library: $IMMICH_NATIVE_LIBRARY"
+  # what the .pkg added outside the install, which only an administrator can remove
+  local link=/usr/local/bin/immichctl leftovers=()
+  [ "$(readlink "$link" 2>/dev/null)" = "$home/bin/immichctl" ] && leftovers+=("sudo rm $link")
+  pkgutil --pkg-info io.github.sincemetom.immich >/dev/null 2>&1 \
+    && leftovers+=("sudo pkgutil --forget io.github.sincemetom.immich")
+  if [ ${#leftovers[@]} -gt 0 ]; then
+    echo "installed by the .pkg: to remove what it added outside the install, run"
+    printf '  %s\n' "${leftovers[@]}"
+  fi
 }
 
 # --- machine learning models -------------------------------------------------------------------------------------
