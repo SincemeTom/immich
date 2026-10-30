@@ -229,9 +229,13 @@ export class IntegrityService extends BaseService {
     this.logger.log(`Scanning for untracked files...`);
 
     const assetPaths = this.storageRepository.walk({
-      pathsToCrawl: [StorageFolder.EncodedVideo, StorageFolder.Library, StorageFolder.Upload].map((folder) =>
-        StorageCore.getBaseFolder(folder),
-      ),
+      pathsToCrawl: [
+        ...[StorageFolder.EncodedVideo, StorageFolder.Library, StorageFolder.Upload].map((folder) =>
+          StorageCore.getBaseFolder(folder),
+        ),
+        // users' originals kept on a network share
+        ...Object.values(StorageCore.getStorageLocations().users),
+      ],
       includeHidden: false,
       take: JOBS_LIBRARY_PAGINATION_SIZE,
     });

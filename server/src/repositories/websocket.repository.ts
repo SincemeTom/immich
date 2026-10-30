@@ -19,6 +19,7 @@ import { handlePromiseError } from 'src/utils/misc.js';
 export const serverEvents = [
   'ConfigUpdate',
   'AppRestart',
+  'StorageLocationUpdate',
   'HlsSegmentRequest',
   'HlsSegmentResult',
   'HlsHeartbeat',

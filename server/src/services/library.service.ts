@@ -114,7 +114,8 @@ export class LibraryService extends BaseService {
     const ready$ = new Promise<void>((resolve) => (_resolve = resolve));
 
     const handler = async (event: string, path: string) => {
-      if (matcher(path)) {
+      // a folder Immich keeps its own files in, inside an import path: a user's originals on the NAS, say
+      if (matcher(path) && !StorageCore.isInStorageLocation(path)) {
         this.logger.debug(`File ${event} event received for ${path} in library ${library.id}`);
         await this.jobRepository.queue({
           name: JobName.LibrarySyncFiles,
@@ -675,9 +676,9 @@ export class LibraryService extends BaseService {
             break;
           }
 
-          const isExcluded = job.exclusionPatterns.some((pattern) =>
-            picomatch.isMatch(asset.originalPath, pattern, { nocase: true }),
-          );
+          const isExcluded =
+            StorageCore.isInStorageLocation(asset.originalPath) ||
+            job.exclusionPatterns.some((pattern) => picomatch.isMatch(asset.originalPath, pattern, { nocase: true }));
 
           if (!isExcluded) {
             this.logger.debug(`Offline asset ${asset.originalPath} is now online in library ${job.libraryId}`);
@@ -818,7 +819,9 @@ export class LibraryService extends BaseService {
 
     this.logger.log(`Starting disk crawl of ${validImportPaths.length} import path(s) for library ${library.id}...`);
 
-    for await (const pathBatch of pathsOnDisk) {
+    for await (const crawled of pathsOnDisk) {
+      // a folder Immich keeps its own files in, inside an import path: a user's originals on the NAS, say
+      const pathBatch = crawled.filter((path) => !StorageCore.isInStorageLocation(path));
       crawlCount += pathBatch.length;
       const paths = await this.assetRepository.filterNewExternalAssetPaths(library.id, pathBatch);
 

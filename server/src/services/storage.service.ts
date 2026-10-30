@@ -190,7 +190,9 @@ export class StorageService extends BaseService {
   }
 
   private getMountFilePaths(folder: StorageFolder) {
-    const folderPath = StorageCore.getBaseFolder(folder);
+    // the media location's own: a folder kept on a network share has a marker of its own, checked each minute while
+    // the server runs (StorageLocationService), and the server starts while the NAS is away
+    const folderPath = StorageCore.getDefaultBaseFolder(folder);
     const internalPath = join(folderPath, '.immich');
     const externalPath = `<UPLOAD_LOCATION>/${folder}/.immich`;
 

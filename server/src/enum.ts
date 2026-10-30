@@ -384,6 +384,8 @@ export enum SystemMetadataKey {
   IntegrityChecksumCheckpoint = 'integrity-checksum-checkpoint',
   NetworkShares = 'network-shares',
   NetworkShareErrors = 'network-share-errors',
+  StorageLocations = 'storage-locations',
+  StorageLocationState = 'storage-location-state',
   RawPreviews = 'raw-previews',
 }
 
@@ -833,6 +835,8 @@ export enum BootstrapEventPriority {
   DatabaseService = -200,
   // Detect and configure the media location before jobs are queued which may use it
   StorageService = -195,
+  // Where folders kept on network shares are: before the media location's folders are checked
+  StorageLocations = -197,
   // Mount the network shares external libraries read, before jobs that read their files run
   NetworkShares = -192,
   // Other services may need to queue jobs on bootstrap.
@@ -908,6 +912,7 @@ export enum JobName {
 
   FileDelete = 'FileDelete',
   FileMigrationQueueAll = 'FileMigrationQueueAll',
+  StorageLocationMigration = 'StorageLocationMigration',
 
   LibraryDeleteCheck = 'LibraryDeleteCheck',
   LibraryDelete = 'LibraryDelete',
@@ -1277,6 +1282,7 @@ export enum ApiTag {
   Maintenance = 'Maintenance (admin)',
   Map = 'Map',
   NetworkShares = 'Network shares (admin)',
+  StorageLocations = 'Storage locations (admin)',
   Memories = 'Memories',
   Notifications = 'Notifications',
   NotificationsAdmin = 'Notifications (admin)',

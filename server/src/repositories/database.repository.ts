@@ -415,6 +415,76 @@ export class DatabaseRepository {
     return results.length;
   }
 
+  /** Files the database names under a folder (a prefix ending in "/"): of assets, faces of people, and originals */
+  streamAssetFilesUnder(prefix: string) {
+    return this.db
+      .selectFrom('asset_file')
+      .select(['id', 'path'])
+      .where(sql<boolean>`starts_with(path, ${prefix})`)
+      .stream();
+  }
+
+  streamPersonFilesUnder(prefix: string) {
+    return this.db
+      .selectFrom('person')
+      .select(['ownerId', 'personGroupId', 'thumbnailPath as path'])
+      .where(sql<boolean>`starts_with("thumbnailPath", ${prefix})`)
+      .stream();
+  }
+
+  streamOriginalsUnder(prefix: string) {
+    return this.db
+      .selectFrom('asset')
+      .select(['id', 'originalPath as path'])
+      .where(sql<boolean>`starts_with("originalPath", ${prefix})`)
+      .stream();
+  }
+
+  async countFilesUnder(prefix: string): Promise<number> {
+    const counts = await Promise.all([
+      this.db
+        .selectFrom('asset_file')
+        .select((eb) => eb.fn.countAll<number>().as('count'))
+        .where(sql<boolean>`starts_with(path, ${prefix})`)
+        .executeTakeFirstOrThrow(),
+      this.db
+        .selectFrom('person')
+        .select((eb) => eb.fn.countAll<number>().as('count'))
+        .where(sql<boolean>`starts_with("thumbnailPath", ${prefix})`)
+        .executeTakeFirstOrThrow(),
+      this.db
+        .selectFrom('asset')
+        .select((eb) => eb.fn.countAll<number>().as('count'))
+        .where(sql<boolean>`starts_with("originalPath", ${prefix})`)
+        .executeTakeFirstOrThrow(),
+    ]);
+    return counts.reduce((sum, { count }) => sum + Number(count), 0);
+  }
+
+  /** Each only if the path is still the one it was moved from */
+  async updateAssetFilePath(id: string, from: string, to: string) {
+    await this.db.updateTable('asset_file').set({ path: to }).where('id', '=', id).where('path', '=', from).execute();
+  }
+
+  async updatePersonFilePath(key: { ownerId: string; personGroupId: string }, from: string, to: string) {
+    await this.db
+      .updateTable('person')
+      .set({ thumbnailPath: to })
+      .where('ownerId', '=', key.ownerId)
+      .where('personGroupId', '=', key.personGroupId)
+      .where('thumbnailPath', '=', from)
+      .execute();
+  }
+
+  async updateOriginalPath(id: string, from: string, to: string) {
+    await this.db
+      .updateTable('asset')
+      .set({ originalPath: to })
+      .where('id', '=', id)
+      .where('originalPath', '=', from)
+      .execute();
+  }
+
   async migrateFilePaths(sourceFolder: string, targetFolder: string): Promise<void> {
     // remove trailing slashes
     if (sourceFolder.endsWith('/')) {
