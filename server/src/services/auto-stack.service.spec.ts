@@ -57,6 +57,8 @@ describe(AutoStackService.name, () => {
     mocks.stack.getAutoStackCandidates.mockResolvedValue([]);
     mocks.stack.create.mockResolvedValue({ id: 'stack-id' } as any);
     mocks.stack.addAssets.mockResolvedValue();
+    mocks.stack.mergeInto.mockResolvedValue();
+    mocks.stack.getAutoStackMembers.mockResolvedValue([]);
     mocks.stack.update.mockResolvedValue({} as any);
     mocks.stack.resetAutoStacked.mockResolvedValue();
   });
@@ -105,7 +107,7 @@ describe(AutoStackService.name, () => {
     });
 
     it.each([
-      { name: 'in a stack', overrides: { stackId: 'stack' } },
+      { name: 'in a stack someone made', overrides: { stackId: 'stack', isAutomatic: false } },
       { name: 'taken out of a stack auto stacking made', overrides: { autoStackedAt: new Date() } },
       { name: 'trashed', overrides: { deletedAt: new Date() } },
       { name: 'hidden (a live photo video)', overrides: { visibility: AssetVisibility.Hidden } },
@@ -130,7 +132,7 @@ describe(AutoStackService.name, () => {
       mocks.stack.getForAutoStack.mockResolvedValue(target('IMG_5571.HEIC') as any);
       mocks.stack.getAutoStackCandidates.mockResolvedValue([
         candidate('IMG_5573.HEIC', { distance: 0.0141, fileCreatedAt: new Date(taken.getTime() + 4000) }),
-        candidate('IMG_5590.HEIC', { distance: 0.05, fileCreatedAt: new Date(taken.getTime() + 2000) }),
+        candidate('IMG_5590.HEIC', { distance: 0.08, fileCreatedAt: new Date(taken.getTime() + 2000) }),
       ] as any);
 
       await sut.handleAutoStack({ id: 'IMG_5571.HEIC' });
@@ -147,32 +149,115 @@ describe(AutoStackService.name, () => {
       expect(mocks.stack.create).toHaveBeenCalledWith(expect.anything(), ['IMG_5571.HEIC', 'IMG_5573.HEIC']);
     });
 
-    it('should join the stack of a match, and never merge two stacks', async () => {
+    it('should join the automatic stack of a match, with an edited copy as its cover', async () => {
       mocks.stack.getForAutoStack.mockResolvedValue(target('IMG_E1234.HEIC') as any);
       mocks.stack.getAutoStackCandidates.mockResolvedValue([
-        candidate('IMG_1234.HEIC', { stackId: 'burst-stack', isAutomatic: true, primaryAssetId: 'IMG_1234.HEIC' }),
-        candidate('IMG_1234.DNG', { stackId: 'other-stack', isAutomatic: false, primaryAssetId: 'x' }),
+        candidate('IMG_1234.HEIC', { stackId: 'auto', isAutomatic: true, primaryAssetId: 'IMG_1234.HEIC' }),
+      ] as any);
+      mocks.stack.getAutoStackMembers.mockResolvedValue([candidate('IMG_1234.HEIC', { stackId: 'auto' })] as any);
+
+      await expect(sut.handleAutoStack({ id: 'IMG_E1234.HEIC' })).resolves.toBe(JobStatus.Success);
+
+      expect(mocks.stack.addAssets).toHaveBeenCalledWith('auto', ['IMG_E1234.HEIC']);
+      expect(mocks.stack.mergeInto).not.toHaveBeenCalled();
+      expect(mocks.stack.update).toHaveBeenCalledWith('auto', { primaryAssetId: 'IMG_E1234.HEIC' });
+      expect(mocks.stack.create).not.toHaveBeenCalled();
+      expect(mocks.event.emit).toHaveBeenCalledWith('StackUpdate', { stackId: 'auto', userId: 'user-id' });
+    });
+
+    it('should merge two automatic stacks whose photos belong together: raw + JPEG pairs seconds apart', async () => {
+      setPreferences({ enabled: true, similar: true });
+      mocks.stack.getForAutoStack.mockResolvedValue(
+        target('CAM00089.JPG', {
+          stackId: 'stack-89',
+          isAutomatic: true,
+          primaryAssetId: 'CAM00089.JPG',
+          autoStackedAt: new Date(),
+          fileCreatedAt: new Date(taken.getTime() + 3400),
+        }) as any,
+      );
+      mocks.stack.getAutoStackCandidates.mockResolvedValue([
+        candidate('CAM00088.JPG', {
+          stackId: 'stack-88',
+          isAutomatic: true,
+          primaryAssetId: 'CAM00088.JPG',
+          distance: 0.0455,
+        }),
+        candidate('CAM00088.ARW', {
+          stackId: 'stack-88',
+          isAutomatic: true,
+          primaryAssetId: 'CAM00088.JPG',
+          distance: 0.0862,
+        }),
+        candidate('CAM00089.ARW', { stackId: 'stack-89', isAutomatic: true, primaryAssetId: 'CAM00089.JPG' }),
+      ] as any);
+      mocks.stack.getAutoStackMembers.mockResolvedValue([
+        candidate('CAM00089.JPG', { stackId: 'stack-89' }),
+        candidate('CAM00089.ARW', { stackId: 'stack-89' }),
+        candidate('CAM00088.JPG', { stackId: 'stack-88' }),
+        candidate('CAM00088.ARW', { stackId: 'stack-88' }),
+      ] as any);
+
+      await expect(sut.handleAutoStack({ id: 'CAM00089.JPG' })).resolves.toBe(JobStatus.Success);
+
+      expect(mocks.stack.mergeInto).toHaveBeenCalledWith('stack-89', ['stack-88']);
+      expect(mocks.stack.addAssets).toHaveBeenCalledWith('stack-89', []);
+      // both covers are JPEGs: the cover stays
+      expect(mocks.stack.update).not.toHaveBeenCalled();
+    });
+
+    it('should do nothing for an asset of an automatic stack with nothing new to join', async () => {
+      mocks.stack.getForAutoStack.mockResolvedValue(
+        target('CAM00074.JPG', { stackId: 'auto', isAutomatic: true, autoStackedAt: new Date() }) as any,
+      );
+      mocks.stack.getAutoStackCandidates.mockResolvedValue([
+        candidate('CAM00074.ARW', { stackId: 'auto', isAutomatic: true }),
+      ] as any);
+
+      await expect(sut.handleAutoStack({ id: 'CAM00074.JPG' })).resolves.toBe(JobStatus.Skipped);
+      expect(mocks.stack.mergeInto).not.toHaveBeenCalled();
+      expect(mocks.stack.addAssets).not.toHaveBeenCalled();
+    });
+
+    it('should only add to a stack someone made: merging an automatic stack into it, never its cover', async () => {
+      mocks.stack.getForAutoStack.mockResolvedValue(target('IMG_E1234.HEIC') as any);
+      mocks.stack.getAutoStackCandidates.mockResolvedValue([
+        candidate('IMG_1234.HEIC', { stackId: 'auto', isAutomatic: true, primaryAssetId: 'IMG_1234.HEIC' }),
+        candidate('IMG_1234.DNG', { stackId: 'mine', isAutomatic: false, primaryAssetId: 'IMG_1234.DNG' }),
       ] as any);
 
       await expect(sut.handleAutoStack({ id: 'IMG_E1234.HEIC' })).resolves.toBe(JobStatus.Success);
 
-      expect(mocks.stack.addAssets).toHaveBeenCalledWith('burst-stack', ['IMG_E1234.HEIC']);
-      // the edited copy becomes the cover of a stack auto stacking made
-      expect(mocks.stack.update).toHaveBeenCalledWith('burst-stack', { primaryAssetId: 'IMG_E1234.HEIC' });
-      expect(mocks.stack.create).not.toHaveBeenCalled();
-      expect(mocks.event.emit).toHaveBeenCalledWith('StackUpdate', { stackId: 'burst-stack', userId: 'user-id' });
+      expect(mocks.stack.mergeInto).toHaveBeenCalledWith('mine', ['auto']);
+      expect(mocks.stack.addAssets).toHaveBeenCalledWith('mine', ['IMG_E1234.HEIC']);
+      expect(mocks.stack.update).not.toHaveBeenCalled();
     });
 
-    it('should not change the cover of a stack someone made', async () => {
+    it('should never merge two stacks someone made', async () => {
       mocks.stack.getForAutoStack.mockResolvedValue(target('IMG_E1234.HEIC') as any);
       mocks.stack.getAutoStackCandidates.mockResolvedValue([
-        candidate('IMG_1234.HEIC', { stackId: 'mine', isAutomatic: false, primaryAssetId: 'IMG_1234.HEIC' }),
+        candidate('IMG_1234.HEIC', { stackId: 'mine-1', isAutomatic: false }),
+        candidate('IMG_1234.DNG', { stackId: 'mine-2', isAutomatic: false }),
       ] as any);
 
       await sut.handleAutoStack({ id: 'IMG_E1234.HEIC' });
 
-      expect(mocks.stack.addAssets).toHaveBeenCalledWith('mine', ['IMG_E1234.HEIC']);
-      expect(mocks.stack.update).not.toHaveBeenCalled();
+      expect(mocks.stack.mergeInto).not.toHaveBeenCalled();
+      expect(mocks.stack.addAssets).toHaveBeenCalledWith('mine-1', ['IMG_E1234.HEIC']);
+    });
+
+    it('should move an automatic stack into a stack someone made that it belongs with', async () => {
+      setPreferences({ enabled: true, similar: true });
+      mocks.stack.getForAutoStack.mockResolvedValue(
+        target('CAM00089.JPG', { stackId: 'auto', isAutomatic: true, autoStackedAt: new Date() }) as any,
+      );
+      mocks.stack.getAutoStackCandidates.mockResolvedValue([
+        candidate('CAM00088.JPG', { stackId: 'mine', isAutomatic: false, distance: 0.04 }),
+      ] as any);
+
+      await sut.handleAutoStack({ id: 'CAM00089.JPG' });
+
+      expect(mocks.stack.mergeInto).toHaveBeenCalledWith('mine', ['auto']);
     });
 
     it('should stack the photos of a burst', async () => {

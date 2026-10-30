@@ -22170,7 +22170,7 @@
           "maxDistance": {
             "description": "Largest CLIP distance of similar photos",
             "format": "double",
-            "maximum": 0.1,
+            "maximum": 0.2,
             "minimum": 0.001,
             "type": "number"
           },

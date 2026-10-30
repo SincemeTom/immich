@@ -23,8 +23,9 @@ const REASON_ORDER = Object.values(AutoStackReason);
  * with its original, photos that look alike taken within seconds. It runs after each upload and library import, and
  * from Administration > Job Queues over everyone's photos, or from a user's settings over theirs.
  *
- * It only adds: it never takes an asset out of a stack, merges two stacks, or changes a stack a user made but to add
- * to it. An asset someone takes out of a stack it made is left alone, until they ask for everything to be stacked again.
+ * It only adds: it never takes an asset out of a stack, and changes a stack a user made only to add to it. Stacks it made
+ * are merged when their assets turn out to belong together: two raw + JPEG pairs shot seconds apart, say. An asset
+ * someone takes out of a stack it made is left alone, until they ask for everything to be stacked again.
  */
 @Injectable()
 export class AutoStackService extends BaseService {
@@ -76,8 +77,10 @@ export class AutoStackService extends BaseService {
     if (
       !asset ||
       asset.deletedAt ||
-      asset.stackId ||
-      asset.autoStackedAt ||
+      // in a stack someone made
+      (asset.stackId && !asset.isAutomatic) ||
+      // taken out of a stack auto stacking made
+      (!asset.stackId && asset.autoStackedAt) ||
       ![AssetVisibility.Timeline, AssetVisibility.Archive].includes(asset.visibility)
     ) {
       return JobStatus.Skipped;
@@ -106,8 +109,8 @@ export class AutoStackService extends BaseService {
     });
 
     const matches = candidates
-      // taken out of a stack auto stacking made: someone decided it does not belong
-      .filter((candidate) => candidate.stackId || !candidate.autoStackedAt)
+      // already together; or taken out of a stack auto stacking made: someone decided it does not belong
+      .filter((candidate) => (candidate.stackId ? candidate.stackId !== asset.stackId : !candidate.autoStackedAt))
       .map((candidate) => ({ candidate, reasons: getAutoStackReasons(asset, candidate, preferences) }))
       .filter(({ reasons }) => reasons.length > 0)
       .sort((a, b) => strength(a) - strength(b) || (a.candidate.distance ?? 0) - (b.candidate.distance ?? 0));
@@ -117,34 +120,62 @@ export class AutoStackService extends BaseService {
 
     const autoStackedAt = new Date();
     const loose = matches.filter(({ candidate }) => !candidate.stackId).map(({ candidate }) => candidate);
-    const stacked = matches.find(({ candidate }) => candidate.stackId)?.candidate;
-
-    if (stacked?.stackId) {
-      // joins the stack the closest match is in; another stack is never merged into it
-      const added = [asset.id, ...loose.map(({ id }) => id)];
-      await this.stackRepository.addAssets(stacked.stackId, added);
-      await this.assetRepository.upsertJobStatus(...added.map((assetId) => ({ assetId, autoStackedAt })));
-
-      const primary = candidates.find((candidate) => candidate.id === stacked.primaryAssetId);
-      const newPrimary = [asset, ...loose].sort(compareForPrimary)[0];
-      if (stacked.isAutomatic && primary && shouldReplacePrimary(newPrimary, primary)) {
-        await this.stackRepository.update(stacked.stackId, { primaryAssetId: newPrimary.id });
+    const stacks = new Map<string, boolean>();
+    if (asset.stackId) {
+      stacks.set(asset.stackId, true);
+    }
+    for (const { candidate } of matches) {
+      if (candidate.stackId && !stacks.has(candidate.stackId)) {
+        stacks.set(candidate.stackId, !!candidate.isAutomatic);
       }
+    }
 
-      this.logger.debug(`Added ${added.length} assets to stack ${stacked.stackId} (${reasonsOf(matches)})`);
-      await this.eventRepository.emit('StackUpdate', { stackId: stacked.stackId, userId: asset.ownerId });
+    if (stacks.size === 0) {
+      const assets = [asset, ...loose].sort(compareForPrimary);
+      const stack = await this.stackRepository.create(
+        { ownerId: asset.ownerId, isAutomatic: true },
+        assets.map(({ id }) => id),
+      );
+      await this.assetRepository.upsertJobStatus(...assets.map(({ id: assetId }) => ({ assetId, autoStackedAt })));
+
+      this.logger.debug(`Stacked ${assets.length} assets as ${stack.id} (${reasonsOf(matches)})`);
+      await this.eventRepository.emit('StackCreate', { stackId: stack.id, userId: asset.ownerId });
       return JobStatus.Success;
     }
 
-    const assets = [asset, ...loose].sort(compareForPrimary);
-    const stack = await this.stackRepository.create(
-      { ownerId: asset.ownerId, isAutomatic: true },
-      assets.map(({ id }) => id),
-    );
-    await this.assetRepository.upsertJobStatus(...assets.map(({ id: assetId }) => ({ assetId, autoStackedAt })));
+    // a stack someone made is only ever added to: the strongest match's, before the asset's own
+    const manual = [...stacks].find(([, isAutomatic]) => !isAutomatic)?.[0];
+    const targetId = manual ?? asset.stackId ?? stacks.keys().next().value!;
+    const targetAutomatic = stacks.get(targetId)!;
+    // the other stacks auto stacking made are merged into it; another stack someone made is left alone
+    const sourceIds = [...stacks].filter(([id, isAutomatic]) => id !== targetId && isAutomatic).map(([id]) => id);
 
-    this.logger.debug(`Stacked ${assets.length} assets as ${stack.id} (${reasonsOf(matches)})`);
-    await this.eventRepository.emit('StackCreate', { stackId: stack.id, userId: asset.ownerId });
+    const members = await this.stackRepository.getAutoStackMembers([targetId, ...sourceIds]);
+    if (sourceIds.length > 0) {
+      await this.stackRepository.mergeInto(targetId, sourceIds);
+    }
+    const added = [...(asset.stackId ? [] : [asset]), ...loose];
+    await this.stackRepository.addAssets(
+      targetId,
+      added.map(({ id }) => id),
+    );
+    if (added.length > 0) {
+      await this.assetRepository.upsertJobStatus(...added.map(({ id: assetId }) => ({ assetId, autoStackedAt })));
+    }
+
+    const primaryAssetId = targetAutomatic
+      ? (candidates.find(({ stackId }) => stackId === targetId)?.primaryAssetId ?? asset.primaryAssetId)
+      : undefined;
+    const primary = members.find(({ id }) => id === primaryAssetId);
+    const incoming = [...added, ...members.filter(({ stackId }) => stackId !== targetId)].sort(compareForPrimary)[0];
+    if (primary && incoming && shouldReplacePrimary(incoming, primary)) {
+      await this.stackRepository.update(targetId, { primaryAssetId: incoming.id });
+    }
+
+    this.logger.debug(
+      `Added ${added.length} assets and merged ${sourceIds.length} stacks into stack ${targetId} (${reasonsOf(matches)})`,
+    );
+    await this.eventRepository.emit('StackUpdate', { stackId: targetId, userId: asset.ownerId });
     return JobStatus.Success;
   }
 

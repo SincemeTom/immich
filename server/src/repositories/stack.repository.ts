@@ -210,8 +210,15 @@ export class StackRepository {
       .leftJoin('asset_exif', 'asset_exif.assetId', 'asset.id')
       .leftJoin('asset_job_status', 'asset_job_status.assetId', 'asset.id')
       .leftJoin('smart_search', 'smart_search.assetId', 'asset.id')
+      .leftJoin('stack', 'stack.id', 'asset.stackId')
       .select(autoStackColumns)
-      .select(['asset.visibility', 'asset.deletedAt', 'smart_search.embedding'])
+      .select([
+        'asset.visibility',
+        'asset.deletedAt',
+        'smart_search.embedding',
+        'stack.isAutomatic',
+        'stack.primaryAssetId',
+      ])
       .where('asset.id', '=', asUuid(id))
       .executeTakeFirst();
   }
@@ -297,20 +304,56 @@ export class StackRepository {
       .execute();
   }
 
-  /** Assets of these owners auto stacking has yet to look at: not in a stack, and never taken out of one it made */
+  /**
+   * Assets of these owners for auto stacking to look at: not in a stack and never taken out of one it made, and those
+   * in the stacks it made, which may now belong with others
+   */
   @GenerateSql({ params: [[DummyValue.UUID], false], stream: true })
   streamForAutoStack(ownerIds: string[], force: boolean) {
     return this.db
       .selectFrom('asset')
       .$call(withDefaultVisibility)
       .leftJoin('asset_job_status', 'asset_job_status.assetId', 'asset.id')
+      .leftJoin('stack', 'stack.id', 'asset.stackId')
       .select(['asset.id'])
       .where('asset.ownerId', '=', anyUuid(ownerIds))
       .where('asset.deletedAt', 'is', null)
-      .where('asset.stackId', 'is', null)
-      .$if(!force, (qb) => qb.where('asset_job_status.autoStackedAt', 'is', null))
+      .where((eb) =>
+        eb.or([
+          eb('stack.isAutomatic', '=', true),
+          force
+            ? eb('asset.stackId', 'is', null)
+            : eb.and([eb('asset.stackId', 'is', null), eb('asset_job_status.autoStackedAt', 'is', null)]),
+        ]),
+      )
       .orderBy('asset.fileCreatedAt')
       .stream();
+  }
+
+  /** The assets of these stacks, as auto stacking looks at them */
+  @GenerateSql({ params: [[DummyValue.UUID]] })
+  getAutoStackMembers(stackIds: string[]) {
+    return this.db
+      .selectFrom('asset')
+      .leftJoin('asset_exif', 'asset_exif.assetId', 'asset.id')
+      .leftJoin('asset_job_status', 'asset_job_status.assetId', 'asset.id')
+      .select(autoStackColumns)
+      .where('asset.stackId', '=', anyUuid(stackIds))
+      .where('asset.deletedAt', 'is', null)
+      .execute();
+  }
+
+  /** Moves the assets of stacks into another, and removes them */
+  @GenerateSql({ params: [DummyValue.UUID, [DummyValue.UUID]] })
+  mergeInto(targetId: string, sourceIds: string[]) {
+    return this.db.transaction().execute(async (tx) => {
+      await tx
+        .updateTable('asset')
+        .set({ stackId: targetId, updatedAt: new Date() })
+        .where('stackId', '=', anyUuid(sourceIds))
+        .execute();
+      await tx.deleteFrom('stack').where('id', '=', anyUuid(sourceIds)).execute();
+    });
   }
 
   /** Puts assets in a stack, as auto stacking adds them to one */

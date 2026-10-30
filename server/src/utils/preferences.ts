@@ -61,7 +61,7 @@ const getDefaultPreferences = (): UserPreferences => {
       rawJpeg: true,
       edited: true,
       similar: false,
-      maxDistance: 0.02,
+      maxDistance: 0.06,
       maxSeconds: 10,
     },
   };

@@ -16,7 +16,7 @@ const preferences: AutoStackPreferences = {
   rawJpeg: true,
   edited: true,
   similar: true,
-  maxDistance: 0.02,
+  maxDistance: 0.06,
   maxSeconds: 10,
 };
 
@@ -156,7 +156,7 @@ describe('auto stacking', () => {
     });
 
     it.each([
-      { name: 'too different', distance: 0.03, seconds: 4 },
+      { name: 'too different', distance: 0.08, seconds: 4 },
       { name: 'too far apart', distance: 0.0096, seconds: 38 },
       { name: 'without an embedding', distance: null, seconds: 1 },
     ])('should not stack similar photos $name', ({ distance, seconds }) => {
