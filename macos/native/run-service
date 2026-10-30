@@ -129,7 +129,19 @@ PY
     export UV_THREADPOOL_SIZE
     # jellyfin-ffmpeg, which has the tonemapx filter the server uses for HDR video
     export PATH="$release/ffmpeg:$PATH"
-    exec "$release/node/bin/node" "$release/server/dist/main.js" "$@"
+    # macOS asks once whether a program may read network volumes (an external library on a NAS), and remembers the
+    # answer for that program's path. The release's node has a new path at every upgrade, which would ask again and
+    # leave the server waiting on the NAS until someone clicked; a copy of it at one path, replaced at upgrades, is
+    # asked once. Node's signature is the same at every version, so the answer stays (macos/verification/
+    # m1-network-volume-permission.md). ffmpeg and exiftool, run by it, have its answer. A copy, not a link: macOS
+    # goes by the path a link resolves to.
+    node="$home/bin/node"
+    if ! cmp -s "$node" "$release/node/bin/node"; then
+      cp "$release/node/bin/node" "$node.new"
+      # a rename, as a running process may still have the old file open
+      mv -f "$node.new" "$node"
+    fi
+    exec "$node" "$release/server/dist/main.js" "$@"
     ;;
 
   *)
