@@ -30,6 +30,7 @@
 | M1-7 | macOS 网络宗卷授权（分支 `mac/fix/network-volume-permission`） | [m1-network-volume-permission.md](m1-network-volume-permission.md) | 通过：服务端从固定路径运行 node，只需点一次"允许"，升级后不再询问；ffmpeg 和 exiftool 继承 node 的授权；普通用户就能挂载 NFS |
 | M1-8 | 网页上挂载群晖（分支 `mac/feat/network-shares`） | [m1-network-shares.md](m1-network-shares.md) | 通过：管理 → 网络共享里添加 NFS 共享并测试连接；开机自动挂载，群晖重启、断网、句柄失效后自动重连；建外部库时可直接选择；端到端 41/41 |
 | 问题 2 | 自动堆叠（分支 `mac/feat/auto-stack`） | [m1-auto-stack.md](m1-auto-stack.md) | 通过：每个用户在账户设置里开启，可选连拍、RAW+JPG、编辑版、相似照片（相似度 + 拍摄间隔）；上传和外部库扫描后自动执行；只加不删，移出的照片不再放回，可一键移除或重新堆叠；端到端 25/25 |
+| RAW 预览 | RAW 照片预览默认用相机内嵌 JPG（分支 `mac/feat/raw-embedded-preview`） | [m1-raw-preview.md](m1-raw-preview.md) | 通过："优先使用嵌入式预览"默认打开，RAW 显示与相机 JPG 一致；升级和切换开关时只自动重做 RAW 的预览；端到端 11/11 |
 
 ## M2 视频转码用 Apple 硬件
 
@@ -62,6 +63,7 @@
 | 新（上游）：群晖断开超过回收站天数，照片记录连同相册、人脸被删 | **已修复**：外部库不能访问时不删离线照片 | [m1-delete-cleanup.md](m1-delete-cleanup.md) |
 | 上游行为：读写挂载时，在 Immich 里删除外部库照片会删掉群晖上的原文件 | **已决定保持**：用 Immich 清理群晖库；Immich 回收站保留 30 天，建议群晖开快照 | [m1-delete-cleanup.md](m1-delete-cleanup.md) |
 | 新：后台服务读网络盘要 macOS 授权，没点"允许"之前一直卡住；原来每次升级都要重新授权 | **已修复**：node 固定路径，只需授权一次 | [m1-network-volume-permission.md](m1-network-volume-permission.md) |
+| RAW 照片在 Immich 里和相机 JPG 看起来不一样 | **已修复**：默认用相机内嵌的 JPG 做预览，升级时自动只重做 RAW 的预览 | [m1-raw-preview.md](m1-raw-preview.md) |
 | 群晖外部库的照片不会自动堆叠 | **已完成**：连拍、RAW+JPG、编辑版、相似照片，每个用户自己设置 | [m1-auto-stack.md](m1-auto-stack.md) |
 | 原来挂载群晖只能写 yml 或手动挂载 | **已完成**：网页上管理 NFS 共享 | [m1-network-shares.md](m1-network-shares.md) |
 | 新：群晖重启后旧挂载的句柄失效，挂载还在但读不了 | **已修复**：每分钟检查发现后自动重新挂载 | [m1-network-shares.md](m1-network-shares.md) |
