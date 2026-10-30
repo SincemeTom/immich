@@ -183,14 +183,18 @@ describe(LibraryService.name, () => {
   describe('handleQueueSyncFiles', () => {
     it('should leave out the folders Immich keeps its own files in', async () => {
       const library = factory.library({ importPaths: ['/nas/me/Photos'] });
-      StorageCore.setStorageLocations({ folders: {}, users: { 'user-id': '/nas/me/Photos/Immich' }, pending: {} });
+      StorageCore.setStorageLocations({
+        folders: {},
+        users: { [library.ownerId]: '/nas/me/Photos/Immich' },
+        pending: {},
+      });
       mocks.library.get.mockResolvedValue(library);
       mocks.storage.walk.mockImplementation(async function* () {
         await Promise.resolve();
         yield ['/nas/me/Photos/2024/a.jpg', '/nas/me/Photos/Immich/2026/10/b.jpg', '/nas/me/Photos/Immich2/c.jpg'];
       });
       mocks.storage.stat.mockResolvedValue({ isDirectory: () => true } as Stats);
-      mocks.storage.checkFileExists.mockResolvedValue(true);
+      mocks.storage.checkFileExists.mockImplementation((path) => Promise.resolve(!path.endsWith('/.immich')));
       mocks.asset.filterNewExternalAssetPaths.mockImplementation((_, paths) => Promise.resolve(paths));
 
       await sut.handleQueueSyncFiles({ id: library.id });
@@ -199,6 +203,59 @@ describe(LibraryService.name, () => {
         '/nas/me/Photos/2024/a.jpg',
         '/nas/me/Photos/Immich2/c.jpg',
       ]);
+    });
+
+    it('should leave out a folder Immich keeps its files in by its marker, however the share is reached', async () => {
+      const library = factory.library({ importPaths: ['/Volumes/homes/me/Photos'] });
+      StorageCore.setStorageLocations({
+        folders: {},
+        users: { [library.ownerId]: '/nas/me/Photos/Immich' },
+        pending: {},
+      });
+      mocks.library.get.mockResolvedValue(library);
+      mocks.storage.walk.mockImplementation(async function* () {
+        await Promise.resolve();
+        yield [
+          '/Volumes/homes/me/Photos/2024/a.jpg',
+          '/Volumes/homes/me/Photos/Immich/2026/10/b.jpg',
+          '/Volumes/homes/me/Photos/Immich/2026/11/c.jpg',
+        ];
+      });
+      mocks.storage.stat.mockResolvedValue({ isDirectory: () => true } as Stats);
+      mocks.storage.checkFileExists.mockImplementation((path) =>
+        Promise.resolve(!path.endsWith('/.immich') || path === '/Volumes/homes/me/Photos/Immich/.immich'),
+      );
+      mocks.asset.filterNewExternalAssetPaths.mockImplementation((_, paths) => Promise.resolve(paths));
+
+      await sut.handleQueueSyncFiles({ id: library.id });
+
+      expect(mocks.asset.filterNewExternalAssetPaths).toHaveBeenCalledWith(library.id, [
+        '/Volumes/homes/me/Photos/2024/a.jpg',
+      ]);
+      // asked once for each folder, not once for each file
+      const asked = mocks.storage.checkFileExists.mock.calls.filter(([path]) => path.endsWith('/.immich'));
+      expect(asked.length).toBe(new Set(asked.map(([path]) => path)).size);
+    });
+
+    it("should refuse an import path that holds another user's storage location", async () => {
+      const library = factory.library({ ownerId: 'alice', importPaths: [] });
+      StorageCore.setStorageLocations({ folders: {}, users: { bob: '/nas/homes/bob/Photos/Immich' }, pending: {} });
+      mocks.library.get.mockResolvedValue(library);
+      mocks.storage.stat.mockResolvedValue({ isDirectory: () => true } as Stats);
+      mocks.storage.checkFileExists.mockResolvedValue(true);
+
+      const { importPaths } = await sut.validate(library.id, {
+        importPaths: ['/nas/homes', '/nas/homes/bob/Photos', '/nas/homes/alice/Photos'],
+      });
+
+      expect(importPaths!.map(({ isValid }) => isValid)).toEqual([false, false, true]);
+      expect(importPaths![0].message).toContain("another user's storage location");
+
+      // the owner's own is fine: it is left out when crawled
+      mocks.library.get.mockResolvedValue({ ...library, ownerId: 'bob' });
+      const own = await sut.validate(library.id, { importPaths: ['/nas/homes/bob/Photos'] });
+      expect(own.importPaths![0].isValid).toBe(true);
+      StorageCore.setStorageLocations({ folders: {}, users: {}, pending: {} });
     });
 
     it('should queue refresh of a new asset', async () => {
@@ -1276,6 +1333,7 @@ describe(LibraryService.name, () => {
       beforeEach(async () => {
         mocks.library.getAll.mockResolvedValue([]);
         mocks.cron.create.mockResolvedValue();
+        mocks.storage.checkFileExists.mockResolvedValue(false);
 
         await sut.onConfigInit({ newConfig: systemConfigStub.libraryWatchEnabled as SystemConfig });
       });

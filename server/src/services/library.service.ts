@@ -35,9 +35,10 @@ import { AssetSyncResult } from 'src/repositories/library.repository.js';
 import { AssetTable } from 'src/schema/tables/asset.table.js';
 import { BaseService } from 'src/services/base.service.js';
 import { isAssetLibraryChecksumConstraint } from 'src/utils/database.js';
-import { isLibraryReachable, isWithinImportPath } from 'src/utils/library.js';
+import { createImmichFolderCheck, isLibraryReachable, isWithinImportPath } from 'src/utils/library.js';
 import { mimeTypes } from 'src/utils/mime-types.js';
 import { batched, findOrFail, handlePromiseError } from 'src/utils/misc.js';
+import { isWithin } from 'src/utils/storage-location.js';
 
 @Injectable()
 export class LibraryService extends BaseService {
@@ -115,7 +116,8 @@ export class LibraryService extends BaseService {
 
     const handler = async (event: string, path: string) => {
       // a folder Immich keeps its own files in, inside an import path: a user's originals on the NAS, say
-      if (matcher(path) && !StorageCore.isInStorageLocation(path)) {
+      const isImmichFolder = createImmichFolderCheck(this.storageRepository, library.importPaths);
+      if (matcher(path) && !StorageCore.isInStorageLocation(path) && !(await isImmichFolder(path))) {
         this.logger.debug(`File ${event} event received for ${path} in library ${library.id}`);
         await this.jobRepository.queue({
           name: JobName.LibrarySyncFiles,
@@ -299,13 +301,24 @@ export class LibraryService extends BaseService {
     return JobStatus.Success;
   }
 
-  private async validateImportPath(importPath: string): Promise<ValidateLibraryImportPathResponseDto> {
+  private async validateImportPath(
+    importPath: string,
+    ownerId?: string,
+  ): Promise<ValidateLibraryImportPathResponseDto> {
     const validation = new ValidateLibraryImportPathResponseDto();
     validation.importPath = importPath;
     validation.isValid = false;
 
     if (StorageCore.isImmichPath(importPath)) {
       validation.message = 'Cannot use media upload folder for external libraries';
+      return validation;
+    }
+
+    // a folder holding another user's own: their home on the NAS, say, which would be imported as this user's
+    const resolved = path.resolve(importPath);
+    const otherUsers = Object.entries(StorageCore.getStorageLocations().users).filter(([userId]) => userId !== ownerId);
+    if (otherUsers.some(([, folder]) => isWithin(folder, resolved))) {
+      validation.message = "Holds another user's storage location: import only from folders of the library's owner";
       return validation;
     }
 
@@ -341,8 +354,9 @@ export class LibraryService extends BaseService {
   }
 
   async validate(id: string, dto: ValidateLibraryDto): Promise<ValidateLibraryResponseDto> {
+    const library = await this.libraryRepository.get(id);
     const importPaths = await Promise.all(
-      (dto.importPaths || []).map((importPath) => this.validateImportPath(importPath)),
+      (dto.importPaths || []).map((importPath) => this.validateImportPath(importPath, library?.ownerId)),
     );
     return { importPaths };
   }
@@ -793,7 +807,7 @@ export class LibraryService extends BaseService {
     const validImportPaths: string[] = [];
 
     for (const importPath of library.importPaths) {
-      const validation = await this.validateImportPath(importPath);
+      const validation = await this.validateImportPath(importPath, library.ownerId);
       if (validation.isValid) {
         validImportPaths.push(path.normalize(importPath));
       } else {
@@ -816,12 +830,15 @@ export class LibraryService extends BaseService {
 
     let importCount = 0;
     let crawlCount = 0;
+    const isImmichFolder = createImmichFolderCheck(this.storageRepository, validImportPaths);
 
     this.logger.log(`Starting disk crawl of ${validImportPaths.length} import path(s) for library ${library.id}...`);
 
     for await (const crawled of pathsOnDisk) {
       // a folder Immich keeps its own files in, inside an import path: a user's originals on the NAS, say
-      const pathBatch = crawled.filter((path) => !StorageCore.isInStorageLocation(path));
+      const kept = crawled.filter((path) => !StorageCore.isInStorageLocation(path));
+      const marked = await Promise.all(kept.map((path) => isImmichFolder(path)));
+      const pathBatch = kept.filter((_, i) => !marked[i]);
       crawlCount += pathBatch.length;
       const paths = await this.assetRepository.filterNewExternalAssetPaths(library.id, pathBatch);
 

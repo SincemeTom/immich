@@ -21,6 +21,7 @@ import {
 import { BaseService } from 'src/services/base.service.js';
 import { getAssetFile } from 'src/utils/asset.util.js';
 import { getFilenameExtension, getLivePhotoMotionFilename } from 'src/utils/file.js';
+import { isWithin } from 'src/utils/storage-location.js';
 
 const storageTokens = {
   secondOptions: ['s', 'ss', 'SSS'],
@@ -344,7 +345,8 @@ export class StorageTemplateService extends BaseService {
       const fullPath = path.normalize(path.join(rootPath, storagePath));
       let destination = `${fullPath}.${extension}`;
 
-      if (!fullPath.startsWith(rootPath)) {
+      // within the folder, not one beside it whose name starts the same: users' folders may be side by side on a share
+      if (!isWithin(fullPath, rootPath)) {
         this.logger.warn(`Skipped attempt to access an invalid path: ${fullPath}. Path should start with ${rootPath}`);
         return source;
       }
