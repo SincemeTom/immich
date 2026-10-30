@@ -341,18 +341,19 @@ class OrtSession:
             return graph
 
     def _use_cpu(self) -> OrtGraph:
-        """Becomes the session it would have been on the CPU alone: one graph, for any shape"""
+        """Becomes the session it would have been on the CPU alone, one graph for any shape, except that the graph
+        leaves its batch free and the batches stay: a request may have split its inputs by them already"""
         self.providers = ["CPUExecutionProvider"]
         self.disabled_optimizers = _disabled_optimizers_default(self.providers)
         self.dynamic = True
         self.shapes = (self.policy.pinned,)
-        self.batches = tuple(sorted({shape.batch for shape in self.shapes}, reverse=True))
         self.graphs.clear()
         shape = self.shapes[0]
+        pins = shape.pins if self.batches == (1,) else {k: v for k, v in shape.pins.items() if k != "batch"}
         spec = GraphSpec(
             self.model_path,
-            shape.pins,
-            _overrides(self.policy, shape.pins),
+            pins,
+            _overrides(self.policy, pins),
             self.providers,
             self.disabled_optimizers,
             self.threads,

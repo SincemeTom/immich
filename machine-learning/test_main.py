@@ -362,6 +362,27 @@ class TestOrtSessions:
         assert session.for_shape(Shape(batch=1, height=64, width=64)) is graph  # one graph takes every shape
         assert ort_session.call_count == 1
 
+    def test_keeps_the_batches_on_the_cpu_for_a_request_that_split_its_inputs_by_them(
+        self, ort_session: mock.Mock, mocker: MockerFixture
+    ) -> None:
+        sess_options = mocker.patch("immich_ml.sessions.ort.ort.SessionOptions").return_value
+
+        def compile_on_cpu_only(spec: GraphSpec) -> Path:
+            if spec.providers[0] == "CoreMLExecutionProvider":
+                raise RuntimeError("Preparing failed")
+            return spec.model_path
+
+        prepare = mock.Mock(side_effect=compile_on_cpu_only)
+        mocker.patch("immich_ml.sessions.ort.prepared", prepare)
+        policy = ShapePolicy(dims=tuple(Shape(batch, width=width) for width in (320, 640) for batch in (6, 1)))
+        session = ort_sessions("PP-OCRv5_server", providers=self.COREML_EP, shape_policy=policy)
+
+        session.for_shape(Shape(6, width=640))
+
+        assert session.batches == (6, 1)
+        assert prepare.call_args.args[0].pins == {}  # the batch left free, so a run of six goes through
+        assert mock.call("batch", 1) not in sess_options.add_free_dimension_override_by_name.call_args_list
+
     def test_runs_on_the_cpu_a_graph_of_one_shape_the_provider_cannot_compile(
         self, ort_session: mock.Mock, mocker: MockerFixture
     ) -> None:
