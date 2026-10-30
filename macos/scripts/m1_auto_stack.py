@@ -151,8 +151,17 @@ def main() -> None:
     immich = Instance(args.url, args.home)
     c = immich.client
     user_id = immich.login()
+    print("== the defaults of this install")
+    template = c.get("/api/system-config").json()["storageTemplate"]
+    check("storage template on, {{y}}/{{MM}}/{{filename}}",
+          template["enabled"] is True and template["template"] == "{{y}}/{{MM}}/{{filename}}", str(template))
+    features = c.get("/api/users/me/preferences").json()
+    check("folders on, and folders, people and memories in the sidebar",
+          features["folders"] == {"enabled": True, "sidebarWeb": True} and features["people"]["sidebarWeb"] is True
+          and features["memories"]["sidebarWeb"] is True)
+    # uploads stay in folders of their own, so that raw + JPEG pairs are recognised by when and with what they were taken
     immich.configure(machineLearning__urls=[args.ml_url], machineLearning__facialRecognition__enabled=False,
-                     machineLearning__ocr__enabled=False)
+                     machineLearning__ocr__enabled=False, storageTemplate__enabled=False)
 
     print("== the NAS")
     files = main_library([f"{n}.{e}" for n in RAW_PAIRS + MERGED_PAIRS + [UPLOADED_PAIR, "CAM00083"] for e in ("ARW", "JPG")]
@@ -189,11 +198,12 @@ def main() -> None:
                     *[str(p) for p in burst.iterdir()]], check=True)
 
     print("== auto stacking on, the external library scanned")
-    immich.preferences(enabled=True)
     prefs = c.get("/api/users/me/preferences").json()["autoStack"]
-    check("defaults: bursts, raw + JPEG, edited copies; not similar photos",
-          prefs == {"enabled": True, "burst": True, "rawJpeg": True, "edited": True, "similar": False,
-                    "maxDistance": 0.06, "maxSeconds": 10, "anytime": False, "anytimeDistance": 0.02}, str(prefs))
+    check("defaults: on, every rule, similar photos within 600 s, all but the same whenever taken",
+          prefs == {"enabled": True, "burst": True, "rawJpeg": True, "edited": True, "similar": True,
+                    "maxDistance": 0.06, "maxSeconds": 600, "anytime": True, "anytimeDistance": 0.03}, str(prefs))
+    # the scenarios below turn the rules on one by one, from bursts, raw + JPEG and edited copies only
+    immich.preferences(enabled=True, similar=False, maxSeconds=10, anytime=False, anytimeDistance=0.02)
     library = c.post("/api/libraries", json={"ownerId": user_id, "importPaths": [str(args.nas)], "name": "NAS"}).json()
     start = time.time()
     c.post(f"/api/libraries/{library['id']}/scan").raise_for_status()

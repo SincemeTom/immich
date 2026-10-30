@@ -12,6 +12,13 @@ import { ServiceMocks, makeStream, newTestService } from 'test/utils.js';
 const motionAsset = AssetFactory.from({ type: AssetType.Video }).exif().build();
 const stillAsset = AssetFactory.from({ livePhotoVideoId: motionAsset.id }).exif().build();
 
+/** upstream's default template, which these tests are written against; this install's default is {{y}}/{{MM}}/{{filename}} */
+const upstreamTemplate = '{{y}}/{{y}}-{{MM}}-{{dd}}/{{filename}}';
+const upstreamDefaults: SystemConfig = {
+  ...defaults,
+  storageTemplate: { ...defaults.storageTemplate, template: upstreamTemplate },
+};
+
 describe(StorageTemplateService.name, () => {
   let sut: StorageTemplateService;
   let mocks: ServiceMocks;
@@ -23,9 +30,9 @@ describe(StorageTemplateService.name, () => {
   beforeEach(() => {
     ({ sut, mocks } = newTestService(StorageTemplateService));
 
-    mocks.systemMetadata.get.mockResolvedValue({ storageTemplate: { enabled: true } });
+    mocks.systemMetadata.get.mockResolvedValue({ storageTemplate: { enabled: true, template: upstreamTemplate } });
 
-    sut.onConfigInit({ newConfig: defaults });
+    sut.onConfigInit({ newConfig: upstreamDefaults });
   });
 
   describe('onConfigValidate', () => {
@@ -96,7 +103,7 @@ describe(StorageTemplateService.name, () => {
 
   describe('handleMigrationSingle', () => {
     it('should skip when storage template is disabled', async () => {
-      mocks.systemMetadata.get.mockResolvedValue({ storageTemplate: { enabled: false } });
+      mocks.systemMetadata.get.mockResolvedValue({ storageTemplate: { enabled: false, template: upstreamTemplate } });
 
       await expect(sut.handleMigrationSingle({ id: testAsset.id })).resolves.toBe(JobStatus.Skipped);
 

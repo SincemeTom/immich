@@ -221,9 +221,9 @@ The default configuration looks like this:
     "publicUsers": true
   },
   "storageTemplate": {
-    "enabled": false,
+    "enabled": true,
     "hashVerificationEnabled": true,
-    "template": "{{y}}/{{y}}-{{MM}}-{{dd}}/{{filename}}"
+    "template": "{{y}}/{{MM}}/{{filename}}"
   },
   "templates": {
     "email": {

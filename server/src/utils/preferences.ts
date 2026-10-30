@@ -11,17 +11,17 @@ const getDefaultPreferences = (): UserPreferences => {
       defaultAssetOrder: AssetOrder.Desc,
     },
     folders: {
-      enabled: false,
-      sidebarWeb: false,
+      enabled: true,
+      sidebarWeb: true,
     },
     memories: {
       enabled: true,
       duration: 5,
-      sidebarWeb: false,
+      sidebarWeb: true,
     },
     people: {
       enabled: true,
-      sidebarWeb: false,
+      sidebarWeb: true,
       minimumFaces: 3,
       updateStrategy: PersonUpdateStrategy.Everyone,
     },
@@ -56,15 +56,15 @@ const getDefaultPreferences = (): UserPreferences => {
       sidebarWeb: false,
     },
     autoStack: {
-      enabled: false,
+      enabled: true,
       burst: true,
       rawJpeg: true,
       edited: true,
-      similar: false,
+      similar: true,
       maxDistance: 0.06,
-      maxSeconds: 10,
-      anytime: false,
-      anytimeDistance: 0.02,
+      maxSeconds: 600,
+      anytime: true,
+      anytimeDistance: 0.03,
     },
   };
 };
