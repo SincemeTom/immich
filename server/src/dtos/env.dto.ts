@@ -51,6 +51,8 @@ export const EnvSchema = z
     IMMICH_LOG_FORMAT: LogFormatSchema.optional(),
     IMMICH_MEDIA_LOCATION: absolutePath,
     IMMICH_MICROSERVICES_METRICS_PORT: z.coerce.number().int().optional(),
+    IMMICH_NETWORK_SHARES_LOCATION: absolutePath,
+    IMMICH_NETWORK_SHARES_NFS_PORT: z.coerce.number().int().optional(),
     IMMICH_ALLOW_EXTERNAL_PLUGINS: stringBool.optional(),
     IMMICH_PLUGINS_INSTALL_FOLDER: absolutePath,
     IMMICH_PORT: z.coerce.number().int().optional(),

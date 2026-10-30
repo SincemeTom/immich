@@ -1,5 +1,6 @@
 import { ShallowDehydrateObject } from 'kysely';
 import { Mocked } from 'vitest';
+import type { NetworkShare, NetworkShareErrorReason } from 'src/utils/network-share.js';
 import { VECTOR_EXTENSIONS } from 'src/constants.js';
 import { AssetFile } from 'src/database.js';
 import { UploadFieldName } from 'src/dtos/asset-media.dto.js';
@@ -563,6 +564,10 @@ export interface SystemMetadata extends Record<SystemMetadataKey, Record<string,
   [SystemMetadataKey.VersionCheckState]: VersionCheckMetadata;
   [SystemMetadataKey.MemoriesState]: MemoriesState;
   [SystemMetadataKey.IntegrityChecksumCheckpoint]: { date?: string };
+  [SystemMetadataKey.NetworkShares]: { shares: NetworkShare[] };
+  [SystemMetadataKey.NetworkShareErrors]: {
+    errors: Record<string, { reason: NetworkShareErrorReason; message: string }>;
+  };
 }
 
 export type UserPreferences = {

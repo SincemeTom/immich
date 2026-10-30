@@ -179,6 +179,11 @@ export class StorageRepository {
     await fs.rm(folder, { ...options, maxRetries: 5, retryDelay: 100 });
   }
 
+  /** Removes an empty folder, and only that: never what a folder that is a mount point holds */
+  rmdir(folder: string) {
+    return fs.rmdir(folder);
+  }
+
   async removeEmptyDirs(directory: string, self: boolean = false) {
     // lstat does not follow symlinks (in contrast to stat)
     const stats = await fs.lstat(directory);

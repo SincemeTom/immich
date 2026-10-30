@@ -147,6 +147,7 @@ const ServerFeaturesSchema = z
     email: z.boolean().describe('Whether email notifications are enabled'),
     ocr: z.boolean().describe('Whether OCR is enabled'),
     realtimeTranscoding: z.boolean().describe('Whether real-time transcoding is enabled'),
+    networkShares: z.boolean().describe('Whether the server can mount network shares'),
   })
   .meta({ id: 'ServerFeaturesDto' });
 

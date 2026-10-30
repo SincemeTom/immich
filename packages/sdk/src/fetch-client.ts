@@ -497,6 +497,76 @@ export type MaintenanceStatusResponseDto = {
     progress?: number;
     task?: string;
 };
+export type NetworkShareResponseDto = {
+    /** Free space on the share, when mounted */
+    availableBytes?: number;
+    /** Kept mounted: reconnected when it drops */
+    enabled: boolean;
+    errorReason?: NetworkShareErrorReason;
+    /** Exported path on the server */
+    exportPath: string;
+    /** Server host name or IP address */
+    host: string;
+    /** Share ID */
+    id: string;
+    /** Names of the external libraries that import from it */
+    libraries: string[];
+    /** The last error, as the system reported it */
+    message?: string;
+    /** Where it is mounted on this Mac, the path external libraries import from */
+    mountPath: string;
+    /** Share name */
+    name: string;
+    nfsVersion: NfsVersion;
+    protocol: NetworkShareProtocol;
+    /** Mounted read-only */
+    readOnly: boolean;
+    status: NetworkShareStatus;
+    /** Size of the share, when mounted */
+    totalBytes?: number;
+};
+export type NetworkShareCreateDto = {
+    /** Exported path on the server, such as /volume1/photo */
+    exportPath: string;
+    /** Server host name or IP address */
+    host: string;
+    /** Share name */
+    name: string;
+    nfsVersion?: NfsVersion;
+    protocol?: NetworkShareProtocol;
+    /** Mount read-only */
+    readOnly?: boolean;
+};
+export type NetworkShareTestDto = {
+    /** Exported path on the server, such as /volume1/photo */
+    exportPath: string;
+    /** Server host name or IP address */
+    host: string;
+    nfsVersion?: NfsVersion;
+    protocol?: NetworkShareProtocol;
+    /** Mount read-only */
+    readOnly?: boolean;
+};
+export type NetworkShareTestResponseDto = {
+    /** Some of the files and folders at its top level */
+    entries: string[];
+    errorReason?: NetworkShareErrorReason;
+    /** The error, as the system reported it */
+    message?: string;
+    /** Whether the share could be mounted and read */
+    success: boolean;
+};
+export type NetworkShareUpdateDto = {
+    /** Exported path on the server, such as /volume1/photo */
+    exportPath?: string;
+    /** Server host name or IP address */
+    host?: string;
+    /** Share name */
+    name?: string;
+    nfsVersion?: NfsVersion;
+    /** Mount read-only */
+    readOnly?: boolean;
+};
 export type NotificationCreateDto = {
     /** Additional notification data */
     data?: {
@@ -2820,6 +2890,8 @@ export type ServerFeaturesDto = {
     importFaces: boolean;
     /** Whether map feature is enabled */
     map: boolean;
+    /** Whether the server can mount network shares */
+    networkShares: boolean;
     /** Whether OAuth is enabled */
     oauth: boolean;
     /** Whether OAuth auto-launch is enabled */
@@ -4144,6 +4216,115 @@ export function getMaintenanceStatus(opts?: Oazapfts.RequestOpts) {
         data: MaintenanceStatusResponseDto;
     }>("/admin/maintenance/status", {
         ...opts
+    }));
+}
+/**
+ * Retrieve network shares
+ */
+export function getNetworkShares(opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchJson<{
+        status: 200;
+        data: NetworkShareResponseDto[];
+    }>("/admin/network-shares", {
+        ...opts
+    }));
+}
+/**
+ * Add a network share
+ */
+export function createNetworkShare({ networkShareCreateDto }: {
+    networkShareCreateDto: NetworkShareCreateDto;
+}, opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchJson<{
+        status: 201;
+        data: NetworkShareResponseDto;
+    }>("/admin/network-shares", oazapfts.json({
+        ...opts,
+        method: "POST",
+        body: networkShareCreateDto
+    })));
+}
+/**
+ * Test a network share
+ */
+export function testNetworkShare({ networkShareTestDto }: {
+    networkShareTestDto: NetworkShareTestDto;
+}, opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchJson<{
+        status: 200;
+        data: NetworkShareTestResponseDto;
+    }>("/admin/network-shares/test", oazapfts.json({
+        ...opts,
+        method: "POST",
+        body: networkShareTestDto
+    })));
+}
+/**
+ * Remove a network share
+ */
+export function deleteNetworkShare({ id }: {
+    id: string;
+}, opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchText(`/admin/network-shares/${encodeURIComponent(id)}`, {
+        ...opts,
+        method: "DELETE"
+    }));
+}
+/**
+ * Retrieve a network share
+ */
+export function getNetworkShare({ id }: {
+    id: string;
+}, opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchJson<{
+        status: 200;
+        data: NetworkShareResponseDto;
+    }>(`/admin/network-shares/${encodeURIComponent(id)}`, {
+        ...opts
+    }));
+}
+/**
+ * Update a network share
+ */
+export function updateNetworkShare({ id, networkShareUpdateDto }: {
+    id: string;
+    networkShareUpdateDto: NetworkShareUpdateDto;
+}, opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchJson<{
+        status: 200;
+        data: NetworkShareResponseDto;
+    }>(`/admin/network-shares/${encodeURIComponent(id)}`, oazapfts.json({
+        ...opts,
+        method: "PUT",
+        body: networkShareUpdateDto
+    })));
+}
+/**
+ * Mount a network share
+ */
+export function mountNetworkShare({ id }: {
+    id: string;
+}, opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchJson<{
+        status: 200;
+        data: NetworkShareResponseDto;
+    }>(`/admin/network-shares/${encodeURIComponent(id)}/mount`, {
+        ...opts,
+        method: "POST"
+    }));
+}
+/**
+ * Unmount a network share
+ */
+export function unmountNetworkShare({ id }: {
+    id: string;
+}, opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchJson<{
+        status: 200;
+        data: NetworkShareResponseDto;
+    }>(`/admin/network-shares/${encodeURIComponent(id)}/unmount`, {
+        ...opts,
+        method: "POST"
     }));
 }
 /**
@@ -8066,6 +8247,26 @@ export enum StorageFolder {
     Thumbs = "thumbs",
     Backups = "backups"
 }
+export enum NetworkShareErrorReason {
+    Unreachable = "unreachable",
+    Denied = "denied",
+    NotFound = "not-found",
+    MacPermission = "mac-permission",
+    Other = "other"
+}
+export enum NfsVersion {
+    Auto = "auto",
+    $3 = "3",
+    $4 = "4"
+}
+export enum NetworkShareProtocol {
+    Nfs = "nfs"
+}
+export enum NetworkShareStatus {
+    Mounted = "mounted",
+    Unmounted = "unmounted",
+    Unresponsive = "unresponsive"
+}
 export enum NotificationLevel {
     Success = "success",
     Error = "error",
@@ -8448,6 +8649,7 @@ export enum JobName {
     LibraryDeleteCheck = "LibraryDeleteCheck",
     LibraryDelete = "LibraryDelete",
     LibraryRemoveAsset = "LibraryRemoveAsset",
+    LibraryAssetChecksum = "LibraryAssetChecksum",
     LibraryScanAssetsQueueAll = "LibraryScanAssetsQueueAll",
     LibrarySyncAssets = "LibrarySyncAssets",
     LibrarySyncFilesQueueAll = "LibrarySyncFilesQueueAll",

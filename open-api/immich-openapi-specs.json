@@ -1180,6 +1180,457 @@
         "x-immich-state": "Alpha"
       }
     },
+    "/admin/network-shares": {
+      "get": {
+        "description": "Retrieve the network shares the server mounts, with whether each is mounted and how full it is.",
+        "operationId": "getNetworkShares",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/NetworkShareResponseDto"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "cookie": []
+          },
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "Retrieve network shares",
+        "tags": [
+          "Network shares (admin)"
+        ],
+        "x-immich-admin-only": true,
+        "x-immich-history": [
+          {
+            "version": "v3.3.5",
+            "state": "Added"
+          },
+          {
+            "version": "v3.3.5",
+            "state": "Alpha"
+          }
+        ],
+        "x-immich-permission": "library.read",
+        "x-immich-state": "Alpha"
+      },
+      "post": {
+        "description": "Mount a network share, and keep it mounted. It is only added if it mounts.",
+        "operationId": "createNetworkShare",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NetworkShareCreateDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NetworkShareResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "cookie": []
+          },
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "Add a network share",
+        "tags": [
+          "Network shares (admin)"
+        ],
+        "x-immich-admin-only": true,
+        "x-immich-history": [
+          {
+            "version": "v3.3.5",
+            "state": "Added"
+          },
+          {
+            "version": "v3.3.5",
+            "state": "Alpha"
+          }
+        ],
+        "x-immich-permission": "library.create",
+        "x-immich-state": "Alpha"
+      }
+    },
+    "/admin/network-shares/test": {
+      "post": {
+        "description": "Mount a network share on a folder of its own, list its top level, and unmount it.",
+        "operationId": "testNetworkShare",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NetworkShareTestDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NetworkShareTestResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "cookie": []
+          },
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "Test a network share",
+        "tags": [
+          "Network shares (admin)"
+        ],
+        "x-immich-admin-only": true,
+        "x-immich-history": [
+          {
+            "version": "v3.3.5",
+            "state": "Added"
+          },
+          {
+            "version": "v3.3.5",
+            "state": "Alpha"
+          }
+        ],
+        "x-immich-permission": "library.create",
+        "x-immich-state": "Alpha"
+      }
+    },
+    "/admin/network-shares/{id}": {
+      "delete": {
+        "description": "Unmount a network share and remove it. Refused while an external library imports from it.",
+        "operationId": "deleteNetworkShare",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "cookie": []
+          },
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "Remove a network share",
+        "tags": [
+          "Network shares (admin)"
+        ],
+        "x-immich-admin-only": true,
+        "x-immich-history": [
+          {
+            "version": "v3.3.5",
+            "state": "Added"
+          },
+          {
+            "version": "v3.3.5",
+            "state": "Alpha"
+          }
+        ],
+        "x-immich-permission": "library.delete",
+        "x-immich-state": "Alpha"
+      },
+      "get": {
+        "description": "Retrieve a network share.",
+        "operationId": "getNetworkShare",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NetworkShareResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "cookie": []
+          },
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "Retrieve a network share",
+        "tags": [
+          "Network shares (admin)"
+        ],
+        "x-immich-admin-only": true,
+        "x-immich-history": [
+          {
+            "version": "v3.3.5",
+            "state": "Added"
+          },
+          {
+            "version": "v3.3.5",
+            "state": "Alpha"
+          }
+        ],
+        "x-immich-permission": "library.read",
+        "x-immich-state": "Alpha"
+      },
+      "put": {
+        "description": "Rename a network share, or change how it is mounted, which mounts it again.",
+        "operationId": "updateNetworkShare",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NetworkShareUpdateDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NetworkShareResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "cookie": []
+          },
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "Update a network share",
+        "tags": [
+          "Network shares (admin)"
+        ],
+        "x-immich-admin-only": true,
+        "x-immich-history": [
+          {
+            "version": "v3.3.5",
+            "state": "Added"
+          },
+          {
+            "version": "v3.3.5",
+            "state": "Alpha"
+          }
+        ],
+        "x-immich-permission": "library.update",
+        "x-immich-state": "Alpha"
+      }
+    },
+    "/admin/network-shares/{id}/mount": {
+      "post": {
+        "description": "Mount a network share now, and keep it mounted.",
+        "operationId": "mountNetworkShare",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NetworkShareResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "cookie": []
+          },
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "Mount a network share",
+        "tags": [
+          "Network shares (admin)"
+        ],
+        "x-immich-admin-only": true,
+        "x-immich-history": [
+          {
+            "version": "v3.3.5",
+            "state": "Added"
+          },
+          {
+            "version": "v3.3.5",
+            "state": "Alpha"
+          }
+        ],
+        "x-immich-permission": "library.update",
+        "x-immich-state": "Alpha"
+      }
+    },
+    "/admin/network-shares/{id}/unmount": {
+      "post": {
+        "description": "Unmount a network share, and leave it unmounted until it is mounted again.",
+        "operationId": "unmountNetworkShare",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NetworkShareResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "cookie": []
+          },
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "Unmount a network share",
+        "tags": [
+          "Network shares (admin)"
+        ],
+        "x-immich-admin-only": true,
+        "x-immich-history": [
+          {
+            "version": "v3.3.5",
+            "state": "Added"
+          },
+          {
+            "version": "v3.3.5",
+            "state": "Alpha"
+          }
+        ],
+        "x-immich-permission": "library.update",
+        "x-immich-state": "Alpha"
+      }
+    },
     "/admin/notifications": {
       "post": {
         "description": "Create a new notification for a specific user.",
@@ -18296,6 +18747,10 @@
       "description": "Maintenance mode allows you to put Immich in a read-only state to perform various operations."
     },
     {
+      "name": "Network shares (admin)",
+      "description": "Network shares, such as a NAS folder shared over NFS, that the server mounts itself, so that external libraries can read them. Only available when the server runs natively on macOS."
+    },
+    {
       "name": "Map",
       "description": "Map endpoints include supplemental functionality related to geolocation, such as reverse geocoding and retrieving map markers for assets with geolocation data."
     },
@@ -22798,6 +23253,7 @@
           "LibraryDeleteCheck",
           "LibraryDelete",
           "LibraryRemoveAsset",
+          "LibraryAssetChecksum",
           "LibraryScanAssetsQueueAll",
           "LibrarySyncAssets",
           "LibrarySyncFilesQueueAll",
@@ -24474,6 +24930,251 @@
           "axis"
         ],
         "type": "object"
+      },
+      "NetworkShareCreateDto": {
+        "properties": {
+          "exportPath": {
+            "description": "Exported path on the server, such as /volume1/photo",
+            "maxLength": 1024,
+            "pattern": "^\\/[^\\0]*$",
+            "type": "string"
+          },
+          "host": {
+            "description": "Server host name or IP address",
+            "type": "string"
+          },
+          "name": {
+            "description": "Share name",
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "nfsVersion": {
+            "$ref": "#/components/schemas/NfsVersion",
+            "default": "auto"
+          },
+          "protocol": {
+            "$ref": "#/components/schemas/NetworkShareProtocol",
+            "default": "nfs"
+          },
+          "readOnly": {
+            "default": false,
+            "description": "Mount read-only",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "exportPath",
+          "host",
+          "name"
+        ],
+        "type": "object"
+      },
+      "NetworkShareErrorReason": {
+        "description": "Why mounting or reading a network share failed",
+        "enum": [
+          "unreachable",
+          "denied",
+          "not-found",
+          "mac-permission",
+          "other"
+        ],
+        "type": "string"
+      },
+      "NetworkShareProtocol": {
+        "description": "Network share protocol",
+        "enum": [
+          "nfs"
+        ],
+        "type": "string"
+      },
+      "NetworkShareResponseDto": {
+        "properties": {
+          "availableBytes": {
+            "description": "Free space on the share, when mounted",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "enabled": {
+            "description": "Kept mounted: reconnected when it drops",
+            "type": "boolean"
+          },
+          "errorReason": {
+            "$ref": "#/components/schemas/NetworkShareErrorReason"
+          },
+          "exportPath": {
+            "description": "Exported path on the server",
+            "type": "string"
+          },
+          "host": {
+            "description": "Server host name or IP address",
+            "type": "string"
+          },
+          "id": {
+            "description": "Share ID",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
+            "type": "string"
+          },
+          "libraries": {
+            "description": "Names of the external libraries that import from it",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "message": {
+            "description": "The last error, as the system reported it",
+            "type": "string"
+          },
+          "mountPath": {
+            "description": "Where it is mounted on this Mac, the path external libraries import from",
+            "type": "string"
+          },
+          "name": {
+            "description": "Share name",
+            "type": "string"
+          },
+          "nfsVersion": {
+            "$ref": "#/components/schemas/NfsVersion"
+          },
+          "protocol": {
+            "$ref": "#/components/schemas/NetworkShareProtocol"
+          },
+          "readOnly": {
+            "description": "Mounted read-only",
+            "type": "boolean"
+          },
+          "status": {
+            "$ref": "#/components/schemas/NetworkShareStatus"
+          },
+          "totalBytes": {
+            "description": "Size of the share, when mounted",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "enabled",
+          "exportPath",
+          "host",
+          "id",
+          "libraries",
+          "mountPath",
+          "name",
+          "nfsVersion",
+          "protocol",
+          "readOnly",
+          "status"
+        ],
+        "type": "object"
+      },
+      "NetworkShareStatus": {
+        "description": "Network share status",
+        "enum": [
+          "mounted",
+          "unmounted",
+          "unresponsive"
+        ],
+        "type": "string"
+      },
+      "NetworkShareTestDto": {
+        "properties": {
+          "exportPath": {
+            "description": "Exported path on the server, such as /volume1/photo",
+            "maxLength": 1024,
+            "pattern": "^\\/[^\\0]*$",
+            "type": "string"
+          },
+          "host": {
+            "description": "Server host name or IP address",
+            "type": "string"
+          },
+          "nfsVersion": {
+            "$ref": "#/components/schemas/NfsVersion",
+            "default": "auto"
+          },
+          "protocol": {
+            "$ref": "#/components/schemas/NetworkShareProtocol",
+            "default": "nfs"
+          },
+          "readOnly": {
+            "default": false,
+            "description": "Mount read-only",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "exportPath",
+          "host"
+        ],
+        "type": "object"
+      },
+      "NetworkShareTestResponseDto": {
+        "properties": {
+          "entries": {
+            "description": "Some of the files and folders at its top level",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "errorReason": {
+            "$ref": "#/components/schemas/NetworkShareErrorReason"
+          },
+          "message": {
+            "description": "The error, as the system reported it",
+            "type": "string"
+          },
+          "success": {
+            "description": "Whether the share could be mounted and read",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "entries",
+          "success"
+        ],
+        "type": "object"
+      },
+      "NetworkShareUpdateDto": {
+        "properties": {
+          "exportPath": {
+            "description": "Exported path on the server, such as /volume1/photo",
+            "maxLength": 1024,
+            "pattern": "^\\/[^\\0]*$",
+            "type": "string"
+          },
+          "host": {
+            "description": "Server host name or IP address",
+            "type": "string"
+          },
+          "name": {
+            "description": "Share name",
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "nfsVersion": {
+            "$ref": "#/components/schemas/NfsVersion"
+          },
+          "readOnly": {
+            "description": "Mount read-only",
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "NfsVersion": {
+        "description": "NFS version, or auto",
+        "enum": [
+          "auto",
+          "3",
+          "4"
+        ],
+        "type": "string"
       },
       "NotificationCreateDto": {
         "properties": {
@@ -27845,6 +28546,10 @@
             "description": "Whether map feature is enabled",
             "type": "boolean"
           },
+          "networkShares": {
+            "description": "Whether the server can mount network shares",
+            "type": "boolean"
+          },
           "oauth": {
             "description": "Whether OAuth is enabled",
             "type": "boolean"
@@ -27893,6 +28598,7 @@
           "facialRecognition",
           "importFaces",
           "map",
+          "networkShares",
           "oauth",
           "oauthAutoLaunch",
           "ocr",

@@ -35,6 +35,7 @@ import { AssetSyncResult } from 'src/repositories/library.repository.js';
 import { AssetTable } from 'src/schema/tables/asset.table.js';
 import { BaseService } from 'src/services/base.service.js';
 import { isAssetLibraryChecksumConstraint } from 'src/utils/database.js';
+import { isLibraryReachable, isWithinImportPath } from 'src/utils/library.js';
 import { mimeTypes } from 'src/utils/mime-types.js';
 import { batched, findOrFail, handlePromiseError } from 'src/utils/misc.js';
 
@@ -623,10 +624,28 @@ export class LibraryService extends BaseService {
       assets.map((asset) => this.storageRepository.stat(asset.originalPath).catch(() => null)),
     );
 
+    // A file missing from an import path that can't be reached (a NAS share that isn't mounted: an empty folder)
+    // may well still be there, and stays as it is until the path is back
+    const unreachable: string[] = [];
+    for (const importPath of job.importPaths) {
+      if (!(await isLibraryReachable(this.storageRepository, [importPath]))) {
+        unreachable.push(importPath);
+      }
+    }
+    let kept = 0;
+
     for (let i = 0; i < assets.length; i++) {
       const asset = assets[i];
       const stat = stats[i];
-      const action = this.checkExistingAsset(asset, stat);
+      let action = this.checkExistingAsset(asset, stat);
+      if (
+        action === AssetSyncResult.OFFLINE &&
+        !stat &&
+        unreachable.some((importPath) => isWithinImportPath(asset.originalPath, importPath))
+      ) {
+        action = AssetSyncResult.DO_NOTHING;
+        kept++;
+      }
       switch (action) {
         case AssetSyncResult.DO_NOTHING: {
           if (stat && this.hasPathChecksum(asset)) {
@@ -677,6 +696,12 @@ export class LibraryService extends BaseService {
           break;
         }
       }
+    }
+
+    if (kept > 0) {
+      this.logger.warn(
+        `Kept ${kept} missing asset(s) of library ${job.libraryId} as they are, as their import path cannot be reached: ${unreachable.join(', ')}`,
+      );
     }
 
     const promises = [];
