@@ -250,6 +250,7 @@ select
   "asset"."ownerId",
   "asset"."thumbhash",
   "asset"."type",
+  "asset"."livePhotoVideoId",
   (
     select
       coalesce(json_agg(agg), '[]')

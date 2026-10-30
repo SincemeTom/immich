@@ -218,6 +218,15 @@ export class MediaService extends BaseService {
     if (asset.type === AssetType.Video) {
       // the stream it plays, before the thumbnails: a stream that cannot be rewritten leaves the video as it was
       await this.syncEditedVideo(asset.id);
+      if (asset.visibility === AssetVisibility.Hidden) {
+        // the motion of a live photo, which has no thumbnails of its own
+        return JobStatus.Success;
+      }
+    }
+
+    if (asset.livePhotoVideoId) {
+      // the motion turns with the photo, before the photo is ready, so that both show turned at once
+      await this.syncLivePhotoMotion(asset.livePhotoVideoId, asset.edits);
     }
 
     const generated = await this.generateEditedThumbnails(asset, config);
@@ -623,6 +632,22 @@ export class MediaService extends BaseService {
         ? getOutputDimensions(asset.edits, getDimensions(asset.exifInfo!))
         : { width: videoStream.width, height: videoStream.height },
     };
+  }
+
+  /** A live photo's motion takes the photo's rotation and mirroring, and is rewritten so */
+  private async syncLivePhotoMotion(motionId: string, photoEdits: AssetEditActionItem[]) {
+    const edits = photoEdits.filter((edit) => isVideoEdit(edit));
+    const current = await this.assetEditRepository.getAll(motionId);
+    const same =
+      current.length === edits.length &&
+      current.every(
+        (edit, i) =>
+          edit.action === edits[i].action && JSON.stringify(edit.parameters) === JSON.stringify(edits[i].parameters),
+      );
+    if (!same) {
+      await this.assetEditRepository.replaceAll(motionId, edits);
+    }
+    await this.syncEditedVideo(motionId);
   }
 
   /**

@@ -450,6 +450,9 @@
         ? 'CropArea'
         : 'VideoViewer';
     }
+    if (assetViewerManager.isShowEditor && editManager.selectedTool?.type === EditToolType.Transform) {
+      return 'CropArea';
+    }
     if (assetViewerManager.isPlayingMotionPhoto && asset.livePhotoVideoId) {
       return 'LiveVideoViewer';
     }
@@ -458,9 +461,6 @@
       (asset.originalPath && asset.originalPath.toLowerCase().endsWith('.insp'))
     ) {
       return 'ImagePanaramaViewer';
-    }
-    if (assetViewerManager.isShowEditor && editManager.selectedTool?.type === EditToolType.Transform) {
-      return 'CropArea';
     }
     return 'PhotoViewer';
   });

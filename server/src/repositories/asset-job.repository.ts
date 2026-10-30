@@ -139,6 +139,7 @@ export class AssetJobRepository {
         'asset.ownerId',
         'asset.thumbhash',
         'asset.type',
+        'asset.livePhotoVideoId',
       ])
       .select((eb) =>
         jsonArrayFrom(

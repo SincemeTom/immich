@@ -171,6 +171,7 @@ export const getForGenerateThumbnail = (asset: ReturnType<AssetFactory['build']>
   ownerId: asset.ownerId,
   thumbhash: asset.thumbhash,
   type: asset.type,
+  livePhotoVideoId: asset.livePhotoVideoId,
   files: asset.files.map((file) => getDehydrated(file)),
   exifInfo: getDehydrated(asset.exifInfo),
   edits: asset.edits.map(({ action, parameters }) => ({ action, parameters })) as AssetEditActionItem[],
