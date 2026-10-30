@@ -342,6 +342,51 @@ class TestOrtSessions:
 
         assert given_providers(ort_session) == self.COREML_EP
 
+    def test_runs_on_the_cpu_a_graph_the_provider_cannot_compile(
+        self, ort_session: mock.Mock, mocker: MockerFixture
+    ) -> None:
+        def prepare(spec: GraphSpec) -> Path:
+            if spec.providers[0] == "CoreMLExecutionProvider":
+                raise RuntimeError("Preparing failed")
+            return spec.model_path
+
+        mocker.patch("immich_ml.sessions.ort.prepared", side_effect=prepare)
+        policy = ShapePolicy(dims=(Shape(batch=1, height=64, width=64), Shape(batch=1, height=64, width=128)))
+        session = ort_sessions("PP-OCRv5_server", providers=self.COREML_EP, shape_policy=policy)
+
+        graph = session.for_shape(Shape(batch=1, height=64, width=128))
+
+        assert given_providers(ort_session) == self.CPU_EP
+        assert session.dynamic
+        assert session.shapes == (Shape(batch=1, height=64),)
+        assert session.for_shape(Shape(batch=1, height=64, width=64)) is graph  # one graph takes every shape
+        assert ort_session.call_count == 1
+
+    def test_runs_on_the_cpu_a_graph_of_one_shape_the_provider_cannot_compile(
+        self, ort_session: mock.Mock, mocker: MockerFixture
+    ) -> None:
+        def prepare(spec: GraphSpec) -> Path:
+            if spec.providers[0] == "CoreMLExecutionProvider":
+                raise RuntimeError("Preparing failed")
+            return spec.model_path
+
+        mocker.patch("immich_ml.sessions.ort.prepared", side_effect=prepare)
+
+        session = ort_sessions("buffalo_l", providers=self.COREML_EP)  # builds its one graph as it opens
+
+        assert given_providers(ort_session) == self.CPU_EP
+        assert session.for_shape(Shape(batch=1)) is not None
+
+    def test_raises_when_the_cpu_cannot_compile_a_graph_either(
+        self, ort_session: mock.Mock, mocker: MockerFixture
+    ) -> None:
+        mocker.patch("immich_ml.sessions.ort.prepared", side_effect=RuntimeError("Preparing failed"))
+        policy = ShapePolicy(dims=(Shape(batch=1, height=64, width=64), Shape(batch=1, height=64, width=128)))
+        session = ort_sessions("PP-OCRv5_server", providers=self.COREML_EP, shape_policy=policy)
+
+        with pytest.raises(RuntimeError):
+            session.for_shape(Shape(batch=1, height=64, width=64))
+
     @pytest.mark.providers(TRT_RTX_EP)
     def test_leaves_cuda_out_beside_tensorrt_rtx(self, ort_session: mock.Mock, providers: list[str]) -> None:
         ort_sessions("ViT-B-32__openai")

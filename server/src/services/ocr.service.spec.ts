@@ -95,10 +95,10 @@ describe(OcrService.name, () => {
       expect(mocks.machineLearning.ocr).toHaveBeenCalledWith(
         '/uploads/user-id/thumbs/path.jpg',
         expect.objectContaining({
-          modelName: 'PP-OCRv5_mobile',
+          modelName: 'PP-OCRv6_medium',
           minDetectionScore: 0.5,
           minRecognitionScore: 0.8,
-          maxResolution: 736,
+          maxResolution: 1024,
         }),
       );
       expect(mocks.ocr.upsert).toHaveBeenCalledWith(

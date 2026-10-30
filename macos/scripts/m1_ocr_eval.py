@@ -263,8 +263,7 @@ def jpeg(path: Path) -> bytes:
     return path.read_bytes()
 
 
-def run(args: argparse.Namespace) -> None:
-    folder = Path(args.out).parent
+def build_images(folder: Path) -> list[dict[str, Any]]:
     real = previews(list(REAL))
     missing = set(REAL) - set(real)
     if missing:
@@ -272,8 +271,68 @@ def run(args: argparse.Namespace) -> None:
     backgrounds = list(previews(["IMG_5566.HEIC", "IMG_5571.HEIC", "CAM00074.JPG", "CAM00076.JPG", "IMG_5603.HEIC",
                                  "IMG_5609.HEIC", "IMG_5599.HEIC", "CAM00085.JPG"]).values())
     cases = synthetic(folder / "synthetic", backgrounds) + synthetic(folder / "synthetic", backgrounds, hard=True)
-    images = [{"name": name, "set": "real", "language": "real", "path": str(path), "terms": REAL[name]}
-              for name, path in real.items()] + cases
+    return [{"name": name, "set": "real", "language": "real", "path": str(path), "terms": REAL[name]}
+            for name, path in real.items()] + cases
+
+
+def textless() -> list[dict[str, Any]]:
+    """Photos of the main library in which no OCR found any text: what a model reads there is noise, or text missed"""
+    out = subprocess.run(
+        ["immichctl", "psql", "-At", "-F", "\t", "-c",
+         'select a."originalFileName", f.path from asset a join asset_file f on f."assetId" = a.id '
+         "and f.type = 'preview' and not f.\"isEdited\" where a.\"deletedAt\" is null and a.type = 'IMAGE' "
+         'and not exists (select 1 from asset_ocr o where o."assetId" = a.id) order by a."fileCreatedAt"'],
+        capture_output=True, text=True, check=True).stdout
+    return [{"name": name, "set": "textless", "language": "none", "path": path, "terms": []}
+            for name, path in (line.split("\t") for line in out.splitlines() if line)]
+
+
+def sweep(args: argparse.Namespace) -> None:
+    """One run at low thresholds, keeping each line's scores; then each pair of thresholds is a filter of it"""
+    folder = Path(args.out).parent
+    images = build_images(folder) + textless()
+    floor_det, floor_rec = 0.2, 0.3
+    service = Service()
+    lines: dict[str, list[tuple[str, float, float]]] = {}
+    try:
+        entries = {"ocr": {"detection": {"modelName": args.model,
+                                         "options": {"minScore": floor_det, "maxResolution": args.resolution}},
+                           "recognition": {"modelName": args.model, "options": {"minScore": floor_rec}}}}
+        for image in images:
+            response = service.client.post("/predict", data={"entries": json.dumps(entries)},
+                                           files={"image": jpeg(Path(image["path"]))})
+            response.raise_for_status()
+            ocr = response.json()["ocr"]
+            lines[image["name"]] = list(zip(ocr["text"], ocr["boxScore"], ocr["textScore"]))
+    finally:
+        service.stop()
+    Path(args.out).write_text(json.dumps({"images": images, "lines": lines}, ensure_ascii=False, indent=1))
+
+    sets = ["real", "synthetic", "hard"]
+    print(f"{args.model}@{args.resolution}: terms read exactly, per set; lines read on {sum(1 for i in images if i['set'] == 'textless')}"
+          " photos without text; lines matching no term in the sets with text")
+    print(f"{'det':>4} {'rec':>4} " + " ".join(f"{s:>9}" for s in sets) + f" {'textless':>9} {'unmatched':>9}")
+    for det in (0.3, 0.4, 0.5, 0.6):
+        for rec in (0.5, 0.6, 0.7, 0.8, 0.9):
+            cells, unmatched, noise = [], 0, 0
+            for kind in sets:
+                found = terms = 0
+                for image in (i for i in images if i["set"] == kind):
+                    kept = [text for text, box, score_ in lines[image["name"]] if box >= det and score_ >= rec]
+                    result = score(image["terms"], kept)
+                    found, terms = found + result["found"], terms + result["terms"]
+                    targets = [normalize(t) for t in image["terms"]]
+                    unmatched += sum(1 for text in kept if not any(normalize(text) in t or t in normalize(text)
+                                                                   for t in targets))
+                cells.append(f"{found:>4}/{terms:<4}")
+            noise = sum(1 for i in images if i["set"] == "textless"
+                        for _, box, score_ in lines[i["name"]] if box >= det and score_ >= rec)
+            print(f"{det:4.1f} {rec:4.1f} " + " ".join(f"{c:>9}" for c in cells) + f" {noise:>9} {unmatched:>9}")
+
+
+def run(args: argparse.Namespace) -> None:
+    folder = Path(args.out).parent
+    images = build_images(folder)
     results = json.loads(Path(args.out).read_text()) if Path(args.out).exists() else {}
 
     for model in args.models.split(","):
@@ -380,8 +439,12 @@ def main() -> None:
     report_parser = sub.add_parser("report")
     report_parser.add_argument("results")
     report_parser.add_argument("--misses", action="store_true")
+    sweep_parser = sub.add_parser("sweep", help="the detection and recognition thresholds of one model")
+    sweep_parser.add_argument("--out", default="/tmp/ocr-eval/sweep.json")
+    sweep_parser.add_argument("--model", default="PP-OCRv6_medium")
+    sweep_parser.add_argument("--resolution", type=int, default=1024)
     args = parser.parse_args()
-    run(args) if args.command == "run" else report(args)
+    {"run": run, "report": report, "sweep": sweep}[args.command](args)
 
 
 if __name__ == "__main__":
