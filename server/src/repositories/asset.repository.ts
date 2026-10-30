@@ -718,8 +718,24 @@ export class AssetRepository {
       .execute();
   }
 
+  /**
+   * The other half of a live photo. One in the same library comes first (uploads count as a library): a photo backed
+   * up from a phone and also in an external library is two live photos, each of which keeps its own video when the
+   * other is deleted.
+   */
+  @GenerateSql({
+    params: [
+      {
+        ownerId: DummyValue.UUID,
+        libraryId: DummyValue.UUID,
+        livePhotoCID: DummyValue.STRING,
+        otherAssetId: DummyValue.UUID,
+        type: AssetType.Video,
+      },
+    ],
+  })
   findLivePhotoMatch(options: LivePhotoSearchOptions) {
-    const { ownerId, otherAssetId, livePhotoCID, type } = options;
+    const { ownerId, libraryId, otherAssetId, livePhotoCID, type } = options;
     return this.db
       .selectFrom('asset')
       .select(['asset.id', 'asset.ownerId'])
@@ -728,6 +744,10 @@ export class AssetRepository {
       .where('ownerId', '=', asUuid(ownerId))
       .where('type', '=', type)
       .where('asset_exif.livePhotoCID', '=', livePhotoCID)
+      .orderBy(
+        libraryId ? sql`"libraryId" is not distinct from ${asUuid(libraryId)}` : sql`"libraryId" is null`,
+        'desc',
+      )
       .limit(1)
       .executeTakeFirst();
   }

@@ -359,6 +359,23 @@ where
   and "deletedAt" is null
   and "visibility" in ('timeline', 'archive')
 
+-- AssetRepository.findLivePhotoMatch
+select
+  "asset"."id",
+  "asset"."ownerId"
+from
+  "asset"
+  inner join "asset_exif" on "asset"."id" = "asset_exif"."assetId"
+where
+  "id" != $1::uuid
+  and "ownerId" = $2::uuid
+  and "type" = $3
+  and "asset_exif"."livePhotoCID" = $4
+order by
+  "libraryId" is not distinct from $5::uuid desc
+limit
+  $6
+
 -- AssetRepository.getCalendarHeatmap
 select
   date_trunc('DAY', "asset"."createdAt" AT TIME ZONE 'UTC') AT TIME ZONE 'UTC' as "date",
