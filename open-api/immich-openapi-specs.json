@@ -22101,6 +22101,15 @@
       },
       "AutoStackResponse": {
         "properties": {
+          "anytime": {
+            "description": "Whether to stack photos that look all but the same, whenever they were taken",
+            "type": "boolean"
+          },
+          "anytimeDistance": {
+            "description": "Largest CLIP distance of photos stacked whenever they were taken",
+            "format": "double",
+            "type": "number"
+          },
           "burst": {
             "description": "Whether to stack the photos of a burst",
             "type": "boolean"
@@ -22134,6 +22143,8 @@
           }
         },
         "required": [
+          "anytime",
+          "anytimeDistance",
           "burst",
           "edited",
           "enabled",
@@ -22155,6 +22166,17 @@
       },
       "AutoStackUpdate": {
         "properties": {
+          "anytime": {
+            "description": "Whether to stack photos that look all but the same, whenever they were taken",
+            "type": "boolean"
+          },
+          "anytimeDistance": {
+            "description": "Largest CLIP distance of photos stacked whenever they were taken",
+            "format": "double",
+            "maximum": 0.1,
+            "minimum": 0.001,
+            "type": "number"
+          },
           "burst": {
             "description": "Whether to stack the photos of a burst",
             "type": "boolean"
@@ -22176,7 +22198,7 @@
           },
           "maxSeconds": {
             "description": "Most seconds apart similar photos may be taken",
-            "maximum": 600,
+            "maximum": 3600,
             "minimum": 1,
             "type": "integer"
           },

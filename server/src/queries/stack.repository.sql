@@ -252,6 +252,37 @@ order by
 limit
   $9
 
+-- StackRepository.getNearest
+begin
+set
+  local vchordrq.probes = 1
+with
+  "cte" as (
+    select
+      "asset"."id",
+      smart_search.embedding <=> $1 as "distance"
+    from
+      "asset"
+      inner join "smart_search" on "smart_search"."assetId" = "asset"."id"
+    where
+      "asset"."visibility" in ('archive', 'timeline')
+      and "asset"."ownerId" = $2::uuid
+      and "asset"."id" != $3::uuid
+      and "asset"."deletedAt" is null
+      and "asset"."type" = $4
+    order by
+      "distance"
+    limit
+      $5
+  )
+select
+  "cte"."id"
+from
+  "cte"
+where
+  "cte"."distance" <= $6
+commit
+
 -- StackRepository.streamForAutoStack
 select
   "asset"."id"

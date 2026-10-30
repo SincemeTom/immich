@@ -149,6 +149,39 @@ describe(AutoStackService.name, () => {
       expect(mocks.stack.create).toHaveBeenCalledWith(expect.anything(), ['IMG_5571.HEIC', 'IMG_5573.HEIC']);
     });
 
+    it('should look along the CLIP index for photos all but the same, whenever taken, when asked to', async () => {
+      setPreferences({ enabled: true, similar: true, anytime: true, anytimeDistance: 0.015 });
+      mocks.stack.getNearest.mockResolvedValue(['export-id']);
+      mocks.stack.getForAutoStack.mockResolvedValue(target('IMG_5568.HEIC') as any);
+      mocks.stack.getAutoStackCandidates.mockResolvedValue([
+        candidate('export.jpg', {
+          id: 'export-id',
+          distance: 0.008,
+          fileCreatedAt: new Date(taken.getTime() + 365 * 86_400_000),
+        }),
+      ] as any);
+
+      await expect(sut.handleAutoStack({ id: 'IMG_5568.HEIC' })).resolves.toBe(JobStatus.Success);
+
+      expect(mocks.stack.getNearest).toHaveBeenCalledWith({
+        ownerId: 'user-id',
+        assetId: 'IMG_5568.HEIC',
+        embedding: '[0.1]',
+        maxDistance: 0.015,
+      });
+      expect(mocks.stack.getAutoStackCandidates).toHaveBeenCalledWith(
+        expect.objectContaining({ similar: expect.objectContaining({ ids: ['export-id'] }) }),
+      );
+      expect(mocks.stack.create).toHaveBeenCalledWith(expect.anything(), ['IMG_5568.HEIC', 'export-id']);
+    });
+
+    it('should not look along the CLIP index unless asked to', async () => {
+      setPreferences({ enabled: true, similar: true });
+      mocks.stack.getForAutoStack.mockResolvedValue(target('IMG_5568.HEIC') as any);
+      await sut.handleAutoStack({ id: 'IMG_5568.HEIC' });
+      expect(mocks.stack.getNearest).not.toHaveBeenCalled();
+    });
+
     it('should join the automatic stack of a match, with an edited copy as its cover', async () => {
       mocks.stack.getForAutoStack.mockResolvedValue(target('IMG_E1234.HEIC') as any);
       mocks.stack.getAutoStackCandidates.mockResolvedValue([

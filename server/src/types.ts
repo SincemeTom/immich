@@ -641,6 +641,10 @@ export type AutoStackPreferences = {
   maxDistance: number;
   /** the most seconds apart similar photos may be taken */
   maxSeconds: number;
+  /** photos that look all but the same, whenever they were taken: a copy exported or saved again later */
+  anytime: boolean;
+  /** the largest CLIP distance of those, much smaller than maxDistance */
+  anytimeDistance: number;
 };
 
 export type UserMetadataItem<T extends keyof UserMetadata = UserMetadataKey> = {

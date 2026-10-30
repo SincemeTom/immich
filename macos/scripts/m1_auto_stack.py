@@ -6,6 +6,8 @@ photos taken seconds apart, an edited copy made of one of them, and a burst.
   an upload of a raw + JPEG pair, into folders of their own: stacked after the upload
   similar photos turned on: the shots seconds apart join, those further apart or less alike do not; two raw + JPEG
     stacks shot seconds apart (CAM00088, CAM00089) are merged into one
+  no matter when taken: a copy of IMG_5568 exported a year later joins it, and IMG_5569 and IMG_5570, 10.4 s apart
+    and all but the same (0.019); CAM00083, 25 minutes from CAM00088 and only alike (0.056), does not
   a photo taken out of an automatic stack stays out; a stack made by hand is never touched
   removing the automatic stacks, stacking again, the job queue's "all", auto stacking turned off
 
@@ -152,7 +154,7 @@ def main() -> None:
                      machineLearning__ocr__enabled=False)
 
     print("== the NAS")
-    files = main_library([f"{n}.{e}" for n in RAW_PAIRS + MERGED_PAIRS + [UPLOADED_PAIR] for e in ("ARW", "JPG")]
+    files = main_library([f"{n}.{e}" for n in RAW_PAIRS + MERGED_PAIRS + [UPLOADED_PAIR, "CAM00083"] for e in ("ARW", "JPG")]
                          + [f"{n}.HEIC" for n in IPHONE] + ["CAM00080.ARW"])
     shutil.rmtree(args.nas, ignore_errors=True)
     shoot, iphone, other, burst = (args.nas / d for d in ("2026-10-28 A7C2", "2026-09 iPhone", "2025 other", "burst"))
@@ -168,6 +170,15 @@ def main() -> None:
                     str(files["IMG_5571.HEIC"]), "--out", str(iphone / "IMG_E5571.JPG")], check=True, capture_output=True)
     subprocess.run([str(EXIFTOOL), "-q", "-overwrite_original", "-TagsFromFile", str(files["IMG_5571.HEIC"]),
                     "-all:all", str(iphone / "IMG_E5571.JPG")], check=True)
+    shutil.copy2(files["CAM00083.JPG"], shoot / "CAM00083.JPG")
+    # a copy of IMG_5568 exported a year later, smaller, under another name
+    export = args.nas / "2027 export" / "Exported 0042.jpg"
+    export.parent.mkdir()
+    subprocess.run(["sips", "-s", "format", "jpeg", "-s", "formatOptions", "80", "-Z", "2048",
+                    str(files["IMG_5568.HEIC"]), "--out", str(export)], check=True, capture_output=True)
+    # its metadata, orientation included, but dated a year later
+    subprocess.run([str(EXIFTOOL), "-q", "-overwrite_original", "-TagsFromFile", str(files["IMG_5568.HEIC"]),
+                    "-all:all", "-AllDates=2027:09:30 13:52:58", "-OffsetTime*=+08:00", str(export)], check=True)
     # a raw file of the same name as one of the shoot's, from another day
     shutil.copy2(files["CAM00080.ARW"], other / "CAM00074.ARW")
     # a burst, as Google Camera marks one
@@ -181,7 +192,7 @@ def main() -> None:
     prefs = c.get("/api/users/me/preferences").json()["autoStack"]
     check("defaults: bursts, raw + JPEG, edited copies; not similar photos",
           prefs == {"enabled": True, "burst": True, "rawJpeg": True, "edited": True, "similar": False,
-                    "maxDistance": 0.06, "maxSeconds": 10}, str(prefs))
+                    "maxDistance": 0.06, "maxSeconds": 10, "anytime": False, "anytimeDistance": 0.02}, str(prefs))
     library = c.post("/api/libraries", json={"ownerId": user_id, "importPaths": [str(args.nas)], "name": "NAS"}).json()
     start = time.time()
     c.post(f"/api/libraries/{library['id']}/scan").raise_for_status()
@@ -199,6 +210,8 @@ def main() -> None:
                            "where \"originalPath\" like '%/2025 other/CAM00074.ARW'")
     check("a raw file of the same name from another shoot stays out", other_raw == [["none"]], str(other_raw))
     check("nothing else stacked", len(stacks) == len(RAW_PAIRS) + len(MERGED_PAIRS) + 2, f"{len(stacks)} stacks")
+    check("the export a year later is not stacked by default",
+          not any("Exported 0042.jpg" in k for k in stacks))
     lone = immich.sql("select count(*) from asset a join asset_job_status j on j.\"assetId\" = a.id "
                       "where a.\"stackId\" is null and j.\"autoStackedAt\" is not null")[0][0]
     check("only stacked photos are marked as stacked", lone == "0", lone)
@@ -237,6 +250,19 @@ def main() -> None:
     check("the stack made by hand is untouched",
           stacks.get(frozenset({"IMG_5566.HEIC", "IMG_5567.HEIC"}), {}).get("auto") is False)
 
+    print("== no matter when taken (0.02)")
+    immich.preferences(anytime=True)
+    immich.run()
+    stacks = immich.stacks()
+    with_export = [k for k in stacks if "Exported 0042.jpg" in k]
+    check("the copy exported a year later joins IMG_5568", with_export == [frozenset({"Exported 0042.jpg", "IMG_5568.HEIC"})],
+          str([sorted(k) for k in with_export]))
+    check("IMG_5569 and IMG_5570, 10.4 s apart and all but the same, stacked",
+          frozenset({"IMG_5569.HEIC", "IMG_5570.HEIC"}) in stacks)
+    check("CAM00083, 25 minutes from CAM00088 and only alike, stays out", not any("CAM00083.JPG" in k for k in stacks))
+    check("other stacks unchanged", len(stacks) == len(RAW_PAIRS) + 4 + 1 + 2, f"{len(stacks)} stacks")
+    immich.preferences(anytime=False)
+
     print("== a photo taken out of an automatic stack")
     stack = stacks[frozenset({"IMG_E5571.JPG", "IMG_5571.HEIC", "IMG_5572.HEIC", "IMG_5573.HEIC"})]
     c.delete(f"/api/stacks/{stack['id']}/assets/{immich.asset_id('IMG_5573.HEIC')}").raise_for_status()
@@ -247,10 +273,10 @@ def main() -> None:
     print("== removing the automatic stacks")
     removed = c.delete("/api/auto-stacks").json()["count"]
     stacks = immich.stacks()
-    check("all of them removed, the photos kept", removed == len(RAW_PAIRS) + 4 and list(stacks) == [
+    check("all of them removed, the photos kept", removed == len(RAW_PAIRS) + 6 and list(stacks) == [
         frozenset({"IMG_5566.HEIC", "IMG_5567.HEIC"})], f"{removed} removed, left: {[sorted(k) for k in stacks]}")
     check("no photo deleted", immich.sql("select count(*) from asset where \"deletedAt\" is null "
-                                         "and visibility = 'timeline'")[0][0] == str((len(RAW_PAIRS) + len(MERGED_PAIRS)) * 2 + len(IPHONE) + 1 + 1 + 3 + 2))
+                                         "and visibility = 'timeline'")[0][0] == str((len(RAW_PAIRS) + len(MERGED_PAIRS)) * 2 + len(IPHONE) + 1 + 1 + 3 + 2 + 2))
 
     print("== stacking again")
     immich.run()

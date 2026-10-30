@@ -13,6 +13,8 @@ export const preferencesFactory = Sync.makeFactory<UserPreferencesResponseDto>({
     similar: false,
     maxDistance: 0.06,
     maxSeconds: 10,
+    anytime: false,
+    anytimeDistance: 0.02,
   },
   cast: {
     gCastEnabled: false,

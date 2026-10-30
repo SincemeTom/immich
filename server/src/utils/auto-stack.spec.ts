@@ -18,6 +18,8 @@ const preferences: AutoStackPreferences = {
   similar: true,
   maxDistance: 0.06,
   maxSeconds: 10,
+  anytime: false,
+  anytimeDistance: 0.02,
 };
 
 const taken = new Date('2026-10-28T14:00:31.297Z');
@@ -163,6 +165,22 @@ describe('auto stacking', () => {
       const later = new Date(taken.getTime() + seconds * 1000);
       expect(
         getAutoStackReasons(asset('A.HEIC'), asset('B.HEIC', { fileCreatedAt: later, distance }), preferences),
+      ).toEqual([]);
+    });
+
+    it('should stack photos all but the same whenever they were taken, when asked to', () => {
+      const yearLater = { fileCreatedAt: new Date(taken.getTime() + 365 * 86_400_000), distance: 0.008 };
+      expect(getAutoStackReasons(asset('IMG_5568.HEIC'), asset('export.jpg', yearLater), preferences)).toEqual([]);
+      expect(
+        getAutoStackReasons(asset('IMG_5568.HEIC'), asset('export.jpg', yearLater), { ...preferences, anytime: true }),
+      ).toEqual([AutoStackReason.Similar]);
+    });
+
+    it('should not stack photos only alike taken long apart, though asked to stack whenever taken', () => {
+      // CAM00088 and CAM00082: two photos 26 minutes apart, at a distance of 0.037
+      const later = { fileCreatedAt: new Date(taken.getTime() + 1556 * 1000), distance: 0.0373 };
+      expect(
+        getAutoStackReasons(asset('CAM00088.JPG'), asset('CAM00082.JPG', later), { ...preferences, anytime: true }),
       ).toEqual([]);
     });
 
