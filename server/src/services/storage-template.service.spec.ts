@@ -217,6 +217,23 @@ describe(StorageTemplateService.name, () => {
       expect(mocks.asset.update).toHaveBeenCalledWith({ id: motionAsset.id, originalPath: newMotionPicturePath });
     });
 
+    it("should not move a file into a folder beside the user's own, by a camera model made up to reach it", async () => {
+      const asset = AssetFactory.from().exif().build();
+      // the folder beside the user's, its name starting with theirs: another user's on a share, say
+      asset.exifInfo.model = `../${asset.ownerId}-other`;
+      const config = structuredClone(defaults);
+      config.storageTemplate.template = '{{model}}/{{filename}}';
+      sut.onConfigInit({ newConfig: config });
+      mocks.user.get.mockResolvedValue(userStub.user1);
+      mocks.assetJob.getForStorageTemplateJob.mockResolvedValueOnce(getForStorageTemplate(asset));
+
+      await expect(sut.handleMigrationSingle({ id: asset.id })).resolves.toBe(JobStatus.Success);
+
+      expect(mocks.move.create).not.toHaveBeenCalled();
+      expect(mocks.asset.update).not.toHaveBeenCalled();
+      expect(mocks.storage.rename).not.toHaveBeenCalled();
+    });
+
     it('should use handlebar if condition for album', async () => {
       const user = UserFactory.create();
       const asset = AssetFactory.from().owner(user).exif().build();

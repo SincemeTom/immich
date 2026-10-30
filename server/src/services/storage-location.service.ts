@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { dirname, join, relative } from 'node:path';
+import { dirname, join, relative, resolve } from 'node:path';
 import type { ArgOf } from 'src/repositories/event.repository.js';
 import { StorageCore } from 'src/cores/storage.core.js';
 import { OnEvent, OnJob } from 'src/decorators.js';
@@ -523,8 +523,17 @@ export class StorageLocationService extends BaseService {
       library.importPaths.some((importPath) => isWithin(importPath, absolute)),
     );
     if (library) {
-      // the other way round is fine: a library importing from a folder that holds this one leaves it out
       throw new BadRequestException(`The external library ${library.name} imports from inside this folder`);
+    }
+    // the other way round is fine for the user's own library, which leaves it out, but not for another user's
+    const otherUsers = 'userId' in target ? libraries.filter((library) => library.ownerId !== target.userId) : [];
+    const holder = otherUsers.find((library) =>
+      library.importPaths.some((importPath) => isWithin(absolute, resolve(importPath))),
+    );
+    if (holder) {
+      throw new BadRequestException(
+        `The external library ${holder.name}, another user's, imports from a folder that holds this one`,
+      );
     }
 
     const listed = await this.run('/bin/ls', ['-1A', absolute]);

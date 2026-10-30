@@ -228,6 +228,21 @@ describe(StorageLocationService.name, () => {
       expect(mocks.job.queue).toHaveBeenCalledWith({ name: JobName.StorageTemplateMigration });
     });
 
+    it("should refuse a folder another user's external library imports from a folder holding", async () => {
+      mocks.library.getAll.mockResolvedValue([
+        factory.library({ name: 'Mine', ownerId: user.id, importPaths: [`${nas}/petyr/Photos`] }),
+      ]);
+      // the user's own library is fine: it leaves the folder out
+      await expect(sut.setUser(user.id, { shareId: 'share-id', path: 'petyr/Photos/Immich' })).resolves.toBeDefined();
+
+      mocks.library.getAll.mockResolvedValue([
+        factory.library({ name: 'Alice', ownerId: 'alice', importPaths: [`${nas}/petyr`] }),
+      ]);
+      await expect(sut.setUser(user.id, { shareId: 'share-id', path: 'petyr/Photos/Immich' })).rejects.toThrow(
+        "Alice, another user's, imports from a folder that holds this one",
+      );
+    });
+
     it('should refuse while the storage template is off', async () => {
       metadata.set(SystemMetadataKey.SystemConfig, { storageTemplate: { enabled: false } });
       await expect(sut.setUser(user.id, { shareId: 'share-id', path: 'petyr/Photos/Immich' })).rejects.toThrow(
