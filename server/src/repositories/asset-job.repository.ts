@@ -448,7 +448,7 @@ export class AssetJobRepository {
   streamForDeletedJob(trashedBefore: Date) {
     return this.db
       .selectFrom('asset')
-      .select(['id', 'isOffline'])
+      .select(['id', 'isOffline', 'libraryId'])
       .where('asset.deletedAt', '<=', trashedBefore)
       .stream();
   }

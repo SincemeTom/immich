@@ -5,6 +5,7 @@ import { AuthDto } from 'src/dtos/auth.dto.js';
 import { TrashResponseDto } from 'src/dtos/trash.dto.js';
 import { JobName, JobStatus, Permission, QueueName } from 'src/enum.js';
 import { BaseService } from 'src/services/base.service.js';
+import { isLibraryReachable } from 'src/utils/library.js';
 import { batched } from 'src/utils/misc.js';
 
 @Injectable()
@@ -33,11 +34,30 @@ export class TrashService extends BaseService {
   }
 
   async empty(auth: AuthDto): Promise<TrashResponseDto> {
-    const count = await this.trashRepository.empty(auth.user.id);
+    const count = (await this.trashRepository.empty(auth.user.id)) + (await this.emptyOffline(auth.user.id));
     if (count > 0) {
       await this.jobRepository.queue({ name: JobName.AssetEmptyTrash, data: {} });
     }
     return { count };
+  }
+
+  /**
+   * The trash shows the files a scan found gone from an external library, which emptying it is to delete too. Not
+   * while their library can't be reached: then they may only be on a share that isn't mounted, and the next scan
+   * brings them back. Their originals are never deleted, being offline.
+   */
+  private async emptyOffline(userId: string): Promise<number> {
+    const reachable: string[] = [];
+    for (const libraryId of await this.trashRepository.getOfflineLibraryIds(userId)) {
+      const library = await this.libraryRepository.get(libraryId);
+      if (library && (await isLibraryReachable(this.storageRepository, library.importPaths))) {
+        reachable.push(libraryId);
+      } else {
+        this.logger.warn(`Keeping the offline assets of library ${libraryId} in the trash, as it cannot be reached`);
+      }
+    }
+
+    return this.trashRepository.emptyOffline(userId, reachable);
   }
 
   @OnEvent({ name: 'AssetDeleteAll' })

@@ -1,5 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
 import { DateTime } from 'luxon';
+import { Stats } from 'node:fs';
 import { AssetJobName, AssetStatsResponseDto } from 'src/dtos/asset.dto.js';
 import { AssetEditAction } from 'src/dtos/editing.dto.js';
 import {
@@ -545,6 +546,44 @@ describe(AssetService.name, () => {
       expect(mocks.job.queueAll).toHaveBeenCalledWith([
         { name: JobName.AssetDelete, data: { id: asset.id, deleteOnDisk: true } },
       ]);
+    });
+
+    describe('files gone offline from an external library', () => {
+      const library = factory.library({ id: 'library-id', importPaths: ['/nas/photos'] });
+      const offline = { ...AssetFactory.create({ libraryId: library.id }), isOffline: true };
+      const trashed = AssetFactory.create();
+
+      beforeEach(() => {
+        mocks.systemMetadata.get.mockResolvedValue({ trash: { enabled: true, days: 30 } });
+        mocks.library.get.mockResolvedValue(library);
+        mocks.storage.stat.mockResolvedValue({ isDirectory: () => true } as Stats);
+        mocks.storage.checkFileExists.mockResolvedValue(true);
+      });
+
+      it('should delete them, but not their originals, while their library can be reached', async () => {
+        mocks.storage.readdir.mockResolvedValue(['2026']);
+        mocks.assetJob.streamForDeletedJob.mockReturnValue(makeStream([offline, trashed]));
+
+        await expect(sut.handleAssetDeletionCheck()).resolves.toBe(JobStatus.Success);
+
+        expect(mocks.job.queueAll).toHaveBeenCalledWith([
+          { name: JobName.AssetDelete, data: { id: offline.id, deleteOnDisk: false } },
+          { name: JobName.AssetDelete, data: { id: trashed.id, deleteOnDisk: true } },
+        ]);
+      });
+
+      it('should keep them while their library cannot be reached, and check it once', async () => {
+        mocks.storage.readdir.mockResolvedValue([]);
+        const another = { ...AssetFactory.create({ libraryId: library.id }), isOffline: true };
+        mocks.assetJob.streamForDeletedJob.mockReturnValue(makeStream([offline, trashed, another]));
+
+        await expect(sut.handleAssetDeletionCheck()).resolves.toBe(JobStatus.Success);
+
+        expect(mocks.job.queueAll).toHaveBeenCalledWith([
+          { name: JobName.AssetDelete, data: { id: trashed.id, deleteOnDisk: true } },
+        ]);
+        expect(mocks.library.get).toHaveBeenCalledTimes(1);
+      });
     });
 
     it('should queue assets for deletion after trash duration', async () => {
