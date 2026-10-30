@@ -44,12 +44,17 @@ const target = (originalFileName: string, overrides: Record<string, unknown> = {
   ...overrides,
 });
 
+/** the rules the tests turn on and off themselves, off; the defaults of this install have them on */
+const baseline = { similar: false, maxSeconds: 10, anytime: false, anytimeDistance: 0.02 };
+
 describe(AutoStackService.name, () => {
   let sut: AutoStackService;
   let mocks: ServiceMocks;
 
   const setPreferences = (autoStack: Record<string, unknown>) =>
-    mocks.user.getMetadata.mockResolvedValue([{ key: UserMetadataKey.Preferences, value: { autoStack } }] as any);
+    mocks.user.getMetadata.mockResolvedValue([
+      { key: UserMetadataKey.Preferences, value: { autoStack: { ...baseline, ...autoStack } } },
+    ] as any);
 
   beforeEach(() => {
     ({ sut, mocks } = newTestService(AutoStackService));

@@ -19,15 +19,15 @@
 
   const saved = authManager.preferences.autoStack;
 
-  let enabled = $state(saved?.enabled ?? false);
+  let enabled = $state(saved?.enabled ?? true);
   let burst = $state(saved?.burst ?? true);
   let rawJpeg = $state(saved?.rawJpeg ?? true);
   let edited = $state(saved?.edited ?? true);
-  let similar = $state(saved?.similar ?? false);
+  let similar = $state(saved?.similar ?? true);
   let maxDistance = $state(String(saved?.maxDistance ?? 0.06));
-  let maxSeconds = $state<number | undefined>(saved?.maxSeconds ?? 10);
-  let anytime = $state(saved?.anytime ?? false);
-  let anytimeDistance = $state(String(saved?.anytimeDistance ?? 0.02));
+  let maxSeconds = $state<number | undefined>(saved?.maxSeconds ?? 600);
+  let anytime = $state(saved?.anytime ?? true);
+  let anytimeDistance = $state(String(saved?.anytimeDistance ?? 0.03));
   let busy = $state(false);
 
   const presets = ['0.03', '0.06', '0.1'];
@@ -41,8 +41,8 @@
   const anytimePresets = ['0.01', '0.02', '0.03'];
   const anytimeOptions = $derived([
     { label: $t('auto_stack_anytime_strict'), value: '0.01' },
-    { label: $t('auto_stack_similarity_default'), value: '0.02' },
-    { label: $t('auto_stack_anytime_loose'), value: '0.03' },
+    { label: $t('auto_stack_similarity_strict'), value: '0.02' },
+    { label: $t('auto_stack_similarity_default'), value: '0.03' },
     ...(anytimePresets.includes(anytimeDistance) ? [] : [{ label: anytimeDistance, value: anytimeDistance }]),
   ]);
 
@@ -56,7 +56,7 @@
           edited,
           similar,
           maxDistance: Number(maxDistance),
-          maxSeconds: Math.min(Math.max(Math.round(maxSeconds ?? 10), 1), 3600),
+          maxSeconds: Math.min(Math.max(Math.round(maxSeconds ?? 600), 1), 3600),
           anytime,
           anytimeDistance: Number(anytimeDistance),
         },
