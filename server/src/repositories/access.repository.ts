@@ -3,7 +3,7 @@ import { type Kysely, type NotNull, sql } from 'kysely';
 import { InjectKysely } from 'nestjs-kysely';
 import { ChunkedSet, DummyValue, GenerateSql } from 'src/decorators.js';
 import { PersonUserRole } from 'src/dtos/person.dto.js';
-import { AlbumUserRole, AssetVisibility } from 'src/enum.js';
+import { AlbumUserRole, AssetStatus, AssetVisibility } from 'src/enum.js';
 import { PersonId } from 'src/repositories/person.repository.js';
 import { DB } from 'src/schema/index.js';
 import { asUuid } from 'src/utils/database.js';
@@ -191,14 +191,18 @@ class AssetAccess {
       return new Set<string>();
     }
 
-    return this.db
-      .selectFrom('asset')
-      .select('asset.id')
-      .where('asset.id', 'in', [...assetIds])
-      .where('asset.ownerId', '=', userId)
-      .$if(!hasElevatedPermission, (eb) => eb.where('asset.visibility', '!=', AssetVisibility.Locked))
-      .execute()
-      .then((assets) => new Set(assets.map((asset) => asset.id)));
+    return (
+      this.db
+        .selectFrom('asset')
+        .select('asset.id')
+        .where('asset.id', 'in', [...assetIds])
+        .where('asset.ownerId', '=', userId)
+        // deleted for good, waiting for the job that removes it: an external library's, deleted with it
+        .where('asset.status', '!=', AssetStatus.Deleted)
+        .$if(!hasElevatedPermission, (eb) => eb.where('asset.visibility', '!=', AssetVisibility.Locked))
+        .execute()
+        .then((assets) => new Set(assets.map((asset) => asset.id)))
+    );
   }
 
   @GenerateSql({ params: [DummyValue.UUID, DummyValue.UUID_SET] })
@@ -296,6 +300,7 @@ class AssetFileAccess {
       .innerJoin('asset', 'asset.id', 'asset_file.assetId')
       .$if(!hasElevatedPermission, (eb) => eb.where('asset.visibility', '!=', AssetVisibility.Locked))
       .where('asset.ownerId', '=', userId)
+      .where('asset.status', '!=', AssetStatus.Deleted)
       .where('asset_file.id', 'in', [...fileIds])
       .execute()
       .then((files) => new Set(files.map(({ id }) => id)));

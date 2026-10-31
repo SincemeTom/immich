@@ -7,7 +7,7 @@ import {
   NetworkShareTestResponseDto,
   NetworkShareUpdateDto,
 } from 'src/dtos/network-share.dto.js';
-import { BootstrapEventPriority, CronJob, ImmichWorker, SystemMetadataKey } from 'src/enum.js';
+import { BootstrapEventPriority, CronJob, ImmichWorker, JobName, SystemMetadataKey } from 'src/enum.js';
 import { BaseService } from 'src/services/base.service.js';
 import { handlePromiseError } from 'src/utils/misc.js';
 import {
@@ -264,9 +264,12 @@ export class NetworkShareService extends BaseService {
     );
     await this.saveShares(shares.map((other) => (other.id === id ? updated : other)));
     if (reconnect) {
-      await this.unmount(await this.getMountPath(share));
-      if (updated.enabled) {
-        await this.mountAndRecord(updated);
+      const mountPath = await this.getMountPath(share);
+      await this.unmount(mountPath);
+      if (!updated.enabled) {
+        await this.setLibrariesOffline(mountPath);
+      } else if (await this.mountAndRecord(updated)) {
+        await this.rescanLibraries(mountPath);
       }
     }
 
@@ -280,8 +283,9 @@ export class NetworkShareService extends BaseService {
     const share = { ...this.findOrFail(shares, id), enabled: true };
     await this.saveShares(shares.map((other) => (other.id === id ? share : other)));
     const mounts = await this.getMounts();
-    if (!mounts.has(await this.getMountPath(share))) {
-      await this.mountAndRecord(share);
+    const mountPath = await this.getMountPath(share);
+    if (!mounts.has(mountPath) && (await this.mountAndRecord(share))) {
+      await this.rescanLibraries(mountPath);
     }
     return this.get(id);
   }
@@ -292,11 +296,39 @@ export class NetworkShareService extends BaseService {
     const shares = await this.getShares();
     const share = { ...this.findOrFail(shares, id), enabled: false };
     await this.saveShares(shares.map((other) => (other.id === id ? share : other)));
-    const result = await this.unmount(await this.getMountPath(share));
+    const mountPath = await this.getMountPath(share);
+    const result = await this.unmount(mountPath);
     if (!result.success) {
       throw new BadRequestException(`Could not unmount the share: ${result.message}`);
     }
+    await this.setLibrariesOffline(mountPath);
     return this.get(id);
+  }
+
+  /** The external libraries that import from a share's mount point */
+  private async getLibrariesOn(mountPath: string) {
+    const libraries = await this.libraryRepository.getAll();
+    return libraries.filter((library) => library.importPaths.some((path) => isWithin(path, mountPath)));
+  }
+
+  /**
+   * Its libraries' files are offline while the share is unmounted on purpose: the web UI says so, and asks for the
+   * share rather than failing to load an original. They stay in the timeline, with their thumbnails, and are not
+   * trashed (macos/verification/m1-delete-cleanup.md); mounting it again brings them back.
+   */
+  private async setLibrariesOffline(mountPath: string) {
+    for (const library of await this.getLibrariesOn(mountPath)) {
+      await this.assetRepository.updateByLibraryId(library.id, { isOffline: true });
+      this.logger.log(`Files of external library ${library.name} are offline while its share is unmounted`);
+    }
+  }
+
+  /** A scan of its libraries' files, which finds the ones that were offline there again */
+  private async rescanLibraries(mountPath: string) {
+    const libraries = await this.getLibrariesOn(mountPath);
+    await this.jobRepository.queueAll(
+      libraries.map((library) => ({ name: JobName.LibrarySyncAssetsQueueAll, data: { id: library.id } })),
+    );
   }
 
   async delete(id: string): Promise<void> {
@@ -304,8 +336,7 @@ export class NetworkShareService extends BaseService {
     const shares = await this.getShares();
     const share = this.findOrFail(shares, id);
     const mountPath = await this.getMountPath(share);
-    const allLibraries = await this.libraryRepository.getAll();
-    const libraries = allLibraries.filter((library) => library.importPaths.some((path) => isWithin(path, mountPath)));
+    const libraries = await this.getLibrariesOn(mountPath);
     if (libraries.length > 0) {
       throw new BadRequestException(
         `The share is used by external libraries: ${libraries.map((library) => library.name).join(', ')}. Remove their import paths on it first.`,
@@ -377,7 +408,7 @@ export class NetworkShareService extends BaseService {
     return value?.errors ?? {};
   }
 
-  private async mountAndRecord(share: NetworkShare) {
+  private async mountAndRecord(share: NetworkShare): Promise<boolean> {
     const result = await this.mount(share);
     const errors = await this.getErrors();
     if (result.success) {
@@ -386,6 +417,7 @@ export class NetworkShareService extends BaseService {
       errors[share.id] = { reason: result.reason, message: result.message };
     }
     await this.systemMetadataRepository.set(SystemMetadataKey.NetworkShareErrors, { errors });
+    return result.success;
   }
 
   /** The mount point as `mount` lists it: the location's real path, which /tmp, say, is not */
