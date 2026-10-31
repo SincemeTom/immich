@@ -19,13 +19,33 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# Immich runs as LaunchAgents of the user logged in at the screen, whose session they need
-user="$(stat -f%Su /dev/console)"
-if [ -z "$user" ] || [ "$user" = root ] || [ "$user" = loginwindow ] || [ "$user" = _mbsetupuser ]; then
-  log "nobody is logged in at the screen: install while logged in as the user Immich is to run as"
+# Immich runs as LaunchAgents of a user logged in to a desktop session, which they need. Which user: the one who opened
+# Installer; or, from the command line (sudo installer), the one at the screen. The screen alone is not enough: in a
+# remote session (Screen Sharing on a Mac mini without a display), it shows the login window.
+is_user() {
+  [ -n "$1" ] && [ "$1" != root ] && [ "$1" != loginwindow ] && [ "$1" != _mbsetupuser ] \
+    && [ "$(id -u "$1" 2>/dev/null || echo 0)" -ge 500 ]
+}
+installer_user="$(ps -axo user=,comm= \
+  | awk '$2 == "/System/Library/CoreServices/Installer.app/Contents/MacOS/Installer" && $1 != "root" { print $1; exit }')"
+console_user="$(stat -f%Su /dev/console 2>/dev/null || true)"
+log "Installer opened by: ${installer_user:-nobody}; at the screen: ${console_user:-nobody}; USER: ${USER:-unset}"
+user=""
+for candidate in "$installer_user" "$console_user" "${USER:-}"; do
+  if is_user "$candidate"; then
+    user="$candidate"
+    break
+  fi
+done
+if [ -z "$user" ]; then
+  log "no user to install for: open the package while logged in as the user Immich is to run as"
   exit 1
 fi
 uid="$(id -u "$user")"
+if ! launchctl print "gui/$uid" >/dev/null 2>&1; then
+  log "$user is not logged in to a desktop session (only over SSH?): log in on the Mac, or through Screen Sharing, then install"
+  exit 1
+fi
 group="$(id -gn "$user")"
 home="$(dscl . -read "/Users/$user" NFSHomeDirectory | awk '{ print $2 }')"
 immich_home="$home/Library/Application Support/Immich"
