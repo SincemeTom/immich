@@ -96,6 +96,8 @@ e2e() {
 
 uninstall() {
   local home="$1"
+  # its logs, which uninstalling deletes, for what failed
+  [ -d "$home/logs" ] && rm -rf "$WORK/logs-$(basename "$home")" && cp -R "$home/logs" "$WORK/logs-$(basename "$home")"
   [ -x "$home/bin/immichctl" ] && "$home/bin/immichctl" uninstall --purge >/dev/null 2>&1 || true
   rm -rf "$home"
 }
