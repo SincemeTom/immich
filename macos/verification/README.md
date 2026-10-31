@@ -35,6 +35,7 @@
 | 问题 2 | 自动堆叠（分支 `mac/feat/auto-stack`） | [m1-auto-stack.md](m1-auto-stack.md) | 通过：每个用户在账户设置里开启，可选连拍、RAW+JPG、编辑版、相似照片（相似度 + 拍摄间隔）；上传和外部库扫描后自动执行；只加不删，移出的照片不再放回，可一键移除或重新堆叠；端到端 25/25 |
 | RAW 预览 | RAW 照片预览默认用相机内嵌 JPG（分支 `mac/feat/raw-embedded-preview`） | [m1-raw-preview.md](m1-raw-preview.md) | 通过："优先使用嵌入式预览"默认打开，RAW 显示与相机 JPG 一致；升级和切换开关时只自动重做 RAW 的预览；端到端 11/11 |
 | 默认设置 | 新安装、新用户按这台的配置（分支 `mac/feat/my-defaults`） | [m1-defaults.md](m1-defaults.md) | 通过：存储模板 `{{y}}/{{MM}}/{{filename}}`、文件夹/人物/回忆侧边栏、自动堆叠全部规则默认开启 |
+| 反馈 | 外部库删除、共享卸载后子成员仍能访问 | [m1-external-library-member-feedback.md](m1-external-library-member-feedback.md) | **问题，未修复**：删库只软删除，资产要等 `LibraryDelete` 任务执行，任务在队列暂停期间被清除后资产一直可见；卸载共享不会把外部库资产标记离线，缩略图在另一个共享上，照常浏览，原图返回 500 |
 
 ## M2 视频转码用 Apple 硬件
 
