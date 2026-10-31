@@ -192,7 +192,8 @@ quiet rustup toolchain install "$toolchain" --profile minimal
 command -v cargo-make >/dev/null 2>&1 || quiet cargo install cargo-make --locked
 (
   cd "$src"
-  rm -rf ./build/raw
+  # cargo would reuse what it built against an earlier release, linked to that release's postgres by its path
+  rm -rf ./build/raw ./target
   # the recipe of VectorChord's own macOS CI job (psql_macos in .github/workflows/check.yml)
   export CC="$BREW_PREFIX/opt/llvm@18/bin/clang" PGRX_PG_CONFIG_PATH="$PG_CONFIG"
   quiet cargo make build -o ./build/raw
