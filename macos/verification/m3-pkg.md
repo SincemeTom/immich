@@ -139,6 +139,28 @@
 
 第一版 `Immich-3.3.5-d9e2f6180.pkg` 已删除。
 
+## 正式版
+
+| 分支 / 标签 | 用途 |
+|---|---|
+| `mac/develop` | 日常开发，功能分支合到这里；从这里打的包是**开发版**：`Immich-3.3.5-dev-<提交>.pkg`，安装器里显示 `3.3.5-dev+<提交>` |
+| `mac/main` | 正式版分支，只从 `mac/develop` 合入测试过的版本 |
+| `v<上游版本>-mac.<序号>` | 正式版标签，如 `v3.3.5-mac.1`；从**干净的**标签检出打的包才是**正式版**：`Immich-3.3.5-mac.1.pkg`，发布目录名 `3.3.5-mac.1`，安装器内部版本 `3.3.5.1`（按序号递增） |
+
+发布步骤：
+
+```bash
+git checkout mac/main && git merge --no-ff mac/develop
+git tag -a v3.3.5-mac.2 -m "说明"
+git push origin mac/main v3.3.5-mac.2
+macos/package/build-pkg.sh            # 检出在标签上、没有改动时自动按正式版打包
+git checkout mac/develop
+```
+
+正式版签名、公证后连同 `.sha256` 复制到 `macos/package/releases/`（不进 git，`build/` 以后可能被清空）。安装包有 4.9 GB，超过 GitHub Release 单文件 2 GB 的上限，请另外备份。标签的版本号必须和 `server/package.json` 一致，否则构建会停下。
+
+**证书过期不影响已发布的包**：签名带 Apple 的安全时间戳，公证票据也已装订进安装包，证书（2027-11-29 到期）过期后，之前打的包照样能装、装好的程序照样能运行；只有证书被吊销才会失效。证书过期后只是不能再打**新**包，届时在开发者后台续一张 Developer ID 证书即可。钥匙串里的两张证书请导出 `.p12` 备份。
+
 ## 测试机上怎么测
 
 ```bash
