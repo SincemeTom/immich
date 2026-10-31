@@ -115,6 +115,11 @@ quiet mise_exec pnpm --filter @immich/plugin-core build
 quiet mise_exec pnpm --filter immich --prod --no-optional deploy "$RELEASE/server"
 quiet mise_exec env SHARP_FORCE_GLOBAL_LIBVIPS=true pnpm --config.verify-deps-before-run=false \
   --dir "$RELEASE/server/node_modules/sharp" exec npm run build
+# of sharp's build, only the module it loads: its object files and makefiles are not to be shipped (nor signed)
+sharp_src="$(cd "$RELEASE/server/node_modules/sharp/src" && pwd -P)"
+find "$sharp_src/build" -mindepth 1 -maxdepth 1 ! -name Release -exec rm -rf {} +
+find "$sharp_src/build/Release" -mindepth 1 -maxdepth 1 ! -name 'sharp-*.node' -exec rm -rf {} +
+find "$sharp_src" \( -name '*.o' -o -name '*.a' \) -delete
 cp "$(mise_exec which node)" "$RELEASE/node/bin/node"
 cp -R "$REPO/web/build" "$RELEASE/build/www"
 cp -R "$REPO/packages/plugin-core/dist" "$REPO/packages/plugin-core/manifest.json" \

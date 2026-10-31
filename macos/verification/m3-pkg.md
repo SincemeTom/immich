@@ -1,7 +1,7 @@
 # M3 安装包：不需要 Homebrew 的 .pkg
 
 - 分支：`mac/feat/pkg`
-- 结论：**发布目录已经完全自带依赖**，在这台 Mac 上屏蔽 Homebrew 和外网后，新装与接管都通过了端到端测试；签名、打包、公证见文末"打包与公证"。真正的图形界面安装要在测试机上做（见"测试机上怎么测"）。
+- 结论：**通过**。发布目录完全自带依赖，在这台 Mac 上屏蔽 Homebrew 和外网后，新装与接管都通过了端到端测试；`Immich-3.3.5-d9e2f6180.pkg` 已签名、**经 Apple 公证（0 个问题）并装订**。真正的图形界面安装要在测试机上做（见"测试机上怎么测"）。
 
 ## 用户看到的
 
@@ -100,6 +100,31 @@
 ### 测试机脚本的回退
 
 接管测试之后要能回到一键安装版。`1-disable-native.sh` 现在会保存接管时会被改写的东西（`native.env`、`run-service`、`immichctl`、当前版本），`3-restore.sh` 放回去。在临时实例上走了一遍：一键安装式安装 → 关闭 → 用自带依赖的版本接管（运行正常）→ `immichctl uninstall` → 恢复：回到原版本、Homebrew 的 PostgreSQL，服务全部正常。
+
+## 打包与公证
+
+`macos/package/build-pkg.sh` 一条命令：构建发布目录 → 准备模型 → 签名 → 签名后再跑一遍发布目录检查 → 打包 → 公证 → 装订。
+
+| 项目 | 结果 |
+|---|---|
+| 安装包 | `Immich-3.3.5-d9e2f6180.pkg`，4.9 GB（5,239,657,441 字节），安装后占 6 GB（模型准备后再加约 10 GB 的 CoreML 编译缓存） |
+| SHA-256 | `699ae3f15978d3c233f3ebc7b67536f1ad00517aa05a49b7579562080e7b7d41` |
+| 模型 | 智能搜索 XLM-Roberta-Large-ViT-H-14（4.80 GB）、人脸 buffalo_l（0.19 GB）、OCR PP-OCRv6_medium（0.14 GB，SHA-256 已核对），全部取自这台 Mac，没有下载 |
+| 签名 | 547 个 Mach-O 文件全部 Developer ID Application 签名、强化运行时、安全时间戳；node 加 JIT 权限；安装包 Developer ID Installer 签名 |
+| 签名后的发布目录检查 | 17/17（多了签名一项） |
+| 公证 | Accepted，"Ready for distribution"，**0 个问题**，539 个票据；上传加审核约 30 分钟 |
+| 装订、Gatekeeper | `stapler validate` 通过；`spctl`：accepted，Notarized Developer ID |
+| 安装器 | 只允许 Apple 芯片、macOS 15.0 及以上；中文和英文欢迎页、结束页 |
+
+### 这一轮发现并修好的
+
+| 问题 | 解决 |
+|---|---|
+| 第二次构建时 VectorChord 链接失败：cargo 沿用了上次的编译结果，里面写着上一个发布目录的 `postgres` 路径 | 每次都从头编译 VectorChord |
+| 签名后"装着 Homebrew 时不加载它的库"这项检查失效：强化运行时会忽略 `DYLD_PRINT_LIBRARIES`，什么都不输出，检查也就恒为通过 | 改为在进程解码完所有样本后用 `lsof` 看它实际映射的文件：签名后的发布目录加载 211 个自己的库、0 个 Homebrew 的库 |
+| 这项检查同时发现 libexif 会读 Homebrew 里它的中文翻译文件（`.mo`，编译时写死的路径） | 只是消息文字，不是代码，没装 Homebrew 时不存在、消息改为英文，不影响运行；检查改为只统计库，另外列出读了几个数据文件 |
+| 安装包里有 sharp 编译留下的 8 个 `.o` 目标文件和 makefile（也被签了名） | 构建时只保留 sharp 实际加载的模块（下次构建生效，这个安装包里还带着，无害） |
+| 每个文件都带 `com.apple.provenance` 扩展属性，安装包里因此多了 `._` 条目 | 这是 macOS 自己加的，`xattr -c` 也删不掉，安装时还原为扩展属性，无害 |
 
 ## 测试机上怎么测
 

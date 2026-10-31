@@ -40,7 +40,7 @@
 
 | 编号 | 内容 | 记录 | 结论 |
 |---|---|---|---|
-| M3-1 | 不需要 Homebrew 的 .pkg（分支 `mac/feat/pkg`） | [m3-pkg.md](m3-pkg.md) | 发布目录自带全部依赖（macOS 15+）；屏蔽 Homebrew 和外网后检查 16/16，新装端到端 36/36，接管一键安装版数据全部保留、端到端 36/36；装着 Homebrew 的 Mac 上也不会混加载 Homebrew 的库 |
+| M3-1 | 不需要 Homebrew 的 .pkg（分支 `mac/feat/pkg`） | [m3-pkg.md](m3-pkg.md) | 通过：发布目录自带全部依赖（macOS 15+）；屏蔽 Homebrew 和外网后检查 17/17，新装端到端 36/36，接管一键安装版数据全部保留、端到端 36/36；装着 Homebrew 的 Mac 上也不会混加载 Homebrew 的库；4.9 GB 安装包已签名、经 Apple 公证（0 个问题）。图形界面安装待测试机验证 |
 
 ## M2 视频转码用 Apple 硬件
 
