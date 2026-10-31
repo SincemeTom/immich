@@ -1,7 +1,7 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { EventEmitter } from 'node:events';
 import { PassThrough } from 'node:stream';
-import { CronJob, SystemMetadataKey } from 'src/enum.js';
+import { CronJob, JobName, SystemMetadataKey } from 'src/enum.js';
 import { NetworkShareService } from 'src/services/network-share.service.js';
 import {
   NetworkShare,
@@ -483,6 +483,25 @@ describe(NetworkShareService.name, () => {
         enabled: true,
         status: NetworkShareStatus.Mounted,
       });
+    });
+
+    it("should mark its libraries' files offline while unmounted, and scan them once it is mounted again", async () => {
+      shares = [share()];
+      mounted.add(`${location}/NAS photos`);
+      const family = factory.library({ id: 'family', importPaths: [`${location}/NAS photos/family`] });
+      const other = factory.library({ id: 'other', importPaths: ['/Volumes/other'] });
+      mocks.library.getAll.mockResolvedValue([family, other]);
+
+      await sut.unmountShare('share-id');
+
+      expect(mocks.asset.updateByLibraryId).toHaveBeenCalledTimes(1);
+      expect(mocks.asset.updateByLibraryId).toHaveBeenCalledWith('family', { isOffline: true });
+
+      await sut.mountShare('share-id');
+
+      expect(mocks.job.queueAll).toHaveBeenCalledWith([
+        { name: JobName.LibrarySyncAssetsQueueAll, data: { id: 'family' } },
+      ]);
     });
 
     it('should fail for a share that does not exist', async () => {

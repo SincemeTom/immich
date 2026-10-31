@@ -116,6 +116,16 @@ describe(QueueService.name, () => {
       await sut.runCommandLegacy(QueueName.MetadataExtraction, { command: QueueCommand.Empty, force: false });
 
       expect(mocks.job.empty).toHaveBeenCalledWith(QueueName.MetadataExtraction);
+      expect(mocks.job.queue).not.toHaveBeenCalled();
+    });
+
+    it('should queue the deletion check again after emptying the library queue, which drops deletions', async () => {
+      mocks.job.getJobCounts.mockResolvedValue(factory.queueStatistics());
+
+      await sut.runCommandLegacy(QueueName.Library, { command: QueueCommand.Empty, force: false });
+
+      expect(mocks.job.empty).toHaveBeenCalledWith(QueueName.Library);
+      expect(mocks.job.queue).toHaveBeenCalledWith({ name: JobName.LibraryDeleteCheck, data: {} });
     });
 
     it('should not start a job that is already running', async () => {

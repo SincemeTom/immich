@@ -304,8 +304,12 @@ export class AssetService extends BaseService {
     const reachable = new Map<string, boolean>();
     const isReachable = async (libraryId: string) => {
       if (!reachable.has(libraryId)) {
-        const library = await this.libraryRepository.get(libraryId);
-        reachable.set(libraryId, !!library && (await isLibraryReachable(this.storageRepository, library.importPaths)));
+        // a deleted library's are not kept for it: it is not coming back
+        const library = await this.libraryRepository.get(libraryId, true);
+        reachable.set(
+          libraryId,
+          !library || !!library.deletedAt || (await isLibraryReachable(this.storageRepository, library.importPaths)),
+        );
       }
       return reachable.get(libraryId)!;
     };

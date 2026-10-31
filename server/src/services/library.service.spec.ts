@@ -6,7 +6,16 @@ import { JOBS_LIBRARY_PAGINATION_SIZE } from 'src/constants.js';
 import { StorageCore } from 'src/cores/storage.core.js';
 import { SystemConfig, defaults } from 'src/dtos/config.dto.js';
 import { mapLibrary } from 'src/dtos/library.dto.js';
-import { AssetType, AssetVisibility, ChecksumAlgorithm, CronJob, ImmichWorker, JobName, JobStatus } from 'src/enum.js';
+import {
+  AssetStatus,
+  AssetType,
+  AssetVisibility,
+  ChecksumAlgorithm,
+  CronJob,
+  ImmichWorker,
+  JobName,
+  JobStatus,
+} from 'src/enum.js';
 import { LibraryService } from 'src/services/library.service.js';
 import { AssetFactory } from 'test/factories/asset.factory.js';
 import { authStub } from 'test/fixtures/auth.stub.js';
@@ -55,6 +64,14 @@ describe(LibraryService.name, () => {
   });
 
   describe('onConfigInit', () => {
+    it('should check for libraries pending deletion at once, not only at the nightly scan', async () => {
+      mocks.cron.create.mockResolvedValue();
+
+      await sut.onConfigInit({ newConfig: defaults });
+
+      expect(mocks.job.queue).toHaveBeenCalledWith({ name: JobName.LibraryDeleteCheck, data: {} });
+    });
+
     it('should init cron job and handle config changes', async () => {
       mocks.cron.create.mockResolvedValue();
       mocks.cron.update.mockResolvedValue();
@@ -610,6 +627,30 @@ describe(LibraryService.name, () => {
       });
     });
 
+    it('should trash a file marked offline while its share was unmounted, once the share is back without it', async () => {
+      const asset = AssetFactory.create({ isOffline: true, deletedAt: null });
+      const mockAssetJob: ILibraryBulkIdsJob = {
+        assetIds: [asset.id],
+        libraryId: newUuid(),
+        importPaths: ['/data/user1'],
+        exclusionPatterns: [],
+        totalAssets: 1,
+        progressCounter: 0,
+      };
+      mocks.assetJob.getForSyncAssets.mockResolvedValue([asset]);
+      mocks.storage.stat.mockImplementation((path) =>
+        path === '/data/user1'
+          ? Promise.resolve({ isDirectory: () => true } as Stats)
+          : Promise.reject(new Error('ENOENT')),
+      );
+      mocks.storage.checkFileExists.mockResolvedValue(true);
+      mocks.storage.readdir.mockResolvedValue(['2026']);
+
+      await expect(sut.handleSyncAssets(mockAssetJob)).resolves.toBe(JobStatus.Success);
+
+      expect(mocks.asset.updateAll).toHaveBeenCalledWith([asset.id], { isOffline: true, deletedAt: expect.any(Date) });
+    });
+
     it('should do nothing with offline assets deleted from disk', async () => {
       const asset = AssetFactory.create({ isOffline: true, deletedAt: newDate() });
       const mockAssetJob: ILibraryBulkIdsJob = {
@@ -1015,6 +1056,21 @@ describe(LibraryService.name, () => {
   });
 
   describe('delete', () => {
+    it('should hide its assets at once, everywhere, before the job that deletes them runs', async () => {
+      const library = factory.library();
+      mocks.library.get.mockResolvedValue(library);
+
+      await sut.delete(library.id);
+
+      expect(mocks.asset.updateByLibraryId).toHaveBeenCalledWith(library.id, {
+        deletedAt: expect.any(Date),
+        status: AssetStatus.Deleted,
+      });
+      expect(mocks.asset.updateByLibraryId.mock.invocationCallOrder[0]).toBeLessThan(
+        mocks.job.queue.mock.invocationCallOrder[0],
+      );
+    });
+
     it('should delete a library', async () => {
       const library = factory.library();
 
@@ -1336,6 +1392,8 @@ describe(LibraryService.name, () => {
         mocks.storage.checkFileExists.mockResolvedValue(false);
 
         await sut.onConfigInit({ newConfig: systemConfigStub.libraryWatchEnabled as SystemConfig });
+        // the deletion check it queues at once
+        mocks.job.queue.mockClear();
       });
 
       it('should watch library', async () => {
@@ -1555,6 +1613,17 @@ describe(LibraryService.name, () => {
       mocks.library.streamAssetIds.mockReturnValue(makeStream([AssetFactory.create()]));
 
       await expect(sut.handleDeleteLibrary({ id: library.id })).resolves.toBe(JobStatus.Success);
+    });
+
+    it('should hide the assets of a library deleted before they were hidden at once', async () => {
+      mocks.library.streamAssetIds.mockReturnValue(makeStream([]));
+
+      await sut.handleDeleteLibrary({ id: 'library-id' });
+
+      expect(mocks.asset.updateByLibraryId).toHaveBeenCalledWith('library-id', {
+        deletedAt: expect.any(Date),
+        status: AssetStatus.Deleted,
+      });
     });
   });
 

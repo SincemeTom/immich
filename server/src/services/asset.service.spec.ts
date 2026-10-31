@@ -584,6 +584,19 @@ describe(AssetService.name, () => {
         ]);
         expect(mocks.library.get).toHaveBeenCalledTimes(1);
       });
+
+      it('should delete them once their library is deleted, reachable or not: it is not coming back', async () => {
+        mocks.storage.readdir.mockResolvedValue([]);
+        mocks.library.get.mockResolvedValue({ ...library, deletedAt: new Date() });
+        mocks.assetJob.streamForDeletedJob.mockReturnValue(makeStream([offline]));
+
+        await expect(sut.handleAssetDeletionCheck()).resolves.toBe(JobStatus.Success);
+
+        expect(mocks.library.get).toHaveBeenCalledWith(library.id, true);
+        expect(mocks.job.queueAll).toHaveBeenCalledWith([
+          { name: JobName.AssetDelete, data: { id: offline.id, deleteOnDisk: false } },
+        ]);
+      });
     });
 
     it('should queue assets for deletion after trash duration', async () => {

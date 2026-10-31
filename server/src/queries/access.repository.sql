@@ -105,7 +105,8 @@ from
 where
   "asset"."id" in ($1)
   and "asset"."ownerId" = $2
-  and "asset"."visibility" != $3
+  and "asset"."status" != $3
+  and "asset"."visibility" != $4
 
 -- AccessRepository.asset.checkPartnerAccess
 select
@@ -158,7 +159,8 @@ from
 where
   "asset"."visibility" != $1
   and "asset"."ownerId" = $2
-  and "asset_file"."id" in ($3)
+  and "asset"."status" != $3
+  and "asset_file"."id" in ($4)
 
 -- AccessRepository.authDevice.checkOwnerAccess
 select
