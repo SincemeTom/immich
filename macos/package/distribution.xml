@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The .pkg's installer: one choice, Apple Silicon and macOS 14 or later, installed for the whole Mac (the payload
+     goes to /Library, then postinstall hands it to the user logged in). build-pkg.sh fills in @...@. -->
+<installer-gui-script minSpecVersion="2">
+  <title>Immich</title>
+  <welcome file="welcome.html" mime-type="text/html"/>
+  <conclusion file="conclusion.html" mime-type="text/html"/>
+  <options customize="never" require-scripts="true" hostArchitectures="arm64" rootVolumeOnly="true"/>
+  <domains enable_anywhere="false" enable_currentUserHome="false" enable_localSystem="true"/>
+  <volume-check>
+    <allowed-os-versions>
+      <os-version min="14.0"/>
+    </allowed-os-versions>
+  </volume-check>
+  <choices-outline>
+    <line choice="default">
+      <line choice="@IDENTIFIER@"/>
+    </line>
+  </choices-outline>
+  <choice id="default"/>
+  <choice id="@IDENTIFIER@" visible="false">
+    <pkg-ref id="@IDENTIFIER@"/>
+  </choice>
+  <pkg-ref id="@IDENTIFIER@" version="@VERSION@" onConclusion="none">@COMPONENT@</pkg-ref>
+</installer-gui-script>

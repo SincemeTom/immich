@@ -37,6 +37,12 @@
 | 默认设置 | 新安装、新用户按这台的配置（分支 `mac/feat/my-defaults`） | [m1-defaults.md](m1-defaults.md) | 通过：存储模板 `{{y}}/{{MM}}/{{filename}}`、文件夹/人物/回忆侧边栏、自动堆叠全部规则默认开启 |
 | 反馈 | 外部库删除、共享卸载后子成员仍能访问 | [m1-external-library-member-feedback.md](m1-external-library-member-feedback.md) | **问题，未修复**：删库只软删除，资产要等 `LibraryDelete` 任务执行，任务在队列暂停期间被清除后资产一直可见；卸载共享不会把外部库资产标记离线，缩略图在另一个共享上，照常浏览，原图返回 500 |
 
+## M3 安装包
+
+| 编号 | 内容 | 记录 | 结论 |
+|---|---|---|---|
+| M3-1 | 不需要 Homebrew 的 .pkg（分支 `mac/feat/pkg`） | [m3-pkg.md](m3-pkg.md) | 通过：发布目录自带全部依赖（macOS 15+）；屏蔽 Homebrew 和外网后检查 17/17，新装端到端 36/36，接管一键安装版数据全部保留、端到端 36/36；装着 Homebrew 的 Mac 上也不会混加载 Homebrew 的库；4.9 GB 安装包已签名、经 Apple 公证（0 个问题）。图形界面安装待测试机验证 |
+
 ## M2 视频转码用 Apple 硬件
 
 | 编号 | 验证项 | 文件 | 结论 |

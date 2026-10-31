@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><style>
+body { font: 13px -apple-system, sans-serif; line-height: 1.5; }
+h2 { font-size: 15px; margin: 0 0 8px; }
+ul { padding-left: 18px; margin: 6px 0 10px; }
+code { font: 12px ui-monospace, Menlo, monospace; }
+</style></head>
+<body>
+<h2>Immich is running</h2>
+<ul>
+  <li><b>Web UI</b>: <code>http://localhost:2283</code>. In the phone app, the server is
+    <code>http://this-Mac's-IP:2283</code> (System Settings &gt; Network shows the IP).</li>
+  <li>The <b>first time</b> a network share (NAS) is used, macOS asks whether node may access network volumes:
+    click Allow.</li>
+  <li><b>Manage</b> it in Terminal: <code>immichctl status</code>, <code>immichctl logs</code>,
+    <code>immichctl doctor</code> (whether this Mac keeps it running unattended).</li>
+  <li><b>Logs</b>: <code>~/Library/Logs/Immich</code>; the installation's in <code>install.log</code> there.</li>
+  <li><b>Upgrade</b> by installing a newer package: everything is kept.</li>
+  <li><b>Uninstall</b>: <code>immichctl uninstall</code> removes the services and keeps the data;
+    <code>--purge</code> deletes the database and settings too. The photo library is always kept.</li>
+</ul>
+</body>
+</html>

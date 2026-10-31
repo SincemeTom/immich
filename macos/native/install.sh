@@ -18,16 +18,12 @@
 #   -h, --help
 #
 # Running it again upgrades: it builds a new release next to the running one, then switches to it. Options given
-# once are saved in <home>/config/native.env and reused; the database, settings and library are kept.
+# once are saved in <home>/config/native.env and reused; the database, settings and library are kept. Configuring and
+# starting is configure.sh's, which the .pkg (macos/package) runs too.
 set -euo pipefail
 
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
 DEFAULT_HOME="$HOME/Library/Application Support/Immich"
-DEFAULT_LABEL=local.immich
-# Immich's default, ViT-B-32__openai, is English only: it found 2 of 30 Chinese queries' photos first, this one 27
-# (macos/verification/m1-clip-model.md). It downloads 4.8 GB, takes about 14 GB on disk with CoreML's compiled copy,
-# and about 7 GB of memory while loaded.
-DEFAULT_CLIP_MODEL=XLM-Roberta-Large-ViT-H-14__frozen_laion5b_s13b_b90k
 BREW=/opt/homebrew/bin/brew
 PG_FORMULA=postgresql@17
 PG_PREFIX=/opt/homebrew/opt/$PG_FORMULA
@@ -36,23 +32,16 @@ MISE_UNUSED="java,terragrunt,opentofu,npm:@openapitools/openapi-generator-cli,np
 
 usage() { sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'; }
 
-# --- options -----------------------------------------------------------------------------------------------------
+# --- options: configure.sh takes them all; this needs a few to build -----------------------------------------------
 
-opt_home="" opt_library="" opt_server_port="" opt_listen="" opt_listen_set="" opt_ml_port="" opt_db_port=""
-opt_redis_port="" opt_label="" opt_clip_model="" no_warm="" no_start="" fresh_database=""
+ARGS=("$@")
+opt_home="" no_warm=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --home) opt_home="$2"; shift ;;
-    --library) opt_library="$2"; shift ;;
-    --server-port) opt_server_port="$2"; shift ;;
-    --listen) opt_listen="$2"; opt_listen_set=1; shift ;;
-    --ml-port) opt_ml_port="$2"; shift ;;
-    --db-port) opt_db_port="$2"; shift ;;
-    --redis-port) opt_redis_port="$2"; shift ;;
-    --label) opt_label="$2"; shift ;;
-    --clip-model) opt_clip_model="$2"; shift ;;
+    --library | --server-port | --listen | --ml-port | --db-port | --redis-port | --label | --clip-model) shift ;;
     --no-warm) no_warm=1 ;;
-    --no-start) no_start=1 ;;
+    --no-start) ;;
     -h | --help) usage; exit 0 ;;
     *) echo "unknown option: $1" >&2; usage >&2; exit 64 ;;
   esac
@@ -67,21 +56,11 @@ if [ -f "$IMMICH_HOME/config/native.env" ]; then
   # shellcheck source=/dev/null
   . "$IMMICH_HOME/config/native.env"
 fi
-LABEL="${opt_label:-${IMMICH_NATIVE_LABEL_PREFIX:-$DEFAULT_LABEL}}"
-LIBRARY="${opt_library:-${IMMICH_NATIVE_LIBRARY:-$HOME/Pictures/Immich}}"
-SERVER_PORT="${opt_server_port:-${IMMICH_NATIVE_SERVER_PORT:-2283}}"
-ML_PORT="${opt_ml_port:-${IMMICH_NATIVE_ML_PORT:-3003}}"
-DB_PORT="${opt_db_port:-${IMMICH_NATIVE_DB_PORT:-5432}}"
-REDIS_PORT="${opt_redis_port:-${IMMICH_NATIVE_REDIS_PORT:-6379}}"
-LISTEN="${IMMICH_NATIVE_LISTEN:-}"
-[ -n "$opt_listen_set" ] && LISTEN="$opt_listen"
-DB_PASSWORD="${IMMICH_NATIVE_DB_PASSWORD:-}"
 if [ "$IMMICH_HOME" = "$DEFAULT_HOME" ]; then
   LOG_DIR="${IMMICH_NATIVE_LOG_DIR:-$HOME/Library/Logs/Immich}"
 else
   LOG_DIR="${IMMICH_NATIVE_LOG_DIR:-$IMMICH_HOME/logs}"
 fi
-case "$LIBRARY" in /*) ;; *) echo "--library must be an absolute path" >&2; exit 64 ;; esac
 
 mkdir -p "$LOG_DIR"
 INSTALL_LOG="$LOG_DIR/install.log"
@@ -109,11 +88,6 @@ on_error() {
 }
 set -E
 trap on_error ERR
-
-# quotes a value for native.env, which bash sources
-shq() { printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"; }
-# escapes a value for a plist
-xml() { printf '%s' "$1" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'; }
 
 export LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8
 export HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK=1 HOMEBREW_NO_ENV_HINTS=1
@@ -145,23 +119,9 @@ need_gb=15
 [ "$free_gb" -ge "$need_gb" ] || die "at least $need_gb GB free is needed, there are $free_gb GB"
 info "$(sysctl -n machdep.cpu.brand_string), macOS $macos, $free_gb GB free"
 
-# a port in use by anything but this install's own service, which runs as (or under) the LaunchAgent's process
-port_owned_elsewhere() {
-  local service="$1" port="$2" owner job
-  owner="$(lsof -nP -iTCP:"$port" -sTCP:LISTEN -t 2>/dev/null | head -1 || true)"
-  [ -n "$owner" ] || return 1
-  job="$(launchctl print "gui/$(id -u)/$LABEL.$service" 2>/dev/null | awk '$1 == "pid" { print $3; exit }')"
-  [ -z "$job" ] && return 0
-  [ "$(ps -o pgid= -p "$owner" | tr -d ' ')" != "$(ps -o pgid= -p "$job" | tr -d ' ')" ]
-}
-for entry in "server:$SERVER_PORT:server-port" "ml:$ML_PORT:ml-port" "postgres:$DB_PORT:db-port" \
-  "valkey:$REDIS_PORT:redis-port"; do
-  IFS=: read -r service port option <<<"$entry"
-  if port_owned_elsewhere "$service" "$port"; then
-    owner="$(lsof -nP -iTCP:"$port" -sTCP:LISTEN -t | head -1)"
-    die "port $port ($service) is in use by $(ps -o comm= -p "$owner") (pid $owner), choose another with --$option"
-  fi
-done
+# the ports, and the Mac itself, as configure.sh checks them before it starts anything
+IMMICH_INSTALL_LOG_STARTED=1 "$REPO/macos/native/configure.sh" --check-only ${ARGS[@]+"${ARGS[@]}"} >/dev/null \
+  || die "$(tail -n 1 "$INSTALL_LOG" | sed 's/^error: //')"
 
 # --- 2. tools ----------------------------------------------------------------------------------------------------
 
@@ -311,202 +271,7 @@ if [ ! -s "$geodata/geodata-date.txt" ]; then
 fi
 ln -sfn "$geodata" "$RELEASE/build/geodata"
 
-# --- 5. configuration --------------------------------------------------------------------------------------------
+# --- 5. configuration and start: configure.sh, which the .pkg runs too -------------------------------------------
 
-step "Configuring $IMMICH_HOME"
-mkdir -p "$IMMICH_HOME"/{bin,config,data/postgres,data/valkey,data/models} "$LIBRARY"
-chmod 700 "$IMMICH_HOME/config" "$IMMICH_HOME/data/postgres"
-[ -n "$DB_PASSWORD" ] || DB_PASSWORD="$(openssl rand -hex 24)"
-
-cat >"$IMMICH_HOME/config/native.env" <<EOF
-# Written by macos/native/install.sh, which reads it back on the next run.
-# After changing a value, run the installer again to apply it everywhere it is used.
-IMMICH_NATIVE_LABEL_PREFIX=$(shq "$LABEL")
-IMMICH_NATIVE_LIBRARY=$(shq "$LIBRARY")
-IMMICH_NATIVE_LOG_DIR=$(shq "$LOG_DIR")
-# empty: every interface
-IMMICH_NATIVE_LISTEN=$(shq "$LISTEN")
-IMMICH_NATIVE_SERVER_PORT=$SERVER_PORT
-IMMICH_NATIVE_ML_PORT=$ML_PORT
-IMMICH_NATIVE_DB_PORT=$DB_PORT
-IMMICH_NATIVE_REDIS_PORT=$REDIS_PORT
-IMMICH_NATIVE_DB_PASSWORD=$(shq "$DB_PASSWORD")
-IMMICH_NATIVE_PG_PREFIX=$(shq "$PG_PREFIX")
-# 1 once the installer has turned on VideoToolbox transcoding, which it then leaves to the web UI's setting
-IMMICH_NATIVE_VIDEO_ACCEL_SET=${IMMICH_NATIVE_VIDEO_ACCEL_SET:-}
-EOF
-chmod 600 "$IMMICH_HOME/config/native.env"
-
-if [ ! -f "$IMMICH_HOME/config/server.env" ]; then
-  cat >"$IMMICH_HOME/config/server.env" <<'EOF'
-# Extra settings for the Immich server, as the environment variables in
-# https://docs.immich.app/install/environment-variables, one NAME=value per line. Apply with: immichctl restart server
-# Ports, paths, database and Redis settings come from native.env and win over anything set here.
-#
-# IMMICH_LOG_LEVEL=log
-# IMMICH_TRUSTED_PROXIES=192.168.1.10
-EOF
-fi
-
-cat >"$IMMICH_HOME/config/valkey.conf" <<EOF
-# Written by macos/native/install.sh
-bind 127.0.0.1
-port $REDIS_PORT
-dir "$IMMICH_HOME/data/valkey"
-logfile ""
-daemonize no
-EOF
-
-install -m 755 "$REPO/macos/native/run-service" "$REPO/macos/native/immichctl" "$IMMICH_HOME/bin/"
-
-pgdata="$IMMICH_HOME/data/postgres"
-if [ ! -f "$pgdata/PG_VERSION" ]; then
-  info "creating the database cluster"
-  pwfile="$(mktemp)"
-  printf '%s' "$DB_PASSWORD" >"$pwfile"
-  # as the official image: data checksums, superuser postgres with a password; ICU for the same collation everywhere
-  quiet "$PG_PREFIX/bin/initdb" -D "$pgdata" -U postgres --pwfile="$pwfile" --auth=scram-sha-256 \
-    --data-checksums --encoding=UTF8 --locale-provider=icu --icu-locale=en-US --locale=en_US.UTF-8
-  rm -f "$pwfile"
-  printf "\n# settings for Immich, rewritten by every install\ninclude 'immich.conf'\n" >>"$pgdata/postgresql.conf"
-fi
-cat >"$pgdata/immich.conf" <<EOF
-# Written by macos/native/install.sh on every run. Put your own settings in postgresql.override.conf.
-listen_addresses = '127.0.0.1'
-port = $DB_PORT
-unix_socket_directories = ''
-shared_preload_libraries = 'vchord'
-
-# the official image's tuning, from postgresql.ssd.conf in immich-app/base-images. Its effective_io_concurrency =
-# 200 is left out: macOS has no posix_fadvise(), and postgres refuses any value but 0 there.
-search_path = '"\$user", public'
-max_wal_size = 5GB
-shared_buffers = 512MB
-wal_compression = on
-work_mem = 16MB
-autovacuum_vacuum_scale_factor = 0.1
-autovacuum_analyze_scale_factor = 0.05
-autovacuum_vacuum_cost_limit = 1000
-random_page_cost = 1.2
-
-include_if_exists 'postgresql.override.conf'
-EOF
-
-step "Registering the services with launchd"
-agents="$HOME/Library/LaunchAgents"
-mkdir -p "$agents"
-files="$(sysctl -n kern.maxfilesperproc)"
-[ "$files" -gt 65536 ] && files=65536
-for service in postgres valkey ml server; do
-  timeout=30
-  [ "$service" = postgres ] && timeout=90
-  cat >"$agents/$LABEL.$service.plist" <<EOF
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<!-- Written by macos/native/install.sh -->
-<plist version="1.0">
-<dict>
-  <key>Label</key>
-  <string>$(xml "$LABEL.$service")</string>
-  <key>ProgramArguments</key>
-  <array>
-    <string>$(xml "$IMMICH_HOME/bin/run-service")</string>
-    <string>$service</string>
-  </array>
-  <key>RunAtLoad</key>
-  <true/>
-  <key>KeepAlive</key>
-  <true/>
-  <key>ThrottleInterval</key>
-  <integer>10</integer>
-  <key>ExitTimeOut</key>
-  <integer>$timeout</integer>
-  <key>ProcessType</key>
-  <string>Standard</string>
-  <key>SoftResourceLimits</key>
-  <dict>
-    <key>NumberOfFiles</key>
-    <integer>$files</integer>
-  </dict>
-  <key>StandardOutPath</key>
-  <string>$(xml "$LOG_DIR/$service.log")</string>
-  <key>StandardErrorPath</key>
-  <string>$(xml "$LOG_DIR/$service.log")</string>
-</dict>
-</plist>
-EOF
-  plutil -lint -s "$agents/$LABEL.$service.plist"
-done
-info "$agents/$LABEL.{postgres,valkey,ml,server}.plist"
-
-# --- 6. switch over and start ------------------------------------------------------------------------------------
-
-ctl="$IMMICH_HOME/bin/immichctl"
-previous="$(cd "$IMMICH_HOME/current" 2>/dev/null && pwd -P || true)"
-
-step "Starting Immich"
-quiet "$ctl" stop
-ln -sfn "$RELEASE" "$IMMICH_HOME/current"
-if [ -n "$no_start" ]; then
-  info "--no-start: services left stopped, start them with: $ctl start"
-else
-  "$ctl" start postgres
-  export PGPASSWORD="$DB_PASSWORD"
-  if [ -z "$("$PG_PREFIX/bin/psql" -h 127.0.0.1 -p "$DB_PORT" -U postgres -Atc \
-    "SELECT 1 FROM pg_database WHERE datname = 'immich'")" ]; then
-    quiet "$PG_PREFIX/bin/psql" -h 127.0.0.1 -p "$DB_PORT" -U postgres -c "CREATE DATABASE immich"
-    info "created the immich database"
-    fresh_database=1
-  fi
-  unset PGPASSWORD
-  "$ctl" start valkey
-  "$ctl" start ml
-  "$ctl" start server
-
-  # Videos transcode on the GPU (macos/verification/m2-videotoolbox.md): set for a new library, and once for one from
-  # before this existed. Not on later runs, which could not tell "disabled" chosen in the web UI from never set, as
-  # Immich stores only what differs from its defaults.
-  if [ -n "$fresh_database" ] || [ "${IMMICH_NATIVE_VIDEO_ACCEL_SET:-}" != 1 ]; then
-    step "Video transcoding on the GPU (VideoToolbox)"
-    "$ctl" video-accel videotoolbox | sed 's/^/    /'
-    sed -i '' 's/^IMMICH_NATIVE_VIDEO_ACCEL_SET=.*/IMMICH_NATIVE_VIDEO_ACCEL_SET=1/' "$IMMICH_HOME/config/native.env"
-  fi
-  # the smart search model: the multilingual default for a new library, otherwise only when asked for. Changing it
-  # on a library with photos means re-indexing them, which the web UI's Jobs page starts.
-  if [ -n "$fresh_database" ] || [ -n "$opt_clip_model" ]; then
-    step "Smart search model ${opt_clip_model:-$DEFAULT_CLIP_MODEL}"
-    "$ctl" clip-model "${opt_clip_model:-$DEFAULT_CLIP_MODEL}" ${no_warm:+--no-warm} | sed 's/^/    /'
-  elif [ -z "$no_warm" ]; then
-    step "Preparing the machine learning models"
-    "$ctl" warm | sed 's/^/    /'
-  fi
-fi
-
-# keep the release that runs and the one before it, for going back
-for old in "$IMMICH_HOME"/releases/*; do
-  [ -d "$old" ] || continue
-  old="$(cd "$old" && pwd -P)"
-  if [ "$old" != "$(cd "$RELEASE" && pwd -P)" ] && [ "$old" != "$previous" ]; then
-    rm -rf "$old"
-  fi
-done
-
-# immichctl on the PATH for the default install, in ~/.local/bin (uv's, already on the PATH) rather than in Homebrew's
-if [ "$LABEL" = "$DEFAULT_LABEL" ]; then
-  link="$HOME/.local/bin/immichctl"
-  mkdir -p "$(dirname "$link")"
-  if [ ! -e "$link" ] || [ "$(readlink "$link")" = "$ctl" ]; then
-    ln -sfn "$ctl" "$link"
-    case ":$(zsh -lic 'echo $PATH' 2>/dev/null):" in *":$HOME/.local/bin:"*) ctl=immichctl ;; esac
-  fi
-fi
-
-step "Done"
-"$IMMICH_HOME/bin/immichctl" status | sed 's/^/    /'
-echo
-"$IMMICH_HOME/bin/immichctl" doctor | sed 's/^/    /'
-cat <<EOF
-
-    Open the web address above to create the admin account. From then on everything is set in the web UI.
-    Manage the services with: $ctl status|start|stop|restart|logs|doctor
-EOF
+export IMMICH_INSTALL_LOG_STARTED=1
+exec "$REPO/macos/native/configure.sh" --release "$RELEASE" --pg-prefix "$PG_PREFIX" ${ARGS[@]+"${ARGS[@]}"}

@@ -1,6 +1,8 @@
 #!/bin/bash
-# Undoes 2-hide-homebrew.sh and 1-disable-native.sh: Homebrew back where it was, then the one-click Immich, its data and
-# its LaunchAgents, started again. Uninstall the .pkg's Immich first, if it was installed: the two cannot run at once.
+# Undoes 2-hide-homebrew.sh and 1-disable-native.sh: Homebrew back where it was, then the one-click Immich, its data,
+# settings, scripts, release and LaunchAgents, started again. Remove the .pkg's services first, if it was installed:
+#   immichctl uninstall             (after a test of taking over: keeps the data, which the one-click Immich gets back)
+#   immichctl uninstall --purge     (after a test of a new install)
 #
 # Usage: 3-restore.sh [--dry-run]     (asks for the administrator password, for sudo)
 set -euo pipefail
@@ -41,7 +43,7 @@ fi
 
 if [ -d "$BACKUP/Immich" ]; then
   if [ -e "$HOME_DIR" ]; then
-    echo "  $HOME_DIR is there (the .pkg's?): uninstall the .pkg's Immich, then run this again." >&2
+    echo "  $HOME_DIR is there (the .pkg's): run immichctl uninstall --purge, then this again." >&2
     echo "  The one-click Immich's data is kept in $BACKUP/Immich" >&2
     exit 1
   fi
@@ -52,10 +54,29 @@ fi
 agents=("$BACKUP/LaunchAgents"/*.plist)
 for plist in ${agents[@]+"${agents[@]}"}; do
   if [ -e "$AGENTS/$(basename "$plist")" ]; then
-    echo "  $AGENTS/$(basename "$plist") is there (the .pkg's?): uninstall the .pkg's Immich, then run this again." >&2
+    echo "  $AGENTS/$(basename "$plist") is there (the .pkg's): run immichctl uninstall, then this again." >&2
     exit 1
   fi
 done
+# what the .pkg rewrote, taking over
+if [ -d "$BACKUP/state" ]; then
+  previous="$(cat "$BACKUP/state/current" 2>/dev/null || true)"
+  if [ -n "$previous" ] && [ ! -d "$previous" ]; then
+    echo "  its release $previous is gone (a second .pkg install keeps only the one before it):" >&2
+    echo "  run macos/native/install.sh after this, which builds it again" >&2
+    previous=""
+  fi
+  echo "  its settings and scripts${previous:+, and its release $(basename "$previous")}"
+  [ -f "$BACKUP/state/native.env" ] && run cp -p "$BACKUP/state/native.env" "$HOME_DIR/config/native.env"
+  for script in run-service immichctl; do
+    [ -f "$BACKUP/state/$script" ] && run cp -p "$BACKUP/state/$script" "$HOME_DIR/bin/$script"
+  done
+  [ -n "$previous" ] && run ln -sfn "$previous" "$HOME_DIR/current"
+  if [ "$DRY" = 0 ]; then
+    rm -f "$BACKUP/state"/* && rmdir "$BACKUP/state"
+  fi
+fi
+
 run mkdir -p "$AGENTS"
 for plist in ${agents[@]+"${agents[@]}"}; do
   echo "  $(basename "$plist")"
