@@ -239,8 +239,47 @@ py="$RELEASE/ml/python/bin/python3.12"
   cd "$REPO/machine-learning"
   quiet uv export --frozen --extra cpu --no-dev --no-emit-project --format requirements-txt -o "$CACHE/build/ml-requirements.txt"
 )
-# into the standalone Python itself, not a venv, whose interpreter would be a link to this Mac's uv
-quiet uv pip install --python "$py" --break-system-packages --no-progress -r "$CACHE/build/ml-requirements.txt"
+# into the standalone Python itself, not a venv, whose interpreter would be a link to this Mac's uv. Exactly what the
+# lock pins (--no-deps): resolving again would add what the lock overrides away, as uv sync does not. rapidocr asks for
+# opencv-python, which the lock replaces with the headless build: both in one site-packages make a cv2 of the two, and
+# 5.0's half has no convertFp16, which the fp16 models' input path calls (every face and OCR request failed).
+quiet uv pip install --python "$py" --break-system-packages --no-progress --no-deps -r "$CACHE/build/ml-requirements.txt"
+"$py" - "$CACHE/build/ml-requirements.txt" <<'PY' || die "the machine learning packages are not the lock's"
+import re
+import sys
+from importlib.metadata import distributions
+
+from packaging.requirements import Requirement
+
+
+def norm(name: str) -> str:
+    return re.sub(r"[-_.]+", "-", name).lower()
+
+
+# each requirement, its continuation lines (hashes) and comments left out
+lines = [line.split(" \\")[0].strip() for line in open(sys.argv[1]) if line[:1].isalnum()]
+wanted, excluded = {}, set()
+for line in lines:
+    requirement = Requirement(line)
+    name = norm(requirement.name)
+    if requirement.marker is not None and not requirement.marker.evaluate():
+        excluded.add(name)  # another platform's, or overridden away by the lock (sys_platform == 'never')
+        continue
+    pins = [spec.version for spec in requirement.specifier if spec.operator == "=="]
+    wanted[name] = pins[0] if pins else None  # None: a direct reference (git), any version of it
+installed = {norm(d.metadata["Name"]): d.version for d in distributions()}
+problems = [f"{name} {version}: not in the lock" for name, version in installed.items()
+            if name not in wanted and name not in excluded and name not in {"pip", "setuptools", "wheel"}]
+problems += [f"{name} {installed[name]}: the lock leaves it out here, installed" for name in excluded & installed.keys()
+             if name not in wanted]
+problems += [f"{name}: {installed.get(name)}, the lock pins {version}" for name, version in wanted.items()
+             if name not in installed or (version is not None and installed[name] != version)]
+for problem in problems:
+    print(f"    {problem}")
+if not problems:
+    print(f"    {len(installed)} packages, as the lock pins them")
+sys.exit(1 if problems else 0)
+PY
 rsync -a --exclude __pycache__ "$REPO/machine-learning/immich_ml" "$RELEASE/ml/"
 providers="$("$py" -c 'import onnxruntime as o; print(" ".join(o.get_available_providers()))')"
 case " $providers " in *" CoreMLExecutionProvider "*) ;; *) die "onnxruntime has no CoreML provider ($providers)" ;; esac
