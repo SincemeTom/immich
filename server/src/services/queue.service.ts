@@ -127,7 +127,7 @@ export class QueueService extends BaseService {
       }
 
       case QueueCommand.Empty: {
-        await this.jobRepository.empty(name);
+        await this.empty(name);
         break;
       }
 
@@ -173,8 +173,16 @@ export class QueueService extends BaseService {
     return this.jobRepository.searchJobs(name, dto);
   }
 
-  async emptyQueue(auth: AuthDto, name: QueueName, dto: QueueDeleteDto) {
+  /** Emptying a queue drops what waits in it, which for the library queue may be the deletion of a library */
+  private async empty(name: QueueName) {
     await this.jobRepository.empty(name);
+    if (name === QueueName.Library) {
+      await this.jobRepository.queue({ name: JobName.LibraryDeleteCheck, data: {} });
+    }
+  }
+
+  async emptyQueue(auth: AuthDto, name: QueueName, dto: QueueDeleteDto) {
+    await this.empty(name);
     if (dto.failed) {
       await this.jobRepository.clear(name, QueueCleanType.Failed);
     }

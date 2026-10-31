@@ -562,6 +562,7 @@ select
   "asset"."libraryId",
   "asset"."originalPath",
   "asset"."status",
+  "asset"."deletedAt",
   "asset"."fileModifiedAt",
   "asset"."checksum",
   "asset"."checksumAlgorithm"

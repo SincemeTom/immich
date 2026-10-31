@@ -64,6 +64,8 @@ export class LibraryService extends BaseService {
         onTick: () => handlePromiseError(this.jobRepository.queue({ name: JobName.LibraryScanQueueAll }), this.logger),
         start: scan.enabled,
       });
+      // a library deleted while its job was lost (a queue emptied, a restart) is cleaned up now, not at midnight
+      await this.jobRepository.queue({ name: JobName.LibraryDeleteCheck, data: {} });
     }
 
     if (this.watchLibraries) {
@@ -387,14 +389,22 @@ export class LibraryService extends BaseService {
     }
 
     await this.libraryRepository.softDelete(id);
+    // Its assets go at once, from the timeline, albums, shared links and the trash alike: what the job does next is
+    // to clean them up, and it may run late, or be lost from an emptied queue (LibraryDeleteCheck queues it again)
+    await this.hideLibraryAssets(id);
     await this.jobRepository.queue({ name: JobName.LibraryDelete, data: { id } });
+  }
+
+  private async hideLibraryAssets(libraryId: string) {
+    await this.assetRepository.updateByLibraryId(libraryId, { deletedAt: new Date(), status: AssetStatus.Deleted });
   }
 
   @OnJob({ name: JobName.LibraryDelete, queue: QueueName.Library })
   async handleDeleteLibrary(job: JobOf<JobName.LibraryDelete>): Promise<JobStatus> {
     const libraryId = job.id;
 
-    await this.assetRepository.updateByLibraryId(libraryId, { deletedAt: new Date() });
+    // again, for a library deleted before they were hidden at once
+    await this.hideLibraryAssets(libraryId);
 
     this.logger.debug(`Will delete all assets in library ${libraryId}`);
     let hasAssets = false;
@@ -761,13 +771,15 @@ export class LibraryService extends BaseService {
       libraryId: string | null;
       originalPath: string;
       status: AssetStatus;
+      deletedAt: Date | null;
       fileModifiedAt: Date;
     },
     stat: Stats | null,
   ): AssetSyncResult {
     if (!stat) {
-      // File not found on disk or permission error
-      if (asset.isOffline) {
+      // File not found on disk or permission error. Offline already, and in the trash, or trashed by the user; but
+      // one marked offline while its share was unmounted on purpose, and missing once it is back, goes to the trash
+      if (asset.isOffline && (asset.deletedAt || asset.status !== AssetStatus.Active)) {
         this.logger.verbose(
           `Asset ${asset.originalPath} is still not accessible, keeping offline in library ${asset.libraryId}`,
         );

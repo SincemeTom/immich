@@ -72,12 +72,23 @@ export const sendFile = async (
 
     return await _sendFile(file.path, { dotfiles: 'allow' });
   } catch (error: Error | any) {
+    // a file that is not there: an external library's on a network share that is unmounted, say
+    if (isMissingFile(error) && !res.headersSent) {
+      logger.warn(
+        `File not found: ${error.path ?? 'unknown path'} (${error.code}). Is its disk or network share mounted?`,
+      );
+      next(new NotFoundException('The file is not available: its disk or network share may not be mounted'));
+      return;
+    }
     const { canWrite } = onRouteError(undefined, res, error, logger);
     if (canWrite) {
       next(new NotFoundException());
     }
   }
 };
+
+const isMissingFile = (error: any): error is NodeJS.ErrnoException =>
+  ['ENOENT', 'ENOTDIR', 'EACCES', 'EPERM'].includes(error?.code);
 
 export const asStreamableFile = ({ stream, type, disposition, length }: ImmichReadStream) => {
   return new StreamableFile(stream, { type, disposition, length });
