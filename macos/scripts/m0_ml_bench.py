@@ -7,6 +7,7 @@ Usage (with the machine-learning venv's python):
 """
 
 import argparse
+import os
 import json
 import statistics
 import subprocess
@@ -30,10 +31,11 @@ IMAGES = {
 }
 TEXTS = ["a bird of prey in the sky", "rocks in the mountains", "a person smiling", "海边的日落"]
 
-# the defaults the server sends, from server/src/dtos/config.dto.ts
-CLIP = "ViT-B-32__openai"
-FACE = "buffalo_l"
-OCR = "PP-OCRv5_mobile"
+# the defaults the server sends, from server/src/dtos/config.dto.ts, or the models named in the environment
+CLIP = os.environ.get("M0_CLIP", "ViT-B-32__openai")
+FACE = os.environ.get("M0_FACE", "buffalo_l")
+OCR = os.environ.get("M0_OCR", "PP-OCRv5_mobile")
+OCR_RESOLUTION = int(os.environ.get("M0_OCR_RESOLUTION", "736"))
 TASKS: dict[str, dict[str, Any]] = {
     "clip_visual": {"clip": {"visual": {"modelName": CLIP}}},
     "clip_textual": {"clip": {"textual": {"modelName": CLIP}}},
@@ -45,7 +47,7 @@ TASKS: dict[str, dict[str, Any]] = {
     },
     "ocr": {
         "ocr": {
-            "detection": {"modelName": OCR, "options": {"minScore": 0.5, "maxResolution": 736}},
+            "detection": {"modelName": OCR, "options": {"minScore": 0.5, "maxResolution": OCR_RESOLUTION}},
             "recognition": {"modelName": OCR, "options": {"minScore": 0.8}},
         }
     },

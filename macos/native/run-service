@@ -9,6 +9,10 @@
 # Immich settings for the server). The release a service runs is the one `current` points at when it starts.
 set -euo pipefail
 
+# The machine learning models' exports: v2, which the service narrows to fp16 for CoreML to run on the Neural Engine,
+# about twice as fast in half the memory as main's fp32, with the same results (macos/verification/m4-ml-ane.md).
+# IMMICH_NATIVE_MODEL_REVISION=main in native.env goes back to the older ones.
+MODEL_REVISION=v2
 home="$(cd "$(dirname "$0")/.." && pwd)"
 # shellcheck source=/dev/null
 . "$home/config/native.env"
@@ -62,6 +66,7 @@ case "$service" in
   ml | ml-warm)
     export PYTHONPATH="$release/ml"
     export MACHINE_LEARNING_CACHE_FOLDER="$home/data/models"
+    export MACHINE_LEARNING_MODEL_REVISION="${IMMICH_NATIVE_MODEL_REVISION:-$MODEL_REVISION}"
     export HF_HOME="$home/data/models/hf-cache"
     export IMMICH_LOG_LEVEL="${IMMICH_NATIVE_LOG_LEVEL:-info}"
     if [ "$service" = ml-warm ]; then

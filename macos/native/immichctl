@@ -292,6 +292,7 @@ cmd_warm() {
   echo "  smart search: $clip"
   echo "  faces:        $face"
   echo "  text (OCR):   $ocr (max resolution $ocr_max)"
+  forget_compiled_old_exports "$clip" "$face" "$ocr"
   warm_once "$clip" "$face" "$ocr" "$ocr_max"
   # A model that does not load (an interrupted download) is deleted and fetched again, and with it everything
   # prepared in its folder, like the CLIP text half beside a broken image half. The preload does not go back to
@@ -300,6 +301,58 @@ cmd_warm() {
     echo "  a model had to be downloaded again, preparing once more"
     warm_once "$clip" "$face" "$ocr" "$ocr_max"
   fi
+  retire_old_exports "$clip" "$face" "$ocr"
+}
+
+# the revision of the models' exports the service runs (run-service), whose folder is <model>/<revision>, but for main
+model_revision() {
+  echo "${IMMICH_NATIVE_MODEL_REVISION:-$(sed -n 's/^MODEL_REVISION=//p' "$home/bin/run-service")}"
+}
+
+# the folder each of these models' current export is in, as task|folder|export folder
+model_folders() {
+  local revision task name dir
+  revision="$(model_revision)"
+  for pair in "clip|$1" "facial-recognition|$2" "ocr|$3"; do
+    task="${pair%%|*}" name="${pair#*|}"
+    dir="$home/data/models/$task/$name"
+    if [ "$revision" = main ]; then echo "$task|$dir|$dir"; else echo "$task|$dir|$dir/$revision"; fi
+  done
+}
+
+# Moving to another export of a model (main to v2), what CoreML specialized for the older one's graphs stays in its
+# cache in ~/Library/Caches/python, keyed by paths no graph has any more: about 10 GB for the default models. Every
+# graph of the new export is compiled anyway, so the cache goes before they are.
+forget_compiled_old_exports() {
+  local cache="$HOME/Library/Caches/python/com.apple.e5rt.e5bundlecache" moving="" task dir current
+  [ "$(model_revision)" != main ] || return 0
+  while IFS='|' read -r task dir current; do
+    # an older export of it is here (main's halves in the model's own folder), and the new one not yet prepared
+    if [ -d "$dir" ] && find "$dir" -mindepth 1 -maxdepth 1 ! -name "$(basename "$current")" ! -name '.*' | grep -q . \
+      && ! find "$current" -name manifest.json -path '*/coreml/*' 2>/dev/null | grep -q .; then
+      moving=1
+    fi
+  done <<<"$(model_folders "$@")"
+  if [ -n "$moving" ] && [ -d "$cache" ]; then
+    echo "  clearing what CoreML compiled for the older exports ($(du -sh "$cache" 2>/dev/null | cut -f1))"
+    rm -rf "$cache"
+  fi
+}
+
+# Once the current export of a model is ready, its older one, and all that was prepared from it, is of no more use:
+# for the default models, moving from main to v2, about 20 GB
+retire_old_exports() {
+  local task dir current freed
+  [ "$(model_revision)" != main ] || return 0
+  while IFS='|' read -r task dir current; do
+    [ -f "$current/.immich-native-downloaded" ] || continue
+    find "$current" -name manifest.json -path '*/coreml/*' 2>/dev/null | grep -q . || continue
+    if find "$dir" -mindepth 1 -maxdepth 1 ! -name "$(basename "$current")" | grep -q .; then
+      freed="$(du -sh "$dir" 2>/dev/null | cut -f1)"
+      find "$dir" -mindepth 1 -maxdepth 1 ! -name "$(basename "$current")" -exec rm -rf {} +
+      echo "  removed the older export of $(basename "$dir") ($task): $freed before, $(du -sh "$dir" | cut -f1) now"
+    fi
+  done <<<"$(model_folders "$@")"
 }
 
 warm_once() {
