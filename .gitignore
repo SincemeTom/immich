@@ -31,3 +31,4 @@ vite.config.js.timestamp-*
 
 # the .pkg build: releases, payloads and packages
 /macos/package/build/
+/macos/package/releases/

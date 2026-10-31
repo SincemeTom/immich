@@ -64,6 +64,18 @@ if [ ! -f "$release/.complete" ] || ! grep -q '^standalone=1' "$release/RELEASE"
 fi
 RELEASE_ID="$(sed -n 's/^id=//p' "$release/RELEASE")"
 VERSION="$(sed -n 's/^version=//p' "$release/RELEASE")"
+TAG="$(sed -n 's/^tag=//p' "$release/RELEASE")"
+COMMIT="$(sed -n 's/^commit=//p' "$release/RELEASE" | cut -c1-9)"
+if [ -n "$TAG" ]; then
+  # v3.3.5-mac.2: shown as 3.3.5-mac.2, and to Installer as 3.3.5.2, which orders releases
+  DISPLAY_VERSION="${TAG#v}"
+  PKG_VERSION="$VERSION.${TAG##*-mac.}"
+  PKG_NAME="Immich-$DISPLAY_VERSION.pkg"
+else
+  DISPLAY_VERSION="$VERSION-dev+$COMMIT"
+  PKG_VERSION="$VERSION.0"
+  PKG_NAME="Immich-$VERSION-dev-$COMMIT.pkg"
+fi
 MACOS_MIN="$(sed -n 's/^macos_min=//p' "$release/RELEASE")"
 MACOS_MIN="${MACOS_MIN:-15.0}"
 
@@ -126,7 +138,7 @@ chmod 755 "$WORK/scripts/postinstall"
 for lang in zh_CN en; do
   mkdir -p "$WORK/resources/$lang.lproj"
   for page in welcome conclusion; do
-    sed -e "s/@VERSION@/$VERSION/g" -e "s/@SIZE_GB@/$size_gb/g" -e "s/@MACOS_MIN@/$MACOS_MIN/g" \
+    sed -e "s/@VERSION@/$DISPLAY_VERSION/g" -e "s/@SIZE_GB@/$size_gb/g" -e "s/@MACOS_MIN@/$MACOS_MIN/g" \
       "$HERE/resources/$lang.lproj/$page.html" >"$WORK/resources/$lang.lproj/$page.html"
   done
 done
@@ -138,12 +150,12 @@ for ((i = 0; i < count; i++)); do
 done
 component="immich-$VERSION.pkg"
 pkgbuild --root "$ROOT" --component-plist "$WORK/component.plist" --scripts "$WORK/scripts" \
-  --identifier "$IDENTIFIER" --version "$VERSION" --install-location / --ownership recommended \
+  --identifier "$IDENTIFIER" --version "$PKG_VERSION" --install-location / --ownership recommended \
   "$WORK/components/$component" | sed 's/^/    /'
-sed -e "s/@IDENTIFIER@/$IDENTIFIER/g" -e "s/@VERSION@/$VERSION/g" -e "s/@COMPONENT@/$component/g" \
+sed -e "s/@IDENTIFIER@/$IDENTIFIER/g" -e "s/@VERSION@/$PKG_VERSION/g" -e "s/@COMPONENT@/$component/g" \
   -e "s/<os-version min=\"[0-9.]*\"\/>/<os-version min=\"$MACOS_MIN\"\/>/" \
   "$HERE/distribution.xml" >"$WORK/distribution.xml"
-PKG="$OUT/Immich-$VERSION-$(sed -n 's/^commit=//p' "$release/RELEASE" | cut -c1-9).pkg"
+PKG="$OUT/$PKG_NAME"
 rm -f "$PKG"
 productbuild --distribution "$WORK/distribution.xml" --resources "$WORK/resources" --package-path "$WORK/components" \
   --sign "$installer" --timestamp "$PKG" | sed 's/^/    /'
@@ -171,6 +183,13 @@ for issue in (log.get('issues') or [])[:30]:
     die "notarization: ${status:-failed}, see $WORK/notary.json"
   fi
   xcrun stapler staple "$PKG" | tail -n 1 | sed 's/^/    /'
+fi
+
+shasum -a 256 "$PKG" | sed "s#  .*/#  #" >"$PKG.sha256"
+if [ -n "$TAG" ] && [ -n "$notarize" ]; then
+  # kept apart from the build folder, which a later build may clear
+  mkdir -p "$HERE/releases"
+  cp -c "$PKG" "$PKG.sha256" "$HERE/releases/"
 fi
 
 step "Checks"

@@ -95,9 +95,19 @@ info "PostgreSQL $PG_VERSION, pgvector $PGVECTOR_VERSION, VectorChord $VCHORD_VE
 
 VERSION="$(sed -n 's/^  "version": "\(.*\)",/\1/p' "$REPO/server/package.json" | head -1)"
 COMMIT="$(git -C "$REPO" rev-parse --short HEAD)"
-RELEASE_ID="$VERSION-$COMMIT-standalone"
-if [ -n "$(git -C "$REPO" status --porcelain --untracked-files=no)" ]; then
-  RELEASE_ID="$RELEASE_ID-dirty-$(date +%Y%m%d%H%M%S)"
+DIRTY="$(git -C "$REPO" status --porcelain --untracked-files=no)"
+# A release: a clean checkout of a tag v<upstream version>-mac.<n>, as macos/verification/m3-pkg.md ("正式版") makes one; anything
+# else is a development build, named by its commit
+TAG="$(git -C "$REPO" describe --tags --exact-match --match 'v*-mac.*' HEAD 2>/dev/null || true)"
+if [ -n "$TAG" ] && [ -z "$DIRTY" ]; then
+  case "$TAG" in "v$VERSION-mac."*) ;; *) die "tag $TAG does not match server/package.json's version $VERSION" ;; esac
+  RELEASE_ID="${TAG#v}"
+  CHANNEL=release
+else
+  TAG=""
+  RELEASE_ID="$VERSION-$COMMIT-standalone"
+  CHANNEL=development
+  [ -z "$DIRTY" ] || RELEASE_ID="$RELEASE_ID-dirty-$(date +%Y%m%d%H%M%S)"
 fi
 RELEASE="$OUT/$RELEASE_ID"
 rm -rf "$RELEASE"
@@ -274,6 +284,8 @@ version=$VERSION
 commit=$(git -C "$REPO" rev-parse HEAD)
 built=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 standalone=1
+channel=$CHANNEL
+tag=$TAG
 macos_min=$macos_min
 node=$("$RELEASE/node/bin/node" -v)
 postgres=$PG_VERSION
