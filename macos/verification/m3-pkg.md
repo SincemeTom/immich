@@ -126,6 +126,19 @@
 | 安装包里有 sharp 编译留下的 8 个 `.o` 目标文件和 makefile（也被签了名） | 构建时只保留 sharp 实际加载的模块（下次构建生效，这个安装包里还带着，无害） |
 | 每个文件都带 `com.apple.provenance` 扩展属性，安装包里因此多了 `._` 条目 | 这是 macOS 自己加的，`xattr -c` 也删不掉，安装时还原为扩展属性，无害 |
 
+### 第二版：`Immich-3.3.5-0c376d526.pkg`
+
+包含测试机反馈的修复（外部库删除立即生效、卸载共享时标记离线、原图缺失返回 404，见 [m1-external-library-member-feedback.md](m1-external-library-member-feedback.md)）。
+
+| 项目 | 结果 |
+|---|---|
+| 大小 | 4.9 GB（5,238,251,473 字节） |
+| SHA-256 | `18295e5bbfb67d29f88c05f8fe913cedfc4ef5d1dd80a6b5989c3d84d3642037` |
+| 签名后的发布目录检查 | 17/17；Mach-O 文件 539 个（上一版的 8 个 sharp 编译中间文件已去掉） |
+| 公证 | Accepted，0 个问题；已装订，Gatekeeper：Notarized Developer ID |
+
+第一版 `Immich-3.3.5-d9e2f6180.pkg` 已删除。
+
 ## 测试机上怎么测
 
 ```bash
