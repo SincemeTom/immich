@@ -65,7 +65,7 @@ class OrtGraph:
         graph = prepared(spec)
         self.lock = global_lock if spec.provider == "nv_tensorrt_rtx" else nullcontext()
         with self.lock:
-            self._session = spec.session(graph)
+            self._session = spec.session(graph, units=recorded_units(spec))
         image = self._session.get_inputs()[0]
         # whether the graph scales and shifts the image itself, so the host hands over raw pixels
         self.normalizes_input = image.type == "tensor(uint8)"
@@ -169,11 +169,16 @@ class GraphSpec:
             device=self.device.version if self.device else None,
         )
 
-    def session(self, graph: Path, sess_options: ort.SessionOptions | None = None) -> ort.InferenceSession:
+    def session(
+        self, graph: Path, sess_options: ort.SessionOptions | None = None, units: str | None = None
+    ) -> ort.InferenceSession:
+        provider_options = self.provider_options
+        if units is not None and self.provider == "CoreMLExecutionProvider":
+            provider_options = [{**provider_options[0], "MLComputeUnits": units}, *provider_options[1:]]
         return ort.InferenceSession(
             graph.as_posix(),
             providers=self.providers,
-            provider_options=self.provider_options,
+            provider_options=provider_options,
             sess_options=sess_options or self.sess_options(),
             disabled_optimizers=self.disabled_optimizers,
         )
@@ -254,6 +259,9 @@ class Facts(BaseModel):
 class Manifest(BaseModel):
     facts: Facts
     graph: str  # relative to the artifact's directory
+    # the CoreML compute units preparing measured faster than the configured ones, for a graph CoreML splits between
+    # the GPU and the Neural Engine worse than the Neural Engine runs it alone (PP-OCRv6's detection: 50 ms, 27 ms)
+    units: str | None = None
 
 
 def fresh(spec: GraphSpec) -> Path | None:
@@ -262,6 +270,24 @@ def fresh(spec: GraphSpec) -> Path | None:
     except (OSError, ValueError):
         return None
     return spec.model_path.parent / manifest.graph if manifest.facts == spec.facts else None
+
+
+def recorded_units(spec: GraphSpec) -> str | None:
+    try:
+        return Manifest.model_validate_json(spec.manifest.read_bytes()).units
+    except (OSError, ValueError):
+        return None
+
+
+def zero_feed(session: ort.InferenceSession, overrides: Sequence[tuple[str, int]]) -> dict[str, NDArray[Any]]:
+    """An input of zeros for every input of the graph, a dim it leaves free sized as the overrides say"""
+    sizes = dict(overrides)
+    return {
+        node.name: np.zeros(
+            [dim if isinstance(dim, int) else sizes.get(dim, 1) for dim in node.shape], DTYPES[node.type]
+        )
+        for node in session.get_inputs()
+    }
 
 
 def prepared(spec: GraphSpec) -> Path:
@@ -366,14 +392,8 @@ class OrtSession:
         run of a graph it imports from its cache, which importing another graph first can corrupt."""
         for shape in self.policy.dims[:1] if self.dynamic else self.policy.dims:
             graph = self.for_shape(shape)
-            sizes = dict(_overrides(self.policy, shape.pins))  # for a dim the graph leaves free
-            feed = {
-                node.name: np.zeros(
-                    [dim if isinstance(dim, int) else sizes.get(dim, 1) for dim in node.shape], DTYPES[node.type]
-                )
-                for node in graph._session.get_inputs()
-            }
-            graph.infer(None, feed)
+            # for a dim the graph leaves free
+            graph.infer(None, zero_feed(graph._session, _overrides(self.policy, shape.pins)))
 
 
 def _overrides(policy: ShapePolicy, pins: Mapping[str, int]) -> list[tuple[str, int]]:

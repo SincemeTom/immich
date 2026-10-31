@@ -59,20 +59,23 @@ as_user() {
 
 chown -R "$user:$group" "$PAYLOAD"
 
-# The models, unless the user has them already (a takeover, or the same .pkg again): a rename, on the same volume
+# The models, unless the user has them already (a takeover, or the same .pkg again): a rename, on the same volume.
+# Each is the folder its marker is in: <task>/<name> for the older exports, <task>/<name>/<revision> for newer ones,
+# which go beside an older export the user has, never over it (immichctl warm retires that once they are ready).
 as_user mkdir -p "$immich_home/data/models"
-for model in "$PAYLOAD"/models/*/*; do
-  [ -d "$model" ] || continue
-  target="$immich_home/data/models/$(basename "$(dirname "$model")")/$(basename "$model")"
+while IFS= read -r -d '' marker; do
+  model="$(dirname "$marker")"
+  relative="${model#"$PAYLOAD/models/"}"
+  target="$immich_home/data/models/$relative"
   if [ -e "$target/.immich-native-downloaded" ]; then
-    log "model $(basename "$model"): there already"
+    log "model $relative: there already"
   else
     as_user rm -rf "$target"
     as_user mkdir -p "$(dirname "$target")"
     as_user mv "$model" "$target"
-    log "model $(basename "$model"): installed"
+    log "model $relative: installed"
   fi
-done
+done < <(find "$PAYLOAD/models" -name .immich-native-downloaded -print0)
 
 as_user "$PAYLOAD/release/native/configure.sh" --release "$PAYLOAD/release"
 
