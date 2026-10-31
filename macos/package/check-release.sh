@@ -123,16 +123,29 @@ sed -n '1,30p' "$WORK/out" | grep -E "ok|FAIL" | sed 's/^  /         /'
 # Where Homebrew is there (a Mac that ran install.sh), nothing of it may load beside the release's own: libvips' and
 # ImageMagick's plugins are found by path, not by the dynamic linker
 if [ -d /opt/homebrew/opt/vips ]; then
+  # what the process has mapped, as lsof lists it once every sample is decoded: DYLD_PRINT_LIBRARIES says nothing
+  # under the hardened runtime of a signed release
   homebrew_loads() {
-    (cd "$RELEASE/server" && env -i HOME="$HOME" PATH=/usr/bin:/bin VIPSHOME="$RELEASE/vips" \
+    cat >"$RELEASE/server/hold.cjs" <<'JS'
+require('./sharp-formats.cjs');
+const exit = process.exit;
+process.exit = (code) => { console.log('decoded'); setTimeout(() => exit(code), 3000); };
+JS
+    (cd "$RELEASE/server" && exec env -i HOME="$HOME" PATH=/usr/bin:/bin VIPSHOME="$RELEASE/vips" \
       MAGICK_CODER_MODULE_PATH="$magick_modules/coders" MAGICK_CODER_FILTER_PATH="$magick_modules/filters" \
       MAGICK_CONFIGURE_PATH="$RELEASE/imagemagick/etc" FONTCONFIG_FILE="$RELEASE/fontconfig/fonts.conf" \
-      DYLD_PRINT_LIBRARIES=1 "$node" sharp-formats.cjs "$@" 2>"$WORK/dyld.log" >/dev/null)
-    local count
-    count="$(grep -c /opt/homebrew "$WORK/dyld.log" || true)"
-    grep /opt/homebrew "$WORK/dyld.log" | head -5
-    echo "$count libraries from Homebrew, $(grep -c "$RELEASE" "$WORK/dyld.log") from the release"
-    [ "$count" -eq 0 ]
+      "$node" hold.cjs "$@" >"$WORK/hold.out" 2>&1) &
+    local pid=$! count
+    for _ in $(seq 1 60); do grep -q decoded "$WORK/hold.out" 2>/dev/null && break; sleep 0.5; done
+    lsof -p "$pid" >"$WORK/lsof.txt" 2>/dev/null || true
+    wait "$pid" || true
+    # code, which two copies of in one process could crash it; a data file (libexif's translations, at the path it was
+    # built with) only changes the language of a message, and is not there without Homebrew
+    count="$( { grep /opt/homebrew "$WORK/lsof.txt" || true; } | grep -cE '\.(dylib|so)$|/bin/' || true)"
+    { grep /opt/homebrew "$WORK/lsof.txt" || true; } | awk '{ print $9 }' | grep -E '\.(dylib|so)$|/bin/' | head -5
+    data="$( { grep /opt/homebrew "$WORK/lsof.txt" || true; } | grep -vcE '\.(dylib|so)$|/bin/' || true)"
+    echo "$count libraries of Homebrew loaded ($data data files read), $(grep -cE "$RELEASE/(lib|vips|imagemagick)/" "$WORK/lsof.txt") of the release"
+    [ "$count" -eq 0 ] && grep -q "$RELEASE/imagemagick/" "$WORK/lsof.txt"
   }
   check "with Homebrew there, none of it loads" homebrew_loads "${samples[@]}"
 fi
