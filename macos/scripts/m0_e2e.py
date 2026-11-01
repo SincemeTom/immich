@@ -29,6 +29,10 @@ EXTRA = [
     REPO / "e2e/test-assets/albums/nature/prairie_falcon.jpg",
 ]
 VIDEOS = Path("/tmp/immich-m0/ffmpeg/samples")
+# a photo taken on Jiangchuan Road, Minhang, Shanghai: reverse geocoding names its place in Chinese
+# (macos/native/geodata.sh), the township, the region and the country
+GPS_PHOTO = Path("/tmp/immich-m0/minhang-gps.jpg")
+GPS_POINT = (31.0195, 121.4045)
 SKIP = {".xmp", ".md"}
 EMAIL, PASSWORD = "m0@immich.local", "m0-password"
 
@@ -54,6 +58,24 @@ def configure(client: httpx.Client, ml_url: str) -> None:
     config = client.get("/api/system-config").json()
     config["machineLearning"]["urls"] = [ml_url]
     client.put("/api/system-config", json=config).raise_for_status()
+
+
+def gps_photo() -> Path:
+    from PIL import Image
+
+    def dms(value: float) -> tuple[float, float, float]:
+        minutes, seconds = divmod(abs(value) * 3600, 60)
+        degrees, minutes = divmod(minutes, 60)
+        return (degrees, minutes, round(seconds, 2))
+
+    GPS_PHOTO.parent.mkdir(parents=True, exist_ok=True)
+    image = Image.new("RGB", (640, 480), (90, 140, 200))
+    exif = image.getexif()
+    exif[0x010F], exif[0x0110] = "Apple", "iPhone 16"  # Make, Model
+    gps = exif.get_ifd(0x8825)
+    gps.update({1: "N", 2: dms(GPS_POINT[0]), 3: "E", 4: dms(GPS_POINT[1])})
+    image.save(GPS_PHOTO, exif=exif, quality=90)
+    return GPS_PHOTO
 
 
 def upload(client: httpx.Client, path: Path) -> dict[str, Any]:
@@ -100,6 +122,7 @@ def main() -> None:
 
     print("== upload")
     images = sorted(p for p in FORMATS.rglob("*") if p.is_file() and p.suffix.lower() not in SKIP) + EXTRA
+    images.append(gps_photo())
     videos = sorted(VIDEOS.glob("*")) if VIDEOS.exists() else []
     uploaded: dict[str, str] = {}
     for path in images + videos:
@@ -143,6 +166,11 @@ def main() -> None:
     ocr = client.get(f"/api/assets/{shop}/ocr").json()
     texts = [line.get("text") for line in ocr] if isinstance(ocr, list) else []
     check("OCR text in japanese-shop.jpg", any(texts), ", ".join(t for t in texts if t)[:80])
+
+    exif = client.get(f"/api/assets/{uploaded[GPS_PHOTO.name]}").json().get("exifInfo") or {}
+    place = f"{exif.get('city')} / {exif.get('state')} / {exif.get('country')}"
+    check("place in Chinese for a photo taken in Minhang, Shanghai",
+          "闵行区" in (exif.get("city") or "") and exif.get("state") == "上海市" and exif.get("country") == "中国", place)
 
     model = client.get("/api/system-config").json()["machineLearning"]["clip"]["modelName"]
     queries = [("a bird of prey", "albums/nature/prairie_falcon.jpg")]

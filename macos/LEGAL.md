@@ -75,7 +75,7 @@ AGPL 第 15、16 条：软件按"现状"提供，不提供担保，作者不对�
 
 | 项目 | 情况 |
 |---|---|
-| 地理数据（照片地点反查） | GeoNames，CC BY 4.0，需要署名：已写在 `licenses/data/geodata.md`；国界来自 Natural Earth，公共领域 |
+| 地理数据（照片地点反查） | 中文地名来自 immich-geodata-cn，GPL-3.0：许可原文和对应版本的源码已经随安装包附上、留档（`licenses/immich-geodata-cn/`）。它以 GeoNames 为底（CC BY 4.0，需要署名，已写在 `licenses/data/geodata.md`），国内地名由该项目通过高德和 Nominatim（OpenStreetMap，ODbL）的逆地理编码生成。高德的服务条款一般不允许转存、再分发它的数据：现在免费、非商业地分发问题不大，以后如果公开推广，要评估这一点，或者换成只用 OpenStreetMap 生成的数据。国界来自 Natural Earth，公共领域 |
 | Apple 开发者签名 | 用你的 Developer ID 签名、公证后在 App Store 之外分发，符合 Apple 开发者协议；签名证书在你名下，证书过期不影响已发布的包（见 [RELEASING.md](RELEASING.md)） |
 | 隐私 | 这个版本没有增加任何数据收集。上游本身会联网检查新版本、加载地图瓦片，可在 管理 → 设置 里关闭 |
 

@@ -2,6 +2,18 @@
 
 Immich macOS 原生版（非官方）的各个版本。版本号是 `<上游 Immich 版本>-mac.<序号>`，每个版本对应一个 git 标签，发布流程见 [RELEASING.md](RELEASING.md)。这个版本基于上游 Immich 修改，改动的验证记录在 [verification/](verification/README.md)。
 
+## v3.3.5-mac.4（2026-11-01）
+
+基于上游 v3.3.5。
+
+**新功能**
+
+- 照片地点显示中文，国内到乡镇、街道一级："上海市 闵行区 江川路街道 / 上海市 / 中国"（原来是"Jiangchuanlu / Shanghai / China"），也能用中文地名搜索。数据来自 immich-geodata-cn（GPL-3.0，`macos/native/geodata.sh`），许可和源码随包附上；国外的国家名是中文，城市名除日本外仍是英文（[m4-geodata-cn.md](verification/m4-geodata-cn.md)）
+
+**升级注意**
+
+- 升级后服务端自动导入新的地理数据（几秒）。已有照片的地名要在 **管理 → 任务 → 提取元数据** 点一次 **"全部"** 才会更新，新照片不用
+
 ## v3.3.5-mac.3（2026-11-01）
 
 基于上游 v3.3.5。

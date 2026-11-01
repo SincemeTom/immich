@@ -9,7 +9,8 @@ downloads (the exact version: Homebrew's source tarball of the formula, the tag 
   PostgreSQL, pgvector, VectorChord   from the sources build-release.sh built them from
   node, jellyfin-ffmpeg, Python       from where build-release.sh took them
   npm packages (server, web UI), Python packages   a list; their license files ship inside them already
-  geodata, machine learning models    attribution and terms (the models are in the .pkg, beside the release)
+  geodata, machine learning models    attribution and terms (the models are in the .pkg, beside the release); the
+                                      Chinese place names (immich-geodata-cn, GPL-3.0): its license, and its tag's source
 
 Usage: collect_licenses.py RELEASE --repo REPO --cache CACHE --ffmpeg-version V [--sources DIR]
 Prints what it found and fails on a component whose license it cannot find, or a copyleft one without a source.
@@ -307,11 +308,23 @@ class Collector:
     def data(self) -> None:
         folder = self.out / "data"
         folder.mkdir(parents=True)
+        # macos/native/geodata.sh: "immich-geodata-cn <tag> <variant>"
+        _, tag, variant = (self.release / "build" / "geodata" / "source.txt").read_text().split()
+        repository = "https://github.com/ZingLix/immich-geodata-cn"
+        geodata = self.out / "immich-geodata-cn"
+        geodata.mkdir()
+        shutil.copy(fetch(f"https://raw.githubusercontent.com/ZingLix/immich-geodata-cn/{tag}/LICENSE", self.cache),
+                    geodata / "LICENSE")
+        self.add(f"immich-geodata-cn (place names in Chinese, `build/geodata`: {variant}.zip)", tag, "GPL-3.0-only",
+                 f"{repository}/tree/{tag}", "immich-geodata-cn", ["LICENSE"],
+                 f"{repository}/archive/refs/tags/{tag}.tar.gz")
         (folder / "geodata.md").write_text(
             "# Geodata (reverse geocoding, `build/geodata`)\n\n"
-            "- City, region and country names: GeoNames (https://www.geonames.org), under CC BY 4.0 "
-            "(https://creativecommons.org/licenses/by/4.0/). Files used: cities500, admin1CodesASCII, admin2Codes, "
-            "countryInfo, unchanged.\n"
+            f"- Place names: immich-geodata-cn ({repository}, {tag}, `{variant}.zip`), under the GPL, version 3 "
+            "(`immich-geodata-cn/LICENSE`): GeoNames' places, with their names in Chinese and, in China, down to the "
+            "township, which that project gets from AMap's and Nominatim's (OpenStreetMap) reverse geocoding.\n"
+            "- The places themselves: GeoNames (https://www.geonames.org), under CC BY 4.0 "
+            "(https://creativecommons.org/licenses/by/4.0/).\n"
             "- Country borders: Natural Earth (https://www.naturalearthdata.com), public domain.\n")
         lines = ["# Machine learning models", "",
                  "The .pkg carries the default models; the service downloads any other one chosen in the settings "
