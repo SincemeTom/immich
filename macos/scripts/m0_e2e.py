@@ -8,6 +8,8 @@ Usage (with the machine-learning venv's python, which has httpx):
   m0_e2e.py --url http://127.0.0.1:2283 --ml-url http://127.0.0.1:3003
 """
 
+from __future__ import annotations
+
 import argparse
 import gzip
 import os
@@ -36,6 +38,41 @@ GPS_PHOTO = Path("/tmp/immich-m0/minhang-gps.jpg")
 GPS_POINT = (31.0195, 121.4045)
 # a screenshot as an iPhone 16 saves one: a PNG of the screen's size, of no camera; content analysis tags it
 SCREENSHOT = Path("/tmp/immich-m0/IMG_9001.PNG")
+# a video of someone saying this (macOS's voice): on macOS 26 searching by text finds it; before, it must not
+SPEECH_VIDEO = Path("/tmp/immich-m0/speech-birthday.mp4")
+SPEECH_TEXT = "今天是宝宝的生日，大家一起唱生日快乐歌"
+SPEECH_QUERY = "生日快乐"
+
+
+def macos_major() -> int:
+    version = subprocess.run(["sw_vers", "-productVersion"], capture_output=True, text=True).stdout.strip()
+    return int(version.split(".")[0] or 0)
+
+
+def speech_video() -> Path | None:
+    """The video, made with `say` and the release's ffmpeg; None where either is missing"""
+    ffmpeg = Path(FFPROBE).with_name("ffmpeg")
+    if not ffmpeg.exists():
+        return None
+    SPEECH_VIDEO.parent.mkdir(parents=True, exist_ok=True)
+    audio = SPEECH_VIDEO.with_suffix(".aiff")
+    # a Chinese voice that is on this Mac: the others are listed, but say nothing (a few ms of silence) until
+    # downloaded; Tingting comes with macOS
+    listed = subprocess.run(["say", "-v", "?"], capture_output=True, text=True).stdout
+    voices = sorted((line.split("  ")[0].split(" (")[0].strip() for line in listed.splitlines() if "zh_CN" in line),
+                    key=lambda voice: voice != "Tingting")
+    for voice in voices:
+        subprocess.run(["say", "-v", voice, "-o", str(audio), SPEECH_TEXT], check=False)
+        if audio.exists() and audio.stat().st_size > 20_000:
+            break
+    else:
+        audio.unlink(missing_ok=True)
+        return None
+    subprocess.run([str(ffmpeg), "-y", "-v", "error", "-f", "lavfi", "-i", "color=c=steelblue:s=640x360:r=30",
+                    "-i", str(audio), "-shortest", "-c:v", "h264_videotoolbox", "-b:v", "1M", "-pix_fmt", "yuv420p",
+                    "-c:a", "aac", str(SPEECH_VIDEO)], check=True)
+    audio.unlink()
+    return SPEECH_VIDEO
 SKIP = {".xmp", ".md"}
 EMAIL, PASSWORD = "m0@immich.local", "m0-password"
 
@@ -142,11 +179,13 @@ def main() -> None:
     images.append(gps_photo())
     images.append(screenshot())
     videos = sorted(VIDEOS.glob("*")) if VIDEOS.exists() else []
+    spoken = speech_video()
+    extra_videos = [spoken] if spoken else []
     uploaded: dict[str, str] = {}
-    for path in images + videos:
+    for path in images + videos + extra_videos:
         body = upload(client, path)
         uploaded[str(path.relative_to(REPO) if path.is_relative_to(REPO) else path.name)] = body["id"]
-    check("uploads accepted", len(uploaded) == len(images) + len(videos), f"{len(uploaded)} files")
+    check("uploads accepted", len(uploaded) == len(images) + len(videos) + len(extra_videos), f"{len(uploaded)} files")
     started = time.time()
     queues = wait_for_queues(client, args.timeout)
     print(f"    queues drained in {time.time() - started:.0f}s")
@@ -184,6 +223,12 @@ def main() -> None:
     ocr = client.get(f"/api/assets/{shop}/ocr").json()
     texts = [line.get("text") for line in ocr] if isinstance(ocr, list) else []
     check("OCR text in japanese-shop.jpg", any(texts), ", ".join(t for t in texts if t)[:80])
+    # searching by text, which also looks in what is said in videos (content analysis on macOS 26)
+    word = next((t for t in texts if t and len(t) >= 2), None)
+    if word:
+        found = client.post("/api/search/metadata", json={"ocr": word, "size": 10}).json()["assets"]["items"]
+        check(f"search by text '{word}' finds japanese-shop.jpg", any(hit["id"] == shop for hit in found),
+              ", ".join(hit["originalFileName"] for hit in found[:3]))
 
     exif = client.get(f"/api/assets/{uploaded[GPS_PHOTO.name]}").json().get("exifInfo") or {}
     place = f"{exif.get('city')} / {exif.get('state')} / {exif.get('country')}"
@@ -204,6 +249,17 @@ def main() -> None:
               "自动/截图" in shot and visibility == "timeline", f"{', '.join(shot)}; {visibility}")
         portrait = tags("e2e/test-assets/metadata/faces/portrait.jpg")
         check("content analysis does not take a photo for a screenshot", "自动/截图" not in portrait, ", ".join(portrait))
+
+        # speech in videos: on macOS 26 only; before, off, so that the video is not found
+        if spoken:
+            found = client.post("/api/search/metadata", json={"ocr": SPEECH_QUERY, "size": 10}).json()["assets"]["items"]
+            hit = any(item["id"] == uploaded[spoken.name] for item in found)
+            if macos_major() >= 26:
+                check(f"macOS 26: search by text '{SPEECH_QUERY}' finds the video saying it", hit,
+                      ", ".join(item["originalFileName"] for item in found[:3]))
+            else:
+                check(f"macOS {macos_major()}: speech recognition off, '{SPEECH_QUERY}' does not find the video",
+                      not hit, ", ".join(item["originalFileName"] for item in found[:3]))
 
     model = client.get("/api/system-config").json()["machineLearning"]["clip"]["modelName"]
     queries = [("a bird of prey", "albums/nature/prairie_falcon.jpg")]
