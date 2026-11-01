@@ -28,6 +28,8 @@ export interface AutoStackAsset {
   model: string | null;
   rating: number | null;
   autoStackId: string | null;
+  /** content analysis's aesthetics score (macOS), -1 to 1; null before it, or elsewhere */
+  aestheticScore?: number | null;
 }
 
 export interface AutoStackCandidate extends AutoStackAsset {
@@ -142,17 +144,48 @@ export const getAutoStackReasons = (
   return reasons;
 };
 
-/**
- * Orders assets for the cover of their stack: an edited copy over its original, a JPEG or HEIC over its raw file
- * (the picture as the camera or the editor made it), then favorites, higher ratings, more pixels, and the earliest
- */
-export const compareForPrimary = (a: AutoStackAsset, b: AutoStackAsset) =>
+/** what the user and the files say of the cover: an edited copy, not a raw file, a favorite, a higher rating */
+const compareByRules = (a: AutoStackAsset, b: AutoStackAsset) =>
   Number(isEditedCopy(b)) - Number(isEditedCopy(a)) ||
   Number(isRaw(a)) - Number(isRaw(b)) ||
   Number(b.isFavorite) - Number(a.isFavorite) ||
-  (b.rating ?? 0) - (a.rating ?? 0) ||
+  (b.rating ?? 0) - (a.rating ?? 0);
+
+/** the better taken first, when both have been analyzed (content analysis, on macOS) */
+const compareByAesthetics = (a: AutoStackAsset, b: AutoStackAsset) =>
+  a.aestheticScore === null ||
+  a.aestheticScore === undefined ||
+  b.aestheticScore === null ||
+  b.aestheticScore === undefined
+    ? 0
+    : b.aestheticScore - a.aestheticScore;
+
+/**
+ * Orders assets for the cover of their stack: an edited copy over its original, a JPEG or HEIC over its raw file
+ * (the picture as the camera or the editor made it), then favorites, higher ratings, the better taken (its aesthetics
+ * score), more pixels, and the earliest
+ */
+export const compareForPrimary = (a: AutoStackAsset, b: AutoStackAsset) =>
+  compareByRules(a, b) ||
+  compareByAesthetics(a, b) ||
   (b.width ?? 0) * (b.height ?? 0) - (a.width ?? 0) * (a.height ?? 0) ||
   new Date(a.fileCreatedAt).getTime() - new Date(b.fileCreatedAt).getTime();
+
+/**
+ * Whether an asset of an automatic stack would make a better cover than the one it has: better by the rules, or as
+ * good by them and better taken by at least `minGain` (scores of photos alike differ a little anyway)
+ */
+export const isBetterCover = (asset: AutoStackAsset, cover: AutoStackAsset, minGain: number) => {
+  const byRules = compareByRules(asset, cover);
+  if (byRules !== 0) {
+    return byRules < 0;
+  }
+  return (
+    typeof asset.aestheticScore === 'number' &&
+    typeof cover.aestheticScore === 'number' &&
+    asset.aestheticScore - cover.aestheticScore >= minGain
+  );
+};
 
 /** Whether an asset joining a stack should become its cover: an edited copy, or a JPEG with a raw file as cover */
 export const shouldReplacePrimary = (asset: AutoStackAsset, primary: AutoStackAsset) =>

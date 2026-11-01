@@ -1,4 +1,15 @@
-import { MAX_LABEL_TAGS, getLabelTags, hasQrCode, isScreenshot, succeeded } from 'src/utils/content-analysis.js';
+import { AssetType } from 'src/enum.js';
+import { isBetterCover } from 'src/utils/auto-stack.js';
+import {
+  MAX_LABEL_TAGS,
+  getContentTasks,
+  getLabelTags,
+  getTranscriptText,
+  hasQrCode,
+  isDocument,
+  isScreenshot,
+  succeeded,
+} from 'src/utils/content-analysis.js';
 import { VISION_LABELS } from 'src/utils/vision-labels.js';
 
 describe('content analysis', () => {
@@ -105,6 +116,94 @@ describe('content analysis', () => {
       expect(hasQrCode([{ symbology: 'qr' }])).toBe(true);
       expect(hasQrCode([{ symbology: 'ean13' }])).toBe(false);
       expect(hasQrCode()).toBe(false);
+    });
+  });
+
+  describe('getContentTasks', () => {
+    const macos15 = ['classify', 'aesthetics', 'animals', 'barcodes'];
+    const macos26 = [...macos15, 'documents', 'smudge', 'speech'];
+
+    it("makes only the requests this Mac has: macOS 26's on macOS 26", () => {
+      expect(getContentTasks(macos15, { isVideo: true, speech: true })).toEqual({ image: macos15, video: [] });
+      expect(getContentTasks(macos26, { isVideo: false, speech: true })).toEqual({
+        image: [...macos15, 'documents', 'smudge'],
+        video: [],
+      });
+      expect(getContentTasks(macos26, { isVideo: true, speech: true }).video).toEqual(['speech']);
+    });
+
+    it('listens to a video only with speech on', () => {
+      expect(getContentTasks(macos26, { isVideo: true, speech: false }).video).toEqual([]);
+    });
+
+    it('leaves out a request it does not know', () => {
+      expect(getContentTasks(['classify', 'something-newer'], { isVideo: false, speech: true }).image).toEqual([
+        'classify',
+      ]);
+    });
+  });
+
+  describe('isDocument', () => {
+    it('takes a page, a receipt, a table, of which Vision is sure', () => {
+      expect(isDocument({ count: 1, confidence: 0.9, lines: 12, paragraphs: 3, tables: 0 })).toBe(true);
+      expect(isDocument({ count: 1, confidence: 0.85, lines: 4, paragraphs: 1, tables: 1 })).toBe(true);
+    });
+
+    it('leaves a sign with a word or two, or what Vision is unsure of', () => {
+      expect(isDocument({ count: 1, confidence: 0.95, lines: 2, paragraphs: 1, tables: 0 })).toBe(false);
+      expect(isDocument({ count: 1, confidence: 0.5, lines: 30, paragraphs: 5, tables: 1 })).toBe(false);
+      expect(isDocument({ count: 0 })).toBe(false);
+      expect(isDocument()).toBe(false);
+    });
+  });
+
+  describe('getTranscriptText', () => {
+    it('joins what is said, in order', () => {
+      expect(
+        getTranscriptText([
+          { start: 0, end: 1, text: ' 生日快乐 ' },
+          { start: 1, end: 2, text: '' },
+          { start: 2, end: 3, text: 'happy birthday' },
+        ]),
+      ).toBe('生日快乐 happy birthday');
+      expect(getTranscriptText()).toBe('');
+    });
+  });
+
+  describe('isBetterCover', () => {
+    const photo = {
+      id: 'a',
+      type: AssetType.Image,
+      originalFileName: 'IMG_0001.HEIC',
+      originalPath: '/a',
+      fileCreatedAt: new Date(0),
+      isFavorite: false,
+      width: 100,
+      height: 100,
+      dateTimeOriginal: null,
+      model: null,
+      rating: null,
+      autoStackId: null,
+    };
+
+    it('takes the better taken photo, by a margin', () => {
+      expect(isBetterCover({ ...photo, aestheticScore: 0.5 }, { ...photo, aestheticScore: 0.2 }, 0.05)).toBe(true);
+      expect(isBetterCover({ ...photo, aestheticScore: 0.22 }, { ...photo, aestheticScore: 0.2 }, 0.05)).toBe(false);
+      expect(isBetterCover({ ...photo, aestheticScore: 0.5 }, { ...photo, aestheticScore: null }, 0.05)).toBe(false);
+    });
+
+    it('keeps to the rules first: a favorite, a JPEG over its raw file', () => {
+      expect(
+        isBetterCover({ ...photo, aestheticScore: 0.9 }, { ...photo, isFavorite: true, aestheticScore: 0.1 }, 0.05),
+      ).toBe(false);
+      expect(
+        isBetterCover(
+          { ...photo, originalFileName: 'A.ARW', aestheticScore: 0.9 },
+          { ...photo, originalFileName: 'A.JPG', aestheticScore: 0.1 },
+          0.05,
+        ),
+      ).toBe(false);
+      expect(isBetterCover({ ...photo, rating: 5 }, { ...photo, aestheticScore: 0.9 }, 0.05)).toBe(true);
     });
   });
 

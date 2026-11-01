@@ -544,8 +544,12 @@ select
   "asset"."visibility",
   "asset"."type",
   "asset"."originalFileName",
+  "asset"."originalPath",
   "asset"."width",
   "asset"."height",
+  "asset"."stackId",
+  "stack"."isAutomatic" as "stackIsAutomatic",
+  "stack"."primaryAssetId" as "stackPrimaryAssetId",
   "asset_exif"."make",
   "asset_exif"."model",
   "asset_exif"."exifImageWidth",
@@ -563,6 +567,7 @@ select
 from
   "asset"
   left join "asset_exif" on "asset_exif"."assetId" = "asset"."id"
+  left join "stack" on "stack"."id" = "asset"."stackId"
 where
   "asset"."id" = $1
 
@@ -576,9 +581,15 @@ where
   (
     "asset_vision"."assetId" is null
     or "asset_vision"."version" < $1
+    or not (
+      asset_vision.features @> case
+        when asset.type = $2 then array['classify', 'speech']::text[]
+        else array['classify']::text[]
+      end
+    )
   )
   and "asset"."deletedAt" is null
-  and "asset"."visibility" != $2
+  and "asset"."visibility" != $3
 
 -- AssetJobRepository.getForOcr
 select
