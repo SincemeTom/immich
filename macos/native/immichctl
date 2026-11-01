@@ -6,7 +6,8 @@
 #   immichctl logs [svc] [-f]           the last lines of one log, or of all; -f follows
 #   immichctl admin <args>              the server's admin CLI, e.g. `immichctl admin reset-admin-password`
 #   immichctl psql [args]               a psql session on the Immich database
-#   immichctl warm                      downloads and prepares the machine learning models the settings name
+#   immichctl warm [--background]       downloads and prepares the machine learning models the settings name;
+#                                       --background in a one-off LaunchAgent (the .pkg's way), see: immichctl logs warm
 #   immichctl clip-model [NAME]         shows, or switches, the smart search model; then prepares it
 #   immichctl video-accel [videotoolbox|disabled]  shows, or switches, video transcoding on the GPU
 #   immichctl doctor                    checks that the Mac keeps Immich running unattended
@@ -29,8 +30,9 @@ home="$(cd "$(dirname "$self")/.." && pwd)"
 domain="gui/$(id -u)"
 services=(postgres valkey ml server)
 logs="$IMMICH_NATIVE_LOG_DIR"
-# set while `warm` has paused the services
-warm_pid="" warm_server=""
+# set while `warm` runs the service's warm-up, and while it holds the server to its API
+warm_pid="" warm_holding=""
+warm_flag="$home/run/warming"
 
 label() { echo "$IMMICH_NATIVE_LABEL_PREFIX.$1"; }
 plist() { echo "$HOME/Library/LaunchAgents/$(label "$1").plist"; }
@@ -137,6 +139,11 @@ cmd_status() {
     healthy "$service" && health=ok || health="-"
     printf '%-9s %-22s %s\n' "$service" "$state" "$health"
   done
+  if warming; then
+    echo "models:   being prepared; until then thumbnails, smart search, faces and text wait in the queue (immichctl logs warm)"
+  elif [ -f "$(plist warm)" ]; then
+    echo "models:   preparing them in the background failed: see immichctl logs warm; immichctl warm tries again"
+  fi
   echo
   if [ -n "${IMMICH_NATIVE_LISTEN:-}" ]; then
     echo "web:      http://$IMMICH_NATIVE_LISTEN:$IMMICH_NATIVE_SERVER_PORT"
@@ -151,11 +158,14 @@ cmd_logs() {
     case "$1" in
       -f) follow=1 ;;
       -n) lines="$2"; shift ;;
+      warm) service=warm ;;
       *) check_service "$1"; service="$1" ;;
     esac
     shift
   done
-  if [ -n "$service" ]; then
+  if [ "$service" = warm ]; then
+    files=("$logs/warm.log" "$logs/ml-warm.log")
+  elif [ -n "$service" ]; then
     files=("$logs/$service.log")
   else
     for service in "${services[@]}"; do files+=("$logs/$service.log"); done
@@ -229,6 +239,8 @@ unmount_shares() {
 cmd_uninstall() {
   local purge="" service
   [ "${1:-}" = --purge ] && purge=1
+  launchctl bootout "$domain/$(label warm)" 2>/dev/null || true
+  rm -f "$(plist warm)" "$warm_flag"
   for service in $(reverse "${services[@]}"); do
     stop_one "$service"
     rm -f "$(plist "$service")"
@@ -293,6 +305,10 @@ cmd_warm() {
   echo "  faces:        $face"
   echo "  text (OCR):   $ocr (max resolution $ocr_max)"
   forget_compiled_old_exports "$clip" "$face" "$ocr"
+  warm_begin
+  # whatever ends this (an error, Ctrl-C, a stop), the warm-up stops and the services come back as they were
+  trap 'warm_cleanup; warm_end' EXIT
+  trap 'echo; echo "  stopped: run immichctl warm again to resume (a download continues where it left off)"; exit 130' INT TERM
   warm_once "$clip" "$face" "$ocr" "$ocr_max"
   # A model that does not load (an interrupted download) is deleted and fetched again, and with it everything
   # prepared in its folder, like the CLIP text half beside a broken image half. The preload does not go back to
@@ -302,17 +318,157 @@ cmd_warm() {
     warm_once "$clip" "$face" "$ocr" "$ocr_max"
   fi
   retire_old_exports "$clip" "$face" "$ocr"
+  warm_end
+  trap - EXIT INT TERM
+}
+
+# whether a warm-up is preparing the models, as run-service tells (see there)
+warming() {
+  local holder
+  holder="$(cat "$warm_flag" 2>/dev/null)" || return 1
+  case "$holder" in
+    agent) [ -f "$(plist warm)" ] ;;
+    '' | *[!0-9]*) return 1 ;;
+    *) kill -0 "$holder" 2>/dev/null ;;
+  esac
+}
+
+# how the running server was started: `warm-up` (its API alone) or `all` (run-service)
+server_workers() {
+  cat "$home/run/server-workers" 2>/dev/null || echo all
+}
+
+# The server keeps answering while the models are prepared, with its API alone (run-service): restarted into that
+# unless it runs so already. Its job worker would send the machine learning service, which the warm-up replaces,
+# requests that fail; the jobs wait in the queue instead.
+warm_begin() {
+  mkdir -p "$home/run"
+  echo $$ >"$warm_flag"
+  warm_holding=1
+  if is_loaded server && [ "$(server_workers)" != warm-up ]; then
+    echo "  the server answers meanwhile; its jobs (thumbnails, smart search, faces, text) wait until the models are ready"
+    stop_one server >/dev/null
+    start_one server >/dev/null || true
+  fi
+}
+
+# the server back with its job worker, which takes up what waited; a no-op once that is done
+warm_end() {
+  [ -n "$warm_holding" ] || return 0
+  warm_holding=""
+  # unless another warm-up is to follow, which set the flag (warm_schedule): it then holds the server
+  [ "$(cat "$warm_flag" 2>/dev/null)" = $$ ] || return 0
+  rm -f "$warm_flag"
+  if is_loaded server && [ "$(server_workers)" = warm-up ]; then
+    stop_one server >/dev/null
+    start_one server >/dev/null || true
+  fi
+}
+
+# --- the warm-up in the background: a one-off LaunchAgent ----------------------------------------------------------
+# The .pkg's postinstall may take no more than 600 seconds, which Installer stops it at (macos/verification/
+# m4-pkg-postinstall-timeout.md), and preparing the models the first time takes longer. So it sets the warm-up up as a
+# LaunchAgent of the user's, which runs `immichctl warm` once and then removes itself: it goes on after Installer
+# closes, and starts over at the next login if the Mac restarts first or it fails.
+
+# sets it up: the LaunchAgent, not started, and the flag that has the server start with its API alone meanwhile
+warm_schedule() {
+  local pid waited=0
+  mkdir -p "$home/run" "$logs" "$(dirname "$(plist warm)")"
+  # One still running (the .pkg opened again) stops, and this one starts over. Told by the flag that another follows,
+  # it leaves the services as they are; launchctl returns before it has stopped, so this waits for it.
+  if is_loaded warm; then
+    pid="$(job_pid warm)"
+    echo agent >"$warm_flag"
+    launchctl bootout "$domain/$(label warm)" 2>/dev/null || true
+    while is_loaded warm || { [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; }; do
+      [ "$waited" -ge 120 ] && { echo "the warm-up running did not stop within 120 s" >&2; return 1; }
+      sleep 1
+      waited=$((waited + 1))
+    done
+    echo "  stopped the warm-up that was running, to start it over"
+  fi
+  cat >"$(plist warm)" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Written by immichctl warm --schedule: prepares the machine learning models once, then removes itself -->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>$(xml "$(label warm)")</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>$(xml "$home/bin/immichctl")</string>
+    <string>warm</string>
+    <string>--agent</string>
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>ProcessType</key>
+  <string>Standard</string>
+  <key>ExitTimeOut</key>
+  <integer>300</integer>
+  <key>StandardOutPath</key>
+  <string>$(xml "$logs/warm.log")</string>
+  <key>StandardErrorPath</key>
+  <string>$(xml "$logs/warm.log")</string>
+</dict>
+</plist>
+EOF
+  plutil -lint -s "$(plist warm)"
+  warming || echo agent >"$warm_flag"
+}
+
+# and starts it
+warm_background() {
+  warm_schedule
+  launchctl bootstrap "$domain" "$(plist warm)"
+  echo "preparing the machine learning models in the background (the first time, 10-15 minutes):"
+  echo "  the web UI and the apps work meanwhile; thumbnails, smart search, faces and text wait in the queue"
+  echo "  progress: immichctl logs warm; immichctl status says when it is done"
+}
+
+# what the LaunchAgent runs
+warm_agent() {
+  local child status=0
+  echo "== $(date '+%F %T') preparing the machine learning models"
+  # in a child, which a stop (launchd's SIGTERM) reaches through the trap: its own trap then stops the service's
+  # warm-up, whose process group is its own, and brings the services back
+  "$home/bin/immichctl" warm &
+  child=$!
+  trap 'kill -TERM "$child" 2>/dev/null; wait "$child"; exit 143' TERM INT
+  wait "$child" || status=$?
+  trap - TERM INT
+  if [ "$status" -ne 0 ]; then
+    echo "== $(date '+%F %T') failed ($status): tried again at the next login, or now with: immichctl warm"
+    exit "$status"
+  fi
+  echo "== $(date '+%F %T') done"
+  rm -f "$(plist warm)"
+  # done for good: unloaded, which ends this too
+  launchctl bootout "$domain/$(label warm)" 2>/dev/null || true
+}
+
+# escapes a value for a plist
+xml() {
+  local value="$1"
+  value="${value//&/&amp;}"
+  value="${value//</&lt;}"
+  echo "${value//>/&gt;}"
 }
 
 # the revision of the models' exports the service runs (run-service), whose folder is <model>/<revision>, but for main
 model_revision() {
-  echo "${IMMICH_NATIVE_MODEL_REVISION:-$(sed -n 's/^MODEL_REVISION=//p' "$home/bin/run-service")}"
+  local revision
+  revision="$("$home/bin/run-service" model-revision)"
+  [ -n "$revision" ] || { echo "run-service names no revision of the models" >&2; return 1; }
+  echo "$revision"
 }
 
 # the folder each of these models' current export is in, as task|folder|export folder
 model_folders() {
   local revision task name dir
-  revision="$(model_revision)"
+  revision="$(model_revision)" || return 1
   for pair in "clip|$1" "facial-recognition|$2" "ocr|$3"; do
     task="${pair%%|*}" name="${pair#*|}"
     dir="$home/data/models/$task/$name"
@@ -324,17 +480,19 @@ model_folders() {
 # cache in ~/Library/Caches/python, keyed by paths no graph has any more: about 10 GB for the default models. Every
 # graph of the new export is compiled anyway, so the cache goes before they are.
 forget_compiled_old_exports() {
-  local cache="$HOME/Library/Caches/python/com.apple.e5rt.e5bundlecache" moving="" task dir current
-  [ "$(model_revision)" != main ] || return 0
+  local cache="$HOME/Library/Caches/python/com.apple.e5rt.e5bundlecache" moving="" task dir current older revision
+  revision="$(model_revision)" || return 0
+  [ "$revision" != main ] || return 0
   while IFS='|' read -r task dir current; do
     # an older export of it is here (main's halves in the model's own folder), and the new one not yet prepared
-    if [ -d "$dir" ] && find "$dir" -mindepth 1 -maxdepth 1 ! -name "$(basename "$current")" ! -name '.*' | grep -q . \
-      && ! find "$current" -name manifest.json -path '*/coreml/*' 2>/dev/null | grep -q .; then
-      moving=1
+    older="$(find "$dir" -mindepth 1 -maxdepth 1 ! -name "$(basename "$current")" ! -name '.*' 2>/dev/null | head -3 || true)"
+    if [ -n "$older" ] && ! find "$current" -name manifest.json -path '*/coreml/*' 2>/dev/null | grep -q .; then
+      moving="$moving $(basename "$dir") ($(echo "$older" | xargs -I{} basename {} | tr '\n' ' ' | sed 's/ $//'))"
     fi
   done <<<"$(model_folders "$@")"
   if [ -n "$moving" ] && [ -d "$cache" ]; then
-    echo "  clearing what CoreML compiled for the older exports ($(du -sh "$cache" 2>/dev/null | cut -f1))"
+    echo "  older exports:$moving"
+    echo "  clearing what CoreML compiled for them ($(du -sh "$cache" 2>/dev/null | cut -f1))"
     rm -rf "$cache"
   fi
 }
@@ -342,8 +500,9 @@ forget_compiled_old_exports() {
 # Once the current export of a model is ready, its older one, and all that was prepared from it, is of no more use:
 # for the default models, moving from main to v2, about 20 GB
 retire_old_exports() {
-  local task dir current freed
-  [ "$(model_revision)" != main ] || return 0
+  local task dir current freed revision
+  revision="$(model_revision)" || return 0
+  [ "$revision" != main ] || return 0
   while IFS='|' read -r task dir current; do
     [ -f "$current/.immich-native-downloaded" ] || continue
     find "$current" -name manifest.json -path '*/coreml/*' 2>/dev/null | grep -q . || continue
@@ -352,23 +511,27 @@ retire_old_exports() {
       find "$dir" -mindepth 1 -maxdepth 1 ! -name "$(basename "$current")" -exec rm -rf {} +
       echo "  removed the older export of $(basename "$dir") ($task): $freed before, $(du -sh "$dir" | cut -f1) now"
     fi
+    # A graph prepared for the CPU beside one for CoreML: the service runs a model on the CPU only when CoreML cannot
+    # compile it, so this one is what a warm-up stopped part way left (warm_cleanup), or a failure since overcome. A
+    # model CoreML never compiles (PP-OCRv5_server) has no CoreML graph, and keeps its CPU one.
+    for part in "$current"/*/; do
+      if [ -d "$part/cpu" ] && find "$part/coreml" -name manifest.json 2>/dev/null | grep -q .; then
+        freed="$(du -sh "$part/cpu" 2>/dev/null | cut -f1)"
+        rm -rf "$part/cpu"
+        echo "  removed a CPU copy of $(basename "$dir") $(basename "$part") left beside its CoreML one ($freed)"
+      fi
+    done
   done <<<"$(model_folders "$@")"
 }
 
 warm_once() {
   local clip="$1" face="$2" ocr="$3" ocr_max="$4" started next elapsed size last
-  # the warm-up takes the service's port, and the server would fail any job it sends meanwhile, so both pause
-  warm_server=""
-  is_loaded server && warm_server=1
-  stop_one server >/dev/null
+  # the warm-up takes the service's port (the server, its API alone, sends it nothing: warm_begin)
   stop_one ml >/dev/null
   # in a process group of its own, so that stopping it reaches the downloader and the service's preparing children
   /usr/bin/perl -e 'setpgrp(0, 0); exec @ARGV or die "exec: $!\n"' \
     "$home/bin/run-service" ml-warm "$clip" "$face" "$ocr" "$ocr_max" >"$logs/ml-warm.log" 2>&1 &
   warm_pid=$!
-  # whatever ends this (an error, Ctrl-C), the warm-up stops and the services come back
-  trap warm_cleanup EXIT
-  trap 'echo; echo "  stopped: run immichctl warm again to resume (a download continues where it left off)"; exit 130' INT TERM
 
   started=$SECONDS
   next=$SECONDS
@@ -392,15 +555,21 @@ warm_once() {
   elapsed=$((SECONDS - started))
   echo "  ready after $((elapsed / 60)) min $((elapsed % 60)) s, $(du -sm "$home/data/models" | awk '{ printf "%.1f GB", $1 / 1024 }') of models"
   warm_cleanup
-  trap - EXIT INT TERM
 }
 
-# stops the warm-up and starts what it paused; a no-op once that is done
+# stops the service's warm-up and starts the service; a no-op once that is done
 warm_cleanup() {
   [ -n "${warm_pid:-}" ] || return 0
   local pid="$warm_pid" waited=0
   warm_pid=""
-  kill -TERM -- "-$pid" 2>/dev/null || true
+  if healthy ml; then
+    kill -TERM -- "-$pid" 2>/dev/null || true
+  else
+    # Stopped before it was done: all of it at once. Ended one by one, the child preparing a graph for CoreML dies
+    # first, which the service takes for a graph CoreML cannot run, and it prepares one for the CPU (GBs) before it
+    # ends too. What a child left half done is redone, as only a complete graph has its manifest (prepare.py).
+    kill -KILL -- "-$pid" 2>/dev/null || true
+  fi
   # while it downloads, the service is still starting up and does not act on SIGTERM
   while kill -0 -- "-$pid" 2>/dev/null; do
     [ "$waited" -ge 10 ] && { kill -KILL -- "-$pid" 2>/dev/null || true; break; }
@@ -408,10 +577,8 @@ warm_cleanup() {
     waited=$((waited + 1))
   done
   wait "$pid" 2>/dev/null || true
-  start_one ml || true
-  if [ -n "$warm_server" ]; then
-    start_one server || true
-  fi
+  # not for another warm-up to follow (warm_schedule), which takes the port again
+  [ "$(cat "$warm_flag" 2>/dev/null)" = agent ] || start_one ml || true
 }
 
 cmd_clip_model() {
@@ -534,7 +701,15 @@ case "$command" in
     exec "$IMMICH_NATIVE_PG_PREFIX/bin/psql" -h 127.0.0.1 -p "$IMMICH_NATIVE_DB_PORT" -U postgres -d immich "$@"
     ;;
   doctor) cmd_doctor ;;
-  warm) cmd_warm ;;
+  warm)
+    case "${1:-}" in
+      '') cmd_warm ;;
+      --background) warm_background ;;
+      --schedule) warm_schedule ;;  # configure.sh, before it starts the services
+      --agent) warm_agent ;;
+      *) echo "unknown option: $1 (immichctl warm [--background])" >&2; exit 64 ;;
+    esac
+    ;;
   clip-model) cmd_clip_model "$@" ;;
   video-accel) cmd_video_accel "$@" ;;
   uninstall) cmd_uninstall "$@" ;;
