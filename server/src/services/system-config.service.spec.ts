@@ -45,6 +45,7 @@ const updatedConfig = Object.freeze<SystemConfig>({
     [QueueName.Workflow]: { concurrency: 5 },
     [QueueName.IntegrityCheck]: { concurrency: 1 },
     [QueueName.Editor]: { concurrency: 2 },
+    [QueueName.ContentAnalysis]: { concurrency: 2 },
   },
   backup: {
     database: {
@@ -135,6 +136,11 @@ const updatedConfig = Object.freeze<SystemConfig>({
       minDetectionScore: 0.5,
       minRecognitionScore: 0.8,
       maxResolution: 1024,
+    },
+    contentAnalysis: {
+      enabled: true,
+      tags: true,
+      archiveScreenshots: false,
     },
   },
   map: {

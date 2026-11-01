@@ -165,6 +165,7 @@ export type AdminConfigJobSettingsDto = {
 };
 export type AdminConfigJobDto = {
     backgroundTask: AdminConfigJobSettingsDto;
+    contentAnalysis: AdminConfigJobSettingsDto;
     editor: AdminConfigJobSettingsDto;
     faceDetection: AdminConfigJobSettingsDto;
     integrityCheck: AdminConfigJobSettingsDto;
@@ -211,6 +212,14 @@ export type AdminConfigClipDto = {
     /** Name of the model to use */
     modelName: string;
 };
+export type AdminConfigContentAnalysisDto = {
+    /** Archive screenshots once they are found */
+    archiveScreenshots: boolean;
+    /** Analyze photos with Apple Vision (macOS) */
+    enabled: boolean;
+    /** Tag photos with what they show, under "自动" */
+    tags: boolean;
+};
 export type AdminConfigDuplicateDetectionDto = {
     /** Whether the task is enabled */
     enabled: boolean;
@@ -244,6 +253,7 @@ export type AdminConfigOcrDto = {
 export type AdminConfigMachineLearningDto = {
     availabilityChecks: AdminConfigMachineLearningAvailabilityChecksDto;
     clip: AdminConfigClipDto;
+    contentAnalysis: AdminConfigContentAnalysisDto;
     duplicateDetection: AdminConfigDuplicateDetectionDto;
     /** Enabled */
     enabled: boolean;
@@ -1949,6 +1959,7 @@ export type QueuesResponseLegacyDto = {
     autoStack: QueueResponseLegacyDto;
     backgroundTask: QueueResponseLegacyDto;
     backupDatabase: QueueResponseLegacyDto;
+    contentAnalysis: QueueResponseLegacyDto;
     duplicateDetection: QueueResponseLegacyDto;
     editor: QueueResponseLegacyDto;
     faceDetection: QueueResponseLegacyDto;
@@ -8481,7 +8492,8 @@ export enum QueueName {
     Workflow = "workflow",
     IntegrityCheck = "integrityCheck",
     Editor = "editor",
-    AutoStack = "autoStack"
+    AutoStack = "autoStack",
+    ContentAnalysis = "contentAnalysis"
 }
 export enum UserStatus {
     Active = "active",
@@ -8864,6 +8876,8 @@ export enum JobName {
     VersionCheck = "VersionCheck",
     OcrQueueAll = "OcrQueueAll",
     Ocr = "Ocr",
+    ContentAnalysisQueueAll = "ContentAnalysisQueueAll",
+    ContentAnalysis = "ContentAnalysis",
     WorkflowAssetTrigger = "WorkflowAssetTrigger",
     IntegrityUntrackedFilesQueueAll = "IntegrityUntrackedFilesQueueAll",
     IntegrityUntrackedFiles = "IntegrityUntrackedFiles",

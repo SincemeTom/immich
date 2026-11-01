@@ -660,10 +660,9 @@ export class MetadataService extends BaseService {
       userId: ownerId,
       tags: asset?.tags ?? [],
     });
-    await this.tagRepository.replaceAssetTags(
-      id,
-      results.map((tag) => tag.id),
-    );
+    // the file's tags, and those content analysis gave it (under "自动"), which are in no file
+    const automatic = (await this.visionRepository.getAutoTagIds(id)) ?? [];
+    await this.tagRepository.replaceAssetTags(id, [...new Set([...results.map((tag) => tag.id), ...automatic])]);
   }
 
   private isMotionPhoto(asset: { type: AssetType }, tags: ImmichTags): boolean {

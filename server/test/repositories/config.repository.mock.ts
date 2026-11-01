@@ -78,6 +78,7 @@ export const envData: EnvData = {
       indexHtml: '/build/www/index.html',
     },
     corePlugin: '/build/plugins/immich-plugin-core',
+    vision: '/build/vision/immich-vision',
   },
 
   setup: {

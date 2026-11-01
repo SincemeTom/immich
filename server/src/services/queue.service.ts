@@ -261,6 +261,10 @@ export class QueueService extends BaseService {
         return this.jobRepository.queue({ name: JobName.AssetAutoStackQueueAll, data: { force } });
       }
 
+      case QueueName.ContentAnalysis: {
+        return this.jobRepository.queue({ name: JobName.ContentAnalysisQueueAll, data: { force } });
+      }
+
       default: {
         throw new BadRequestException(`Invalid job name: ${name}`);
       }

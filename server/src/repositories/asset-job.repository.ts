@@ -267,6 +267,45 @@ export class AssetJobRepository {
   }
 
   @GenerateSql({ params: [DummyValue.UUID] })
+  getForContentAnalysis(id: string) {
+    return this.db
+      .selectFrom('asset')
+      .leftJoin('asset_exif', 'asset_exif.assetId', 'asset.id')
+      .select((eb) => [
+        'asset.id',
+        'asset.ownerId',
+        'asset.visibility',
+        'asset.type',
+        'asset.originalFileName',
+        'asset.width',
+        'asset.height',
+        'asset_exif.make',
+        'asset_exif.model',
+        'asset_exif.exifImageWidth',
+        'asset_exif.exifImageHeight',
+        withFilePath(eb, AssetFileType.Preview).as('previewFile'),
+      ])
+      .where('asset.id', '=', id)
+      .executeTakeFirst();
+  }
+
+  /** those not analyzed yet, or by an earlier version; all of them, with force */
+  @GenerateSql({ params: [DummyValue.NUMBER, false], stream: true })
+  streamForContentAnalysis(version: number, force?: boolean) {
+    return this.db
+      .selectFrom('asset')
+      .select(['asset.id'])
+      .$if(!force, (qb) =>
+        qb
+          .leftJoin('asset_vision', 'asset_vision.assetId', 'asset.id')
+          .where((eb) => eb.or([eb('asset_vision.assetId', 'is', null), eb('asset_vision.version', '<', version)])),
+      )
+      .where('asset.deletedAt', 'is', null)
+      .where('asset.visibility', '!=', AssetVisibility.Hidden)
+      .stream();
+  }
+
+  @GenerateSql({ params: [DummyValue.UUID] })
   getForOcr(id: string) {
     return this.db
       .selectFrom('asset')

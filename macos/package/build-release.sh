@@ -295,6 +295,13 @@ quiet "$REPO/macos/native/geodata.sh" "$geodata"
 cp -R "$geodata" "$RELEASE/build/geodata"
 info "$(cat "$geodata/source.txt"), dated $(cat "$geodata/geodata-date.txt")"
 
+step "Apple Vision helper"
+# what the server's content analysis runs (macos/vision/immich-vision.swift); Vision is macOS's own
+mkdir -p "$RELEASE/build/vision"
+quiet /usr/bin/xcrun swiftc -O -parse-as-library -target "arm64-apple-macos$MACOSX_DEPLOYMENT_TARGET" \
+  -o "$RELEASE/build/vision/immich-vision" "$REPO/macos/vision/immich-vision.swift"
+info "$("$RELEASE/build/vision/immich-vision" version)"
+
 step "Bundling the libraries it loads"
 install -m 755 "$REPO/macos/native/run-service" "$REPO/macos/native/immichctl" "$REPO/macos/native/configure.sh" \
   "$RELEASE/native/"

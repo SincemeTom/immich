@@ -120,6 +120,7 @@ export const getQueuesUsing = (key: string): QueueName[] => {
         QueueName.SmartSearch,
         QueueName.FaceDetection,
         QueueName.Ocr,
+        QueueName.ContentAnalysis,
         QueueName.Editor,
         QueueName.Migration,
         QueueName.BackgroundTask,

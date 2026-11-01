@@ -196,6 +196,7 @@ const AdminConfigSchemaWithVisibility = z
         workflow: AdminConfigJobSettingsSchema,
         editor: AdminConfigJobSettingsSchema,
         integrityCheck: AdminConfigJobSettingsSchema,
+        contentAnalysis: AdminConfigJobSettingsSchema,
       })
       .meta({ id: 'AdminConfigJobDto' }),
     logging: z
@@ -258,6 +259,13 @@ const AdminConfigSchemaWithVisibility = z
             .describe('Minimum confidence score for text recognition')
             .meta({ format: 'double' }),
         }).meta({ id: 'AdminConfigOcrDto' }),
+        contentAnalysis: z
+          .object({
+            enabled: configBool.describe('Analyze photos with Apple Vision (macOS)'),
+            tags: configBool.describe('Tag photos with what they show, under "自动"'),
+            archiveScreenshots: configBool.describe('Archive screenshots once they are found'),
+          })
+          .meta({ id: 'AdminConfigContentAnalysisDto' }),
       })
       .meta({ id: 'AdminConfigMachineLearningDto' }),
     map: z
@@ -611,6 +619,7 @@ export const defaults = Object.freeze<SystemConfig>({
     workflow: { concurrency: 5 },
     editor: { concurrency: 2 },
     integrityCheck: { concurrency: 1 },
+    contentAnalysis: { concurrency: 2 },
   },
   logging: {
     enabled: true,
@@ -645,6 +654,11 @@ export const defaults = Object.freeze<SystemConfig>({
       minDetectionScore: 0.5,
       minRecognitionScore: 0.8,
       maxResolution: 1024,
+    },
+    contentAnalysis: {
+      enabled: true,
+      tags: true,
+      archiveScreenshots: false,
     },
   },
   map: {

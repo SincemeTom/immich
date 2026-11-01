@@ -334,6 +334,41 @@
           />
         </div>
       </SettingAccordion>
+
+      <SettingAccordion
+        key="content-analysis"
+        title={$t('admin.machine_learning_content_analysis')}
+        subtitle={$t('admin.machine_learning_content_analysis_description')}
+      >
+        <div class="mt-4 ml-4 flex flex-col gap-4">
+          <SettingSwitch
+            title={$t('admin.machine_learning_content_analysis_enabled')}
+            subtitle={$t('admin.machine_learning_content_analysis_enabled_description')}
+            bind:checked={configToEdit.machineLearning.contentAnalysis.enabled}
+            disabled={disabled || !configToEdit.machineLearning.enabled}
+          />
+
+          <hr />
+
+          <SettingSwitch
+            title={$t('admin.machine_learning_content_analysis_tags')}
+            subtitle={$t('admin.machine_learning_content_analysis_tags_description')}
+            bind:checked={configToEdit.machineLearning.contentAnalysis.tags}
+            disabled={disabled ||
+              !configToEdit.machineLearning.enabled ||
+              !configToEdit.machineLearning.contentAnalysis.enabled}
+          />
+
+          <SettingSwitch
+            title={$t('admin.machine_learning_content_analysis_archive_screenshots')}
+            subtitle={$t('admin.machine_learning_content_analysis_archive_screenshots_description')}
+            bind:checked={configToEdit.machineLearning.contentAnalysis.archiveScreenshots}
+            disabled={disabled ||
+              !configToEdit.machineLearning.enabled ||
+              !configToEdit.machineLearning.contentAnalysis.enabled}
+          />
+        </div>
+      </SettingAccordion>
       <SettingButtonsRow bind:configToEdit keys={['machineLearning']} {disabled} />
     </form>
   </div>

@@ -260,6 +260,20 @@ quiet "$REPO/macos/native/geodata.sh" "$geodata"
 info "geodata: $(cat "$geodata/source.txt"), dated $(cat "$geodata/geodata-date.txt")"
 ln -sfn "$geodata" "$RELEASE/build/geodata"
 
+# the Apple Vision helper the server's content analysis runs (macos/vision/immich-vision.swift); without it, or on a
+# Mac whose developer tools cannot build it, content analysis is off and the rest is as it was
+vision="$RELEASE/build/vision/immich-vision"
+if [ ! -x "$vision" ] || [ "$REPO/macos/vision/immich-vision.swift" -nt "$vision" ]; then
+  mkdir -p "$(dirname "$vision")"
+  if quiet xcrun swiftc -O -parse-as-library -target arm64-apple-macos15.0 -o "$vision" \
+    "$REPO/macos/vision/immich-vision.swift"; then
+    info "content analysis: $("$vision" version)"
+  else
+    rm -f "$vision"
+    info "content analysis: off, immich-vision did not build (see $INSTALL_LOG)"
+  fi
+fi
+
 # --- 5. configuration and start: configure.sh, which the .pkg runs too -------------------------------------------
 
 export IMMICH_INSTALL_LOG_STARTED=1
