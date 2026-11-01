@@ -2,7 +2,7 @@
 > [!IMPORTANT]
 > **这是 Immich 的非官方 macOS 原生版**（`mac/main` 分支），由社区开发者基于 Immich 开源代码修改，与 Immich 团队和 FUTO 无关，未经其认可，也不由其提供支持。说明、安装和更新记录见 [macos/README.md](macos/README.md)。
 >
-> - 以 [GNU AGPL v3](LICENSE) 发布，和上游一样；每个正式版有对应标签（如 `v3.3.5-mac.2`）。安装包自带的第三方组件各自按其许可分发，清单和许可全文随安装包提供。
+> - 以 [GNU AGPL v3](LICENSE) 发布，和上游一样；每个正式版有对应标签（如 `v3.3.5-mac.2`）。安装包自带的第三方组件各自按其许可分发，清单和许可全文随安装包提供（v3.3.5-mac.3 起；之前版本的清单在 GitHub Release 上）。
 > - 安装包里的人脸识别模型 buffalo_l（InsightFace）**只允许非商业研究用途**。
 > - 按"现状"提供，**不提供任何担保**。详见 [macos/LEGAL.md](macos/LEGAL.md)。
 >
