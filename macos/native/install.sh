@@ -253,23 +253,11 @@ EOF
   touch "$RELEASE/.complete"
 fi
 
-# geodata, shared by releases: what immich-app/base-images server/Dockerfile downloads into the image
+# geodata, shared by releases: the files immich-app/base-images server/Dockerfile puts in the image, with the place
+# names in Chinese (geodata.sh); the GeoNames ones of earlier installs are replaced
 geodata="$IMMICH_HOME/shared/geodata"
-if [ ! -s "$geodata/geodata-date.txt" ]; then
-  info "downloading geodata for reverse geocoding"
-  mkdir -p "$geodata"
-  (
-    cd "$geodata"
-    quiet curl -fsSLO https://download.geonames.org/export/dump/cities500.zip
-    for file in admin1CodesASCII.txt admin2Codes.txt countryInfo.txt; do
-      quiet curl -fsSLO "https://download.geonames.org/export/dump/$file"
-    done
-    quiet curl -fsSLO https://raw.githubusercontent.com/nvkelso/natural-earth-vector/v5.1.2/geojson/ne_10m_admin_0_countries.geojson
-    quiet unzip -oq cities500.zip
-    rm cities500.zip
-    date -u +%Y-%m-%dT%H:%M:%S+00:00 | tr -d '\n' >geodata-date.txt
-  )
-fi
+quiet "$REPO/macos/native/geodata.sh" "$geodata"
+info "geodata: $(cat "$geodata/source.txt"), dated $(cat "$geodata/geodata-date.txt")"
 ln -sfn "$geodata" "$RELEASE/build/geodata"
 
 # --- 5. configuration and start: configure.sh, which the .pkg runs too -------------------------------------------

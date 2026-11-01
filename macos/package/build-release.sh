@@ -289,23 +289,11 @@ info "Python $("$py" -c 'import platform; print(platform.python_version())'), on
 # --- geodata, scripts, libraries ---------------------------------------------------------------------------------
 
 step "Geodata"
+# place names in Chinese (macos/native/geodata.sh)
 geodata="$CACHE/geodata"
-if [ ! -s "$geodata/geodata-date.txt" ]; then
-  rm -rf "$geodata" && mkdir -p "$geodata"
-  (
-    cd "$geodata"
-    quiet curl -fsSLO --retry 3 https://download.geonames.org/export/dump/cities500.zip
-    for file in admin1CodesASCII.txt admin2Codes.txt countryInfo.txt; do
-      quiet curl -fsSLO --retry 3 "https://download.geonames.org/export/dump/$file"
-    done
-    quiet curl -fsSLO --retry 3 https://raw.githubusercontent.com/nvkelso/natural-earth-vector/v5.1.2/geojson/ne_10m_admin_0_countries.geojson
-    quiet unzip -oq cities500.zip
-    rm cities500.zip
-    date -u +%Y-%m-%dT%H:%M:%S+00:00 | tr -d '\n' >geodata-date.txt
-  )
-fi
+quiet "$REPO/macos/native/geodata.sh" "$geodata"
 cp -R "$geodata" "$RELEASE/build/geodata"
-info "from $(cat "$geodata/geodata-date.txt")"
+info "$(cat "$geodata/source.txt"), dated $(cat "$geodata/geodata-date.txt")"
 
 step "Bundling the libraries it loads"
 install -m 755 "$REPO/macos/native/run-service" "$REPO/macos/native/immichctl" "$REPO/macos/native/configure.sh" \
