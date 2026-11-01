@@ -19285,6 +19285,28 @@
         ],
         "type": "object"
       },
+      "AdminConfigContentAnalysisDto": {
+        "properties": {
+          "archiveScreenshots": {
+            "description": "Archive screenshots once they are found",
+            "type": "boolean"
+          },
+          "enabled": {
+            "description": "Analyze photos with Apple Vision (macOS)",
+            "type": "boolean"
+          },
+          "tags": {
+            "description": "Tag photos with what they show, under \"自动\"",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "archiveScreenshots",
+          "enabled",
+          "tags"
+        ],
+        "type": "object"
+      },
       "AdminConfigDatabaseBackupDto": {
         "properties": {
           "cronExpression": {
@@ -19794,6 +19816,9 @@
           "backgroundTask": {
             "$ref": "#/components/schemas/AdminConfigJobSettingsDto"
           },
+          "contentAnalysis": {
+            "$ref": "#/components/schemas/AdminConfigJobSettingsDto"
+          },
           "editor": {
             "$ref": "#/components/schemas/AdminConfigJobSettingsDto"
           },
@@ -19839,6 +19864,7 @@
         },
         "required": [
           "backgroundTask",
+          "contentAnalysis",
           "editor",
           "faceDetection",
           "integrityCheck",
@@ -19962,6 +19988,9 @@
           "clip": {
             "$ref": "#/components/schemas/AdminConfigClipDto"
           },
+          "contentAnalysis": {
+            "$ref": "#/components/schemas/AdminConfigContentAnalysisDto"
+          },
           "duplicateDetection": {
             "$ref": "#/components/schemas/AdminConfigDuplicateDetectionDto"
           },
@@ -19987,6 +20016,7 @@
         "required": [
           "availabilityChecks",
           "clip",
+          "contentAnalysis",
           "duplicateDetection",
           "enabled",
           "facialRecognition",
@@ -23696,6 +23726,8 @@
           "VersionCheck",
           "OcrQueueAll",
           "Ocr",
+          "ContentAnalysisQueueAll",
+          "ContentAnalysis",
           "WorkflowAssetTrigger",
           "IntegrityUntrackedFilesQueueAll",
           "IntegrityUntrackedFiles",
@@ -27283,7 +27315,8 @@
           "workflow",
           "integrityCheck",
           "editor",
-          "autoStack"
+          "autoStack",
+          "contentAnalysis"
         ],
         "type": "string"
       },
@@ -27408,6 +27441,9 @@
           "backupDatabase": {
             "$ref": "#/components/schemas/QueueResponseLegacyDto"
           },
+          "contentAnalysis": {
+            "$ref": "#/components/schemas/QueueResponseLegacyDto"
+          },
           "duplicateDetection": {
             "$ref": "#/components/schemas/QueueResponseLegacyDto"
           },
@@ -27464,6 +27500,7 @@
           "autoStack",
           "backgroundTask",
           "backupDatabase",
+          "contentAnalysis",
           "duplicateDetection",
           "editor",
           "faceDetection",

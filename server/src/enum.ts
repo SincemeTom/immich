@@ -869,6 +869,7 @@ export enum QueueName {
   IntegrityCheck = 'integrityCheck',
   Editor = 'editor',
   AutoStack = 'autoStack',
+  ContentAnalysis = 'contentAnalysis',
 }
 
 export const QueueNameSchema = z.enum(QueueName).describe('Queue name').meta({ id: 'QueueName' });
@@ -964,6 +965,10 @@ export enum JobName {
   // OCR
   OcrQueueAll = 'OcrQueueAll',
   Ocr = 'Ocr',
+
+  // Content analysis (Apple Vision, on macOS)
+  ContentAnalysisQueueAll = 'ContentAnalysisQueueAll',
+  ContentAnalysis = 'ContentAnalysis',
 
   // Workflow
   WorkflowAssetTrigger = 'WorkflowAssetTrigger',

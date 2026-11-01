@@ -24,6 +24,7 @@
     QueueName.StorageTemplateMigration,
     QueueName.Migration,
     QueueName.Ocr,
+    QueueName.ContentAnalysis,
   ];
 
   function isSystemConfigJobDto(jobName: string): jobName is keyof AdminConfigJobDto {
@@ -51,6 +52,7 @@
     [QueueName.Editor]: $t('editor'),
     [QueueName.IntegrityCheck]: $t('integrity_checks'),
     [QueueName.AutoStack]: $t('admin.auto_stack_job'),
+    [QueueName.ContentAnalysis]: $t('admin.content_analysis_job'),
   });
 </script>
 

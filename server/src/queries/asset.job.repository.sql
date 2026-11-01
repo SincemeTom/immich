@@ -537,6 +537,49 @@ from
 where
   "asset"."id" = $1
 
+-- AssetJobRepository.getForContentAnalysis
+select
+  "asset"."id",
+  "asset"."ownerId",
+  "asset"."visibility",
+  "asset"."type",
+  "asset"."originalFileName",
+  "asset"."width",
+  "asset"."height",
+  "asset_exif"."make",
+  "asset_exif"."model",
+  "asset_exif"."exifImageWidth",
+  "asset_exif"."exifImageHeight",
+  (
+    select
+      "asset_file"."path"
+    from
+      "asset_file"
+    where
+      "asset_file"."assetId" = "asset"."id"
+      and "asset_file"."type" = 'preview'
+      and "asset_file"."isEdited" = false
+  ) as "previewFile"
+from
+  "asset"
+  left join "asset_exif" on "asset_exif"."assetId" = "asset"."id"
+where
+  "asset"."id" = $1
+
+-- AssetJobRepository.streamForContentAnalysis
+select
+  "asset"."id"
+from
+  "asset"
+  left join "asset_vision" on "asset_vision"."assetId" = "asset"."id"
+where
+  (
+    "asset_vision"."assetId" is null
+    or "asset_vision"."version" < $1
+  )
+  and "asset"."deletedAt" is null
+  and "asset"."visibility" != $2
+
 -- AssetJobRepository.getForOcr
 select
   "asset"."visibility",

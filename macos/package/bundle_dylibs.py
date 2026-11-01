@@ -130,7 +130,8 @@ def bundle(release: Path) -> None:
         for old, new in changes.get(path, {}).items():
             args += ["-change", old, new]
         for rpath in commands["rpaths"]:
-            if rpath.startswith("/"):
+            # macOS's own (/usr/lib/swift, where a Swift program finds the Swift runtime) is kept
+            if rpath.startswith("/") and not f"{rpath}/".startswith(SYSTEM):
                 args += ["-delete_rpath", rpath]
         to_lib = os.path.relpath(lib, path.parent)
         wanted = "@loader_path" if to_lib == "." else f"@loader_path/{to_lib}"
@@ -148,7 +149,8 @@ def check(release: Path) -> int:
     for path in files:
         commands = load_commands(path)
         name = path.relative_to(release)
-        problems += [f"{name}: rpath {r}" for r in commands["rpaths"] if r.startswith("/")]
+        problems += [f"{name}: rpath {r}" for r in commands["rpaths"]
+                     if r.startswith("/") and not f"{r}/".startswith(SYSTEM)]
         for dep in commands["deps"]:
             if dep.startswith(SYSTEM):
                 continue
