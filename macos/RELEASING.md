@@ -19,7 +19,8 @@
 | 标签 | 日期 | 内容 |
 |---|---|---|
 | `v3.3.5-mac.1` | 2026-10-31 | 第一个正式版 |
-| `v3.3.5-mac.2` | 2026-11-01 | 模型在神经网络引擎上运行；模型改为后台准备 |
+| `v3.3.5-mac.2` | 2026-11-01 | 模型在神经网络引擎上运行；模型改为后台准备。**有缺陷**：Installer 在进程表靠前时安装失败，请用 mac.3 |
+| `v3.3.5-mac.3` | 2026-11-01 | 修复 mac.2 的安装失败；许可页、第三方许可清单、源码留档 |
 
 每个版本的详细内容见 [CHANGELOG.md](CHANGELOG.md)。
 
@@ -34,6 +35,7 @@
   - `/var/log/install.log` 里 `immich postinstall: configure.sh: exit 0 after N s`，N 远小于 600（Installer 的时限）
   - 后台准备模型完成（`immichctl status` 不再显示 `models: being prepared`），网页、上传、搜索、人脸正常
 - [ ] 这台 Mac 上跑 `macos/scripts/m3_standalone.sh <发布目录> <模型目录> both`，全部通过
+- [ ] `macos/package/tests/postinstall-pipes.sh` 通过（安装脚本在进程很多、Installer 排在前面时也不出错）
 
 ### 2. 打标签
 

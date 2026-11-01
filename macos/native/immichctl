@@ -37,7 +37,9 @@ warm_flag="$home/run/warming"
 label() { echo "$IMMICH_NATIVE_LABEL_PREFIX.$1"; }
 plist() { echo "$HOME/Library/LaunchAgents/$(label "$1").plist"; }
 is_loaded() { launchctl print "$domain/$(label "$1")" >/dev/null 2>&1; }
-job_pid() { launchctl print "$domain/$(label "$1")" 2>/dev/null | awk '$1 == "pid" { print $3; exit }'; }
+# Every pipeline here reads its input to the end: under pipefail, one whose reader stops early (awk's exit, grep -q,
+# head) fails when the writer has more to write than the pipe holds (macos/verification/m4-pkg-postinstall-sigpipe.md)
+job_pid() { launchctl print "$domain/$(label "$1")" 2>/dev/null | awk '$1 == "pid" && !found { print $3; found = 1 }'; }
 
 # the release's own, for a self-contained release (the .pkg's), or Homebrew's
 valkey_cli() {
@@ -58,7 +60,7 @@ healthy() {
     postgres) "$IMMICH_NATIVE_PG_PREFIX/bin/pg_isready" -q -h 127.0.0.1 -p "$IMMICH_NATIVE_DB_PORT" ;;
     valkey) [ "$(valkey_cli -p "$IMMICH_NATIVE_REDIS_PORT" ping 2>/dev/null)" = PONG ] ;;
     ml) [ "$(curl -fsS -m 2 "http://127.0.0.1:$IMMICH_NATIVE_ML_PORT/ping" 2>/dev/null)" = pong ] ;;
-    server) curl -fsS -m 2 "http://127.0.0.1:$IMMICH_NATIVE_SERVER_PORT/api/server/ping" 2>/dev/null | grep -q pong ;;
+    server) curl -fsS -m 2 "http://127.0.0.1:$IMMICH_NATIVE_SERVER_PORT/api/server/ping" 2>/dev/null | grep pong >/dev/null ;;
   esac
 }
 
@@ -179,10 +181,10 @@ cmd_doctor() {
   note() { printf '  [WARN] %s\n' "$1"; warn=$((warn + 1)); }
 
   echo "== Keeping Immich running unattended"
-  value="$(pmset -g | awk '$1 == "sleep" { print $2; exit }')"
+  value="$(pmset -g | awk '$1 == "sleep" && !found { print $2; found = 1 }')"
   [ "$value" = 0 ] && pass "system sleep is off" \
     || note "system sleep after ${value} min: System Settings > Energy > Prevent automatic sleeping (or: sudo pmset -a sleep 0)"
-  value="$(pmset -g | awk '$1 == "autorestart" { print $2; exit }')"
+  value="$(pmset -g | awk '$1 == "autorestart" && !found { print $2; found = 1 }')"
   [ "$value" = 1 ] && pass "restarts after a power failure" \
     || note "does not restart after a power failure: System Settings > Energy > Start up automatically after a power failure (or: sudo pmset -a autorestart 1)"
   value="$(defaults read /Library/Preferences/com.apple.loginwindow autoLoginUser 2>/dev/null || true)"
@@ -195,7 +197,7 @@ cmd_doctor() {
   fi
 
   echo "== Network"
-  if /usr/libexec/ApplicationFirewall/socketfilterfw --getglobalstate 2>/dev/null | grep -q enabled; then
+  if /usr/libexec/ApplicationFirewall/socketfilterfw --getglobalstate 2>/dev/null | grep enabled >/dev/null; then
     note "the firewall is on: allow incoming connections for node when macOS asks, or phones cannot reach port $IMMICH_NATIVE_SERVER_PORT"
   else
     pass "the firewall lets other devices reach port $IMMICH_NATIVE_SERVER_PORT"
@@ -485,8 +487,8 @@ forget_compiled_old_exports() {
   [ "$revision" != main ] || return 0
   while IFS='|' read -r task dir current; do
     # an older export of it is here (main's halves in the model's own folder), and the new one not yet prepared
-    older="$(find "$dir" -mindepth 1 -maxdepth 1 ! -name "$(basename "$current")" ! -name '.*' 2>/dev/null | head -3 || true)"
-    if [ -n "$older" ] && ! find "$current" -name manifest.json -path '*/coreml/*' 2>/dev/null | grep -q .; then
+    older="$(find "$dir" -mindepth 1 -maxdepth 1 ! -name "$(basename "$current")" ! -name '.*' 2>/dev/null | sed -n 1,3p)"
+    if [ -n "$older" ] && ! find "$current" -name manifest.json -path '*/coreml/*' -print -quit 2>/dev/null | grep -q .; then
       moving="$moving $(basename "$dir") ($(echo "$older" | xargs -I{} basename {} | tr '\n' ' ' | sed 's/ $//'))"
     fi
   done <<<"$(model_folders "$@")"
@@ -505,8 +507,8 @@ retire_old_exports() {
   [ "$revision" != main ] || return 0
   while IFS='|' read -r task dir current; do
     [ -f "$current/.immich-native-downloaded" ] || continue
-    find "$current" -name manifest.json -path '*/coreml/*' 2>/dev/null | grep -q . || continue
-    if find "$dir" -mindepth 1 -maxdepth 1 ! -name "$(basename "$current")" | grep -q .; then
+    find "$current" -name manifest.json -path '*/coreml/*' -print -quit 2>/dev/null | grep -q . || continue
+    if find "$dir" -mindepth 1 -maxdepth 1 ! -name "$(basename "$current")" -print -quit | grep -q .; then
       freed="$(du -sh "$dir" 2>/dev/null | cut -f1)"
       find "$dir" -mindepth 1 -maxdepth 1 ! -name "$(basename "$current")" -exec rm -rf {} +
       echo "  removed the older export of $(basename "$dir") ($task): $freed before, $(du -sh "$dir" | cut -f1) now"
@@ -515,7 +517,7 @@ retire_old_exports() {
     # compile it, so this one is what a warm-up stopped part way left (warm_cleanup), or a failure since overcome. A
     # model CoreML never compiles (PP-OCRv5_server) has no CoreML graph, and keeps its CPU one.
     for part in "$current"/*/; do
-      if [ -d "$part/cpu" ] && find "$part/coreml" -name manifest.json 2>/dev/null | grep -q .; then
+      if [ -d "$part/cpu" ] && find "$part/coreml" -name manifest.json -print -quit 2>/dev/null | grep -q .; then
         freed="$(du -sh "$part/cpu" 2>/dev/null | cut -f1)"
         rm -rf "$part/cpu"
         echo "  removed a CPU copy of $(basename "$dir") $(basename "$part") left beside its CoreML one ($freed)"
