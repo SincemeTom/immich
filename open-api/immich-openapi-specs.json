@@ -19295,6 +19295,13 @@
             "description": "Analyze photos with Apple Vision (macOS)",
             "type": "boolean"
           },
+          "speech": {
+            "description": "Recognize what is said in videos, to search it (macOS 26)",
+            "type": "boolean"
+          },
+          "speechLanguage": {
+            "$ref": "#/components/schemas/ContentAnalysisSpeechLanguage"
+          },
           "tags": {
             "description": "Tag photos with what they show, under \"自动\"",
             "type": "boolean"
@@ -19303,6 +19310,8 @@
         "required": [
           "archiveScreenshots",
           "enabled",
+          "speech",
+          "speechLanguage",
           "tags"
         ],
         "type": "object"
@@ -22668,6 +22677,18 @@
         "enum": [
           "srgb",
           "p3"
+        ],
+        "type": "string"
+      },
+      "ContentAnalysisSpeechLanguage": {
+        "description": "The language spoken in the videos",
+        "enum": [
+          "zh-CN",
+          "zh-HK",
+          "zh-TW",
+          "en-US",
+          "ja-JP",
+          "ko-KR"
         ],
         "type": "string"
       },

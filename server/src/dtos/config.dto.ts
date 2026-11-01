@@ -32,6 +32,7 @@ import {
   VideoContainer,
   VideoContainerSchema,
 } from 'src/enum.js';
+import { SPEECH_LANGUAGES } from 'src/utils/content-analysis.js';
 
 const { Admin, User, Public } = ConfigVisibility;
 
@@ -264,6 +265,11 @@ const AdminConfigSchemaWithVisibility = z
             enabled: configBool.describe('Analyze photos with Apple Vision (macOS)'),
             tags: configBool.describe('Tag photos with what they show, under "自动"'),
             archiveScreenshots: configBool.describe('Archive screenshots once they are found'),
+            speech: configBool.describe('Recognize what is said in videos, to search it (macOS 26)'),
+            speechLanguage: z
+              .enum(SPEECH_LANGUAGES)
+              .describe('The language spoken in the videos')
+              .meta({ id: 'ContentAnalysisSpeechLanguage' }),
           })
           .meta({ id: 'AdminConfigContentAnalysisDto' }),
       })
@@ -659,6 +665,8 @@ export const defaults = Object.freeze<SystemConfig>({
       enabled: true,
       tags: true,
       archiveScreenshots: false,
+      speech: true,
+      speechLanguage: 'zh-CN',
     },
   },
   map: {

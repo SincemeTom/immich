@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { type Insertable, type Kysely, sql } from 'kysely';
 import { InjectKysely } from 'nestjs-kysely';
-import { type ChildProcessWithoutNullStreams, spawn } from 'node:child_process';
+import { type ChildProcessWithoutNullStreams, execFile, spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { createInterface } from 'node:readline';
@@ -10,12 +10,22 @@ import { ConfigRepository } from 'src/repositories/config.repository.js';
 import { LoggingRepository } from 'src/repositories/logging.repository.js';
 import { DB } from 'src/schema/index.js';
 import { AssetVisionTable } from 'src/schema/tables/asset-vision.table.js';
-import { AUTO_TAG_ROOT, type VisionLabel, type VisionResult, type VisionTask } from 'src/utils/content-analysis.js';
+import {
+  AUTO_TAG_ROOT,
+  type SpeechSegment,
+  type VisionCapabilities,
+  type VisionLabel,
+  type VisionResult,
+  type VisionTask,
+} from 'src/utils/content-analysis.js';
 
 /** how long a photo may take: the first, while macOS loads its models, a few seconds; the next, tens of ms */
 const REQUEST_TIMEOUT = 60_000;
 /** the helper is stopped when it has had nothing to do for this long, and started again with the next photo */
 const IDLE_TIMEOUT = 5 * 60_000;
+
+/** the driver sends an array as a Postgres array; jsonb wants it as JSON */
+const json = <T>(value: T) => sql<T>`${JSON.stringify(value)}::jsonb`;
 
 type Pending = { resolve: (result: VisionResult) => void; reject: (error: Error) => void; timer: NodeJS.Timeout };
 
@@ -29,6 +39,7 @@ export class VisionRepository {
   private child?: ChildProcessWithoutNullStreams;
   private pending = new Map<string, Pending>();
   private idleTimer?: NodeJS.Timeout;
+  private capabilities?: Promise<VisionCapabilities>;
 
   constructor(
     @InjectKysely() private db: Kysely<DB>,
@@ -47,18 +58,45 @@ export class VisionRepository {
     return process.platform === 'darwin' && existsSync(this.helperPath);
   }
 
-  analyze(path: string, tasks: VisionTask[]): Promise<VisionResult> {
+  /**
+   * What this Mac can do: macOS 26's requests (documents, smudge, speech) only on macOS 26. Asked once; nothing, if
+   * the helper does not answer, or is one from before it said.
+   */
+  getCapabilities(): Promise<VisionCapabilities> {
+    this.capabilities ??= new Promise<VisionCapabilities>((resolve) => {
+      execFile(this.helperPath, ['capabilities'], { timeout: 30_000 }, (error, stdout) => {
+        const none = { version: 0, macos: '', features: [] };
+        if (error) {
+          this.logger.warn(`immich-vision capabilities: ${error}`);
+          return resolve(none);
+        }
+        try {
+          resolve(JSON.parse(stdout) as VisionCapabilities);
+        } catch {
+          this.logger.warn(`immich-vision capabilities: not JSON: ${stdout.slice(0, 200)}`);
+          resolve(none);
+        }
+      });
+    });
+    return this.capabilities;
+  }
+
+  analyze(
+    path: string,
+    tasks: VisionTask[],
+    { language, timeout = REQUEST_TIMEOUT }: { language?: string; timeout?: number } = {},
+  ): Promise<VisionResult> {
     const child = this.start();
     const id = randomUUID();
     this.resetIdleTimer();
     return new Promise<VisionResult>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(id);
-        reject(new Error(`immich-vision took more than ${REQUEST_TIMEOUT / 1000} s for ${path}`));
+        reject(new Error(`immich-vision took more than ${timeout / 1000} s for ${path}`));
         this.stop('a request timed out');
-      }, REQUEST_TIMEOUT);
+      }, timeout);
       this.pending.set(id, { resolve, reject, timer });
-      child.stdin.write(`${JSON.stringify({ id, path, tasks })}\n`);
+      child.stdin.write(`${JSON.stringify({ id, path, tasks, language })}\n`);
     });
   }
 
@@ -156,9 +194,25 @@ export class VisionRepository {
     return this.db.selectFrom('asset_vision').selectAll().where('assetId', '=', assetId).executeTakeFirst();
   }
 
-  upsert({ labels, ...rest }: Omit<Insertable<AssetVisionTable>, 'labels'> & { labels: VisionLabel[] }) {
-    // node-postgres sends an array as a Postgres array; jsonb wants it as JSON
-    const row = { ...rest, labels: sql<VisionLabel[]>`${JSON.stringify(labels)}::jsonb` };
+  /**
+   * Keeps what was found. A column left out (undefined) keeps what it had: a video's transcript, when it was not
+   * listened to this time.
+   */
+  upsert({
+    labels,
+    transcriptSegments,
+    ...rest
+  }: Omit<Insertable<AssetVisionTable>, 'labels' | 'transcriptSegments'> & {
+    labels: VisionLabel[];
+    transcriptSegments?: SpeechSegment[] | null;
+  }) {
+    const row = Object.fromEntries(
+      Object.entries({
+        ...rest,
+        labels: json(labels),
+        transcriptSegments: transcriptSegments ? json(transcriptSegments) : transcriptSegments,
+      }).filter(([, value]) => value !== undefined),
+    ) as Insertable<AssetVisionTable>;
     return this.db
       .insertInto('asset_vision')
       .values(row)

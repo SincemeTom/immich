@@ -61,6 +61,8 @@ const autoStackColumns = [
   'asset_exif.rating',
   'asset_exif.autoStackId',
   'asset_job_status.autoStackedAt',
+  // content analysis: which of a stack's photos is the better taken (macOS)
+  'asset_vision.aestheticScore',
 ] as const;
 
 const withAssets = (eb: ExpressionBuilder<DB, 'stack'>, withTags = false) => {
@@ -221,6 +223,7 @@ export class StackRepository {
       .selectFrom('asset')
       .leftJoin('asset_exif', 'asset_exif.assetId', 'asset.id')
       .leftJoin('asset_job_status', 'asset_job_status.assetId', 'asset.id')
+      .leftJoin('asset_vision', 'asset_vision.assetId', 'asset.id')
       .leftJoin('smart_search', 'smart_search.assetId', 'asset.id')
       .leftJoin('stack', 'stack.id', 'asset.stackId')
       .select(autoStackColumns)
@@ -302,6 +305,7 @@ export class StackRepository {
       .$call(withDefaultVisibility)
       .leftJoin('asset_exif', 'asset_exif.assetId', 'asset.id')
       .leftJoin('asset_job_status', 'asset_job_status.assetId', 'asset.id')
+      .leftJoin('asset_vision', 'asset_vision.assetId', 'asset.id')
       .leftJoin('smart_search', 'smart_search.assetId', 'asset.id')
       .leftJoin('stack', 'stack.id', 'asset.stackId')
       .select(autoStackColumns)
@@ -382,6 +386,7 @@ export class StackRepository {
       .selectFrom('asset')
       .leftJoin('asset_exif', 'asset_exif.assetId', 'asset.id')
       .leftJoin('asset_job_status', 'asset_job_status.assetId', 'asset.id')
+      .leftJoin('asset_vision', 'asset_vision.assetId', 'asset.id')
       .select(autoStackColumns)
       .where('asset.stackId', '=', anyUuid(stackIds))
       .where('asset.deletedAt', 'is', null)

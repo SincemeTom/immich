@@ -5,8 +5,29 @@ import { VISION_LABELS } from 'src/utils/vision-labels.js';
 export const AUTO_TAG_ROOT = '自动';
 export const SCREENSHOT_TAG = `${AUTO_TAG_ROOT}/截图`;
 export const QR_CODE_TAG = `${AUTO_TAG_ROOT}/文档/二维码`;
+export const DOCUMENT_TAG = `${AUTO_TAG_ROOT}/文档`;
+export const TABLE_TAG = `${AUTO_TAG_ROOT}/文档/表格`;
+export const SMUDGE_TAG = `${AUTO_TAG_ROOT}/质量/镜头脏污`;
 /** a photo analyzed by an earlier version is analyzed again */
 export const CONTENT_ANALYSIS_VERSION = 1;
+
+/** what every Mac does, on a photo or a video's preview */
+export const BASE_TASKS = ['classify', 'aesthetics', 'animals', 'barcodes'] as const;
+/** what macOS 26 adds, on a photo or a video's preview; speech, on a video itself */
+export const MACOS_26_IMAGE_TASKS = ['documents', 'smudge'] as const;
+export const SPEECH_TASK = 'speech';
+/** the languages speech recognition is offered in, in the settings */
+export const SPEECH_LANGUAGES = ['zh-CN', 'zh-HK', 'zh-TW', 'en-US', 'ja-JP', 'ko-KR'] as const;
+
+/**
+ * How sure Vision has to be of a document, and how much of one it has to find, for "自动/文档": a receipt, a page,
+ * a sign with a paragraph or two. Set on the research's documents (m4-vision-research.md); to be checked on macOS 26.
+ */
+export const DOCUMENT_MIN_CONFIDENCE = 0.8;
+/** how likely a smudged lens has to be for "自动/质量/镜头脏污": high, since a false one would be a slight */
+export const SMUDGE_MIN_CONFIDENCE = 0.9;
+/** how much better a photo's aesthetics score has to be to become its automatic stack's cover instead */
+export const COVER_MIN_GAIN = 0.05;
 /**
  * The classifier's confidence a label needs to become a tag. At 0.5, the objects it names are mostly right, and
  * broad labels are rarer (macos/verification/m4-vision-research.md, section 3).
@@ -15,9 +36,20 @@ export const LABEL_MIN_CONFIDENCE = 0.5;
 /** the most label tags one photo gets: the most specific, the most confident first */
 export const MAX_LABEL_TAGS = 5;
 
-export type VisionTask = 'classify' | 'aesthetics' | 'animals' | 'barcodes';
+export type VisionTask = (typeof BASE_TASKS)[number] | (typeof MACOS_26_IMAGE_TASKS)[number] | typeof SPEECH_TASK;
 export type VisionError = { error: string };
 export type VisionLabel = { label: string; confidence: number };
+export type VisionDocument = {
+  count: number;
+  confidence?: number;
+  lines?: number;
+  paragraphs?: number;
+  tables?: number;
+  lists?: number;
+  title?: string;
+};
+export type SpeechSegment = { start: number; end: number; text: string };
+export type VisionSpeech = { audio: boolean; seconds: number; language: string; segments: SpeechSegment[] };
 export type VisionResult = {
   id: string;
   error?: string;
@@ -26,7 +58,36 @@ export type VisionResult = {
   aesthetics?: VisionError | { score: number; utility: boolean };
   animals?: VisionLabel[] | VisionError;
   barcodes?: { payload: string; symbology: string }[] | VisionError;
+  documents?: VisionDocument | VisionError;
+  smudge?: VisionError | { confidence: number };
+  speech?: VisionError | VisionSpeech;
 };
+/** what `immich-vision capabilities` says */
+export type VisionCapabilities = { version: number; macos: string; features: string[] };
+
+/** the tasks a photo, or a video, gets on this Mac: those it can do, speech if the settings say so */
+export const getContentTasks = (
+  features: string[],
+  { isVideo, speech }: { isVideo: boolean; speech: boolean },
+): { image: VisionTask[]; video: VisionTask[] } => {
+  const image = [...BASE_TASKS, ...MACOS_26_IMAGE_TASKS].filter((task) => features.includes(task));
+  const video: VisionTask[] = isVideo && speech && features.includes(SPEECH_TASK) ? [SPEECH_TASK] : [];
+  return { image, video };
+};
+
+/** whether Vision found a document worth the tag: sure of it, with a table, paragraphs or a few lines of text */
+export const isDocument = (document?: VisionDocument) =>
+  !!document &&
+  document.count > 0 &&
+  (document.confidence ?? 0) >= DOCUMENT_MIN_CONFIDENCE &&
+  ((document.tables ?? 0) > 0 || (document.paragraphs ?? 0) >= 2 || (document.lines ?? 0) >= 5);
+
+/** the words of a video, as one text to search: its segments in order */
+export const getTranscriptText = (segments: SpeechSegment[] = []) =>
+  segments
+    .map(({ text }) => text.trim())
+    .filter(Boolean)
+    .join(' ');
 
 export const succeeded = <T>(value: T | VisionError | undefined): T | undefined =>
   value === undefined || (typeof value === 'object' && value !== null && 'error' in value) ? undefined : (value as T);

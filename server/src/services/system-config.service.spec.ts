@@ -141,6 +141,8 @@ const updatedConfig = Object.freeze<SystemConfig>({
       enabled: true,
       tags: true,
       archiveScreenshots: false,
+      speech: true,
+      speechLanguage: 'zh-CN',
     },
   },
   map: {

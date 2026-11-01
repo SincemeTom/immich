@@ -217,6 +217,9 @@ export type AdminConfigContentAnalysisDto = {
     archiveScreenshots: boolean;
     /** Analyze photos with Apple Vision (macOS) */
     enabled: boolean;
+    /** Recognize what is said in videos, to search it (macOS 26) */
+    speech: boolean;
+    speechLanguage: ContentAnalysisSpeechLanguage;
     /** Tag photos with what they show, under "自动" */
     tags: boolean;
 };
@@ -8404,6 +8407,14 @@ export enum LogLevel {
     Warn = "warn",
     Error = "error",
     Fatal = "fatal"
+}
+export enum ContentAnalysisSpeechLanguage {
+    ZhCn = "zh-CN",
+    ZhHk = "zh-HK",
+    ZhTw = "zh-TW",
+    EnUs = "en-US",
+    JaJp = "ja-JP",
+    KoKr = "ko-KR"
 }
 export enum ReleaseChannel {
     Stable = "stable",
