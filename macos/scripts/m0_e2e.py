@@ -27,12 +27,15 @@ EXTRA = [
     REPO / "e2e/test-assets/metadata/faces/portrait.jpg",
     REPO / "e2e/test-assets/albums/text/japanese-shop.jpg",
     REPO / "e2e/test-assets/albums/nature/prairie_falcon.jpg",
+    REPO / "e2e/test-assets/albums/nature/notocactus_minimus.jpg",
 ]
 VIDEOS = Path("/tmp/immich-m0/ffmpeg/samples")
 # a photo taken on Jiangchuan Road, Minhang, Shanghai: reverse geocoding names its place in Chinese
 # (macos/native/geodata.sh), the township, the region and the country
 GPS_PHOTO = Path("/tmp/immich-m0/minhang-gps.jpg")
 GPS_POINT = (31.0195, 121.4045)
+# a screenshot as an iPhone 16 saves one: a PNG of the screen's size, of no camera; content analysis tags it
+SCREENSHOT = Path("/tmp/immich-m0/IMG_9001.PNG")
 SKIP = {".xmp", ".md"}
 EMAIL, PASSWORD = "m0@immich.local", "m0-password"
 
@@ -76,6 +79,20 @@ def gps_photo() -> Path:
     gps.update({1: "N", 2: dms(GPS_POINT[0]), 3: "E", 4: dms(GPS_POINT[1])})
     image.save(GPS_PHOTO, exif=exif, quality=90)
     return GPS_PHOTO
+
+
+def screenshot() -> Path:
+    from PIL import Image, ImageDraw
+
+    SCREENSHOT.parent.mkdir(parents=True, exist_ok=True)
+    image = Image.new("RGB", (1179, 2556), (242, 242, 247))
+    draw = ImageDraw.Draw(image)
+    for row in range(12):
+        top = 300 + row * 180
+        draw.rectangle((60, top, 1119, top + 140), fill=(255, 255, 255))
+        draw.rectangle((90, top + 40, 600, top + 70), fill=(60, 60, 67))
+    image.save(SCREENSHOT)
+    return SCREENSHOT
 
 
 def upload(client: httpx.Client, path: Path) -> dict[str, Any]:
@@ -123,6 +140,7 @@ def main() -> None:
     print("== upload")
     images = sorted(p for p in FORMATS.rglob("*") if p.is_file() and p.suffix.lower() not in SKIP) + EXTRA
     images.append(gps_photo())
+    images.append(screenshot())
     videos = sorted(VIDEOS.glob("*")) if VIDEOS.exists() else []
     uploaded: dict[str, str] = {}
     for path in images + videos:
@@ -171,6 +189,21 @@ def main() -> None:
     place = f"{exif.get('city')} / {exif.get('state')} / {exif.get('country')}"
     check("place in Chinese for a photo taken in Minhang, Shanghai",
           "闵行区" in (exif.get("city") or "") and exif.get("state") == "上海市" and exif.get("country") == "中国", place)
+
+    # content analysis (Apple Vision): a server that has it, on a Mac whose release carries immich-vision
+    if "contentAnalysis" in queues:
+        def tags(name: str) -> list[str]:
+            asset = client.get(f"/api/assets/{uploaded[name]}").json()
+            return sorted(tag["value"] for tag in asset.get("tags") or [])
+
+        cactus = tags("e2e/test-assets/albums/nature/notocactus_minimus.jpg")
+        check("content analysis tags notocactus_minimus.jpg 自动/植物/仙人掌", "自动/植物/仙人掌" in cactus, ", ".join(cactus))
+        shot = tags(SCREENSHOT.name)
+        visibility = client.get(f"/api/assets/{uploaded[SCREENSHOT.name]}").json().get("visibility")
+        check("content analysis tags a screenshot 自动/截图, and leaves it in the timeline (archiving is off)",
+              "自动/截图" in shot and visibility == "timeline", f"{', '.join(shot)}; {visibility}")
+        portrait = tags("e2e/test-assets/metadata/faces/portrait.jpg")
+        check("content analysis does not take a photo for a screenshot", "自动/截图" not in portrait, ", ".join(portrait))
 
     model = client.get("/api/system-config").json()["machineLearning"]["clip"]["modelName"]
     queries = [("a bird of prey", "albums/nature/prairie_falcon.jpg")]
