@@ -160,6 +160,32 @@ check "the service's app loads" env -i HOME="$HOME" PYTHONPATH="$RELEASE/ml" PYT
   MACHINE_LEARNING_CACHE_FOLDER="$WORK/models" sandbox-exec -f "$PROFILE" "$py" -c \
   'import immich_ml.main, cv2, numpy, PIL, tokenizers, huggingface_hub, uvicorn; print("immich_ml", cv2.__version__, numpy.__version__)'
 
+echo "== geodata"
+# the place names in Chinese (macos/native/geodata.sh): what the server reads, and the place nearest a point in
+# Shanghai, found as the server's reverse geocoding finds it (the closest of cities500, its admin1 the region)
+check "every file the server reads; places named in Chinese" python3 - "$RELEASE/build/geodata" <<'PY'
+import math, sys
+from pathlib import Path
+folder = Path(sys.argv[1])
+for name in ("cities500.txt", "admin1CodesASCII.txt", "admin2Codes.txt", "countryInfo.txt",
+             "ne_10m_admin_0_countries.geojson", "geodata-date.txt"):
+    assert (folder / name).stat().st_size > 0, name
+countries = {f[0]: f[4] for f in (l.split("\t") for l in (folder / "countryInfo.txt").open(encoding="utf-8"))
+             if not f[0].startswith("#") and len(f) > 4}
+admin1 = dict(l.rstrip("\n").split("\t")[:2] for l in (folder / "admin1CodesASCII.txt").open(encoding="utf-8"))
+lat, lon, best = 31.02, 121.40, None
+for line in (folder / "cities500.txt").open(encoding="utf-8"):
+    f = line.split("\t")
+    if f[7] == "PPLH" or (f[7] == "PPLX" and f[8] != "AU"):
+        continue
+    d = math.hypot(float(f[4]) - lat, (float(f[5]) - lon) * math.cos(math.radians(lat)))
+    if best is None or d < best[0]:
+        best = (d, f[1], admin1.get(f"{f[8]}.{f[10]}"), countries.get(f[8]))
+place = " / ".join(str(p) for p in best[1:])
+assert "闵行区" in best[1] and best[2] == "上海市" and best[3] == "中国", place
+print(place, "|", (folder / "geodata-date.txt").read_text().strip())
+PY
+
 echo "== ffmpeg, gzip"
 check "ffmpeg with VideoToolbox and tonemapx" bash -c "sandbox-exec -f '$PROFILE' '$RELEASE/ffmpeg/ffmpeg' -hide_banner -encoders \
   | grep -q hevc_videotoolbox && sandbox-exec -f '$PROFILE' '$RELEASE/ffmpeg/ffmpeg' -hide_banner -filters | grep -q tonemapx && echo yes"
