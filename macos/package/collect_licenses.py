@@ -15,6 +15,8 @@ Usage: collect_licenses.py RELEASE --repo REPO --cache CACHE --ffmpeg-version V 
 Prints what it found and fails on a component whose license it cannot find, or a copyleft one without a source.
 """
 
+from __future__ import annotations
+
 import argparse
 import email.parser
 import json
