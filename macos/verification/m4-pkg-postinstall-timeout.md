@@ -3,7 +3,7 @@
 - 安装包：`Immich-3.3.5-dev-a559bb0f5.pkg`（`mac/develop` 的 `a559bb0f5`，含 M4-1 的 v2 模型）
 - 机器：MacBook Pro，Apple M4 Pro，macOS 26.7；在已装 `3.3.5-0c376d526` 的实例上用 Installer 图形界面升级
 - 日期：2026-11-01
-- 状态：**待修复**
+- 状态：**已修复**（分支 `mac/fix/pkg-background-warm`，正式版 `v3.3.5-mac.2`），见文末"修复"
 - 结论：Installer 只给 `postinstall` 600 秒。postinstall 同步跑完了整个模型预热，v2 第一次准备要将近 8 分钟，加上前面的步骤超过了 10 分钟，脚本被系统终止，Installer 报"安装失败"。实际上 Immich 已经升级好并在运行，失败的只是收尾步骤
 
 ## 现象
@@ -103,3 +103,36 @@ sudo rm -rf "/Library/Application Support/Immich"
 ```
 
 以后再用同一个 .pkg 重装不会再超时：模型已经准备好了，再次预热只需几秒。
+
+## 修复
+
+分支 `mac/fix/pkg-background-warm`，已合入 `mac/develop`，正式版 `v3.3.5-mac.2`。
+
+| 位置 | 改动 |
+|---|---|
+| `postinstall` | 调用 `configure.sh --warm-in-background`，只做配置和启动；之后建 `immichctl` 链接、打开网页，**不再依赖前面成功**（失败时也建链接，按实际结果退出） |
+| `configure.sh --warm-in-background` | 启动服务前先登记一次性 LaunchAgent `<label>.warm`（还不启动），服务器因此以"只开 API"方式启动；不启动 ml（预热会接管它的端口，之后由预热启动）；最后启动这个 LaunchAgent。发布目录清理、链接等收尾步骤照常执行 |
+| `immichctl warm --background` / `--agent` | LaunchAgent 在用户会话里运行 `immichctl warm`，成功后删除自己；关掉 Installer、注销都不影响；中途重启 Mac 或失败，下次登录重来 |
+| 预热期间的服务器 | `run-service` 看到预热标记，以 `IMMICH_WORKERS_EXCLUDE=microservices` 启动服务器：网页、App、上传、建管理员都正常，缩略图、智能搜索、人脸、OCR 等任务**排队等待**（不会因为连不上机器学习服务而失败）；预热完成后重启一次服务器（约半分钟），任务自动开始。`install.sh` 的前台预热也改成这样，升级时网页不再中断 |
+| `immichctl status` | 预热进行中显示"models: being prepared"，失败显示怎么重试；`immichctl logs warm` 看进度 |
+| 安装器完成页 | 说明模型在后台准备、大约多久、期间哪些功能要等 |
+
+测试中顺带发现并修复的三个问题：
+
+1. **预热进行中再次安装**（以为装坏了重装）：第二次 `configure.sh` 报 `Bootstrap failed: 5`，旧预热的收尾还在重启服务。现在先通知旧预热"后面还有一次"（它就不再恢复服务），等它真正退出，再开始新的。
+2. **中途停止预热会多留一份 2.8 GB 的 CPU 模型**：一起发 SIGTERM 时，编译 CoreML 的子进程先死，服务以为"CoreML 编译不了"，转去准备 CPU 版本。现在未完成就停止时整组直接结束；预热完成后，CoreML 版本旁边多出来的 CPU 版本也会删除（真正只能用 CPU 的模型没有 CoreML 版本，不受影响）。
+3. `immichctl` 从 `run-service` 文本里读模型版本，在测试沙箱里读空，误把 v2 当成旧导出并清掉 CoreML 系统缓存。现在改为问 `run-service model-revision`。
+
+### 测试（这台 M4 Pro，自带依赖的发布目录，屏蔽 Homebrew、不能联网）
+
+| 场景 | 结果 |
+|---|---|
+| 新装（按 postinstall 的方式） | `configure.sh` **44 秒**结束（原来 10 分钟以上）；预热期间服务器只开 API、能访问；预热期间上传的照片被接收、15 秒后仍无缩略图、任务在排队；后台预热 9 分 25 秒完成并删除 LaunchAgent；服务器恢复任务处理，那张照片随后有了缩略图、能被智能搜索找到；没有下载模型；没有用到 Homebrew；端到端 **42/42** |
+| 接管一键安装版 | `configure.sh` **40 秒**；照片、人脸、搜索索引、文字、用户、设置前后一致；预热期间上传同上；端到端前后都是 **42/42** |
+| 预热进行到 90 秒时再装一次 | 第二次 `configure.sh` 31 秒、成功；旧预热停止，新预热 7 分 19 秒完成；服务器恢复正常；发布目录保留两个；没有遗留的半成品或 CPU 副本 |
+
+没有在这台 Mac 上跑真实的 Installer（需要管理员密码）。**请在测试机上用新包再装一次**（图形界面或 `sudo installer -pkg Immich-3.3.5-mac.2.pkg -target /`），看 `/var/log/install.log` 里 `immich postinstall: configure.sh: exit 0 after N s`，N 应在 1–2 分钟以内。
+
+### 已经装了 a559bb0f5 的机器
+
+直接装 mac.2 即可：模型已经准备好，后台预热只需一分钟左右；多出来的发布目录也会在这次安装时清掉。`/Library/Application Support/Immich` 下的空目录仍可用 `sudo rm -rf` 删除。
