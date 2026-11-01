@@ -2,7 +2,15 @@
 
 Immich macOS 原生版（非官方）的各个版本。版本号是 `<上游 Immich 版本>-mac.<序号>`，每个版本对应一个 git 标签，发布流程见 [RELEASING.md](RELEASING.md)。这个版本基于上游 Immich 修改，改动的验证记录在 [verification/](verification/README.md)。
 
-## 未发布
+## v3.3.5-mac.3（2026-11-01）
+
+基于上游 v3.3.5。
+
+**修复**
+
+- mac.2 的安装包在 Installer 里几秒就报"安装失败"、什么都没装：安装脚本找安装用户时，`ps` 的输出超过管道缓冲区、读取一方提前退出，脚本收到 SIGPIPE 退出。是否出现取决于 Installer 在进程表里的位置，机器越忙越容易失败（[m4-pkg-postinstall-sigpipe.md](verification/m4-pkg-postinstall-sigpipe.md)）。同类写法全部改掉；安装脚本开头先记日志，失败时记下行号
+
+**许可与声明**
 
 - 安装器新增许可页（中英文），欢迎页写明这是非官方版本
 - 安装包附带全部第三方组件的许可全文和清单（`licenses/`），打包时一并留档 GPL、LGPL 组件的源代码

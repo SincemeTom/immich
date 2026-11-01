@@ -129,9 +129,9 @@ macos="$(sw_vers -productVersion)"
 # a port in use by anything but this install's own service, which runs as (or under) the LaunchAgent's process
 port_owned_elsewhere() {
   local service="$1" port="$2" owner job
-  owner="$(lsof -nP -iTCP:"$port" -sTCP:LISTEN -t 2>/dev/null | head -1 || true)"
+  owner="$(lsof -nP -iTCP:"$port" -sTCP:LISTEN -t 2>/dev/null | sed -n 1p || true)"
   [ -n "$owner" ] || return 1
-  job="$(launchctl print "gui/$(id -u)/$LABEL.$service" 2>/dev/null | awk '$1 == "pid" { print $3; exit }')"
+  job="$(launchctl print "gui/$(id -u)/$LABEL.$service" 2>/dev/null | awk '$1 == "pid" && !found { print $3; found = 1 }')"
   [ -z "$job" ] && return 0
   [ "$(ps -o pgid= -p "$owner" | tr -d ' ')" != "$(ps -o pgid= -p "$job" | tr -d ' ')" ]
 }
@@ -139,7 +139,7 @@ for entry in "server:$SERVER_PORT:server-port" "ml:$ML_PORT:ml-port" "postgres:$
   "valkey:$REDIS_PORT:redis-port"; do
   IFS=: read -r service port option <<<"$entry"
   if port_owned_elsewhere "$service" "$port"; then
-    owner="$(lsof -nP -iTCP:"$port" -sTCP:LISTEN -t | head -1)"
+    owner="$(lsof -nP -iTCP:"$port" -sTCP:LISTEN -t | sed -n 1p)"
     die "port $port ($service) is in use by $(ps -o comm= -p "$owner") (pid $owner), choose another with --$option"
   fi
 done
@@ -156,7 +156,7 @@ RELEASE="$IMMICH_HOME/releases/$RELEASE_ID"
 ctl="$IMMICH_HOME/bin/immichctl"
 
 release_macos="$(sed -n 's/^macos_min=//p' "$opt_release/RELEASE")"
-if [ -n "$release_macos" ] && [ "$(printf '%s\n%s\n' "$release_macos" "$macos" | sort -V | head -1)" != "$release_macos" ]; then
+if [ -n "$release_macos" ] && [ "$(printf '%s\n%s\n' "$release_macos" "$macos" | sort -V | sed -n 1p)" != "$release_macos" ]; then
   die "this release needs macOS $release_macos or later, this is $macos"
 fi
 

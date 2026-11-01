@@ -3,7 +3,7 @@
 - 安装包：`Immich-3.3.5-mac.2.pkg`（标签 `v3.3.5-mac.2`，`d72888b40`）
 - 机器：MacBook Pro，Apple M4 Pro，macOS 26.7；在运行着 `3.3.5-a559bb0f5` 的实例上用 Installer 图形界面升级，Immich 当时正在处理任务队列
 - 日期：2026-11-01
-- 状态：**待修复**
+- 状态：**已修复**（分支 `mac/fix/pipefail-early-readers`，正式版 `v3.3.5-mac.3`），见文末"修复"
 - 结论：postinstall 第 29–30 行用 `ps -axo user=,comm= | awk '… { print $1; exit }'` 找打开 Installer 的用户。awk 一找到就退出，`ps` 后面还没写完的输出就收到 SIGPIPE，退出码 141；脚本开了 `set -euo pipefail`，于是在第一条日志之前就退出了。**这次什么都没有安装**，原来的版本继续运行，不受影响。和 [m4-pkg-postinstall-timeout.md](m4-pkg-postinstall-timeout.md) 的 600 秒超时是两回事
 
 ## 现象
@@ -98,3 +98,24 @@ installer_user="$(ps -axo user=,comm= \
 ## 已经装着旧版本的机器
 
 这次安装没有改动任何东西，旧版本照常运行。等修复后的安装包出来再装就行。在那之前，用户没法通过 Installer 升级：重试的结果取决于当时的进程表，可能这次失败、下次又成功。
+
+## 修复
+
+按建议改为让 awk 读完全部输入，并把同一类写法全部改掉：
+
+| 位置 | 改动 |
+|---|---|
+| `postinstall` 找安装用户 | 改为函数 `first_user_running`，awk 用 `!found` 只取第一个匹配、读完全部输入 |
+| `postinstall` 开头 | 第一行先记日志 `immich postinstall: started: <版本>`；`trap ERR` 记下失败的行号和退出码 |
+| `configure.sh`、`immichctl` 里 `launchctl print \| awk … exit`、`pmset -g \| awk … exit` | 同样改为读完全部输入 |
+| `lsof … \| head -1`、`sort -V \| head -1`、`find … \| head -3` | 改为 `sed -n 1p` / `sed -n 1,3p`（sed 读完全部输入） |
+| `find … \| grep -q .`（4 处）、`curl … \| grep -q pong`、`socketfilterfw … \| grep -q enabled` | `find` 加 `-print -quit`，最多输出一行；另外两处改为 `grep … >/dev/null` |
+
+回归测试 `macos/package/tests/postinstall-pipes.sh`：先起 1000 个进程，让 `ps` 输出超过 64 KB（这次 113 KB），再找进程表靠前的当前用户进程（`loginwindow`），各跑 20 次：
+
+| | 失败 |
+|---|---|
+| mac.2 的写法 | **20/20**（复现了问题） |
+| `first_user_running` | **0/20** |
+
+测试同时检查旧写法确实失败过，否则视为测试无效（说明进程表不够大，没有触发条件）。
