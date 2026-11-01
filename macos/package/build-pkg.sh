@@ -142,7 +142,7 @@ sed "s/@RELEASE_ID@/$RELEASE_ID/" "$HERE/scripts/postinstall" >"$WORK/scripts/po
 chmod 755 "$WORK/scripts/postinstall"
 for lang in zh_CN en; do
   mkdir -p "$WORK/resources/$lang.lproj"
-  for page in welcome conclusion; do
+  for page in welcome license conclusion; do
     sed -e "s/@VERSION@/$DISPLAY_VERSION/g" -e "s/@SIZE_GB@/$size_gb/g" -e "s/@MACOS_MIN@/$MACOS_MIN/g" \
       "$HERE/resources/$lang.lproj/$page.html" >"$WORK/resources/$lang.lproj/$page.html"
   done
