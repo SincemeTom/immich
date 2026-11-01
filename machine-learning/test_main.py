@@ -61,7 +61,17 @@ from immich_ml.schemas import (
     VisualOptions,
 )
 from immich_ml.sessions.ann import AnnSession
-from immich_ml.sessions.ort import Device, GraphSpec, OrtSession, flush_denormals, fresh, prepared
+from immich_ml.sessions.ort import (
+    Device,
+    GraphSpec,
+    Manifest,
+    OrtGraph,
+    OrtSession,
+    flush_denormals,
+    fresh,
+    prepared,
+    recorded_units,
+)
 from immich_ml.sessions.policy import ShapePolicy, batches, runs
 from immich_ml.sessions.rknn import RknnSession, run_inference
 from immich_ml.sessions.rknn import model_path as rknn_model_path
@@ -889,6 +899,59 @@ class TestPreparedGraphs:
             session.call_args.kwargs["provider_options"][0]["ModelCacheDirectory"] == (tmp_path / "coreml").as_posix()
         )
         assert fresh(spec) == spec.model_path
+
+    @pytest.mark.parametrize(
+        ("all_ms", "alone_ms", "units"),
+        [(50.0, 27.0, "CPUAndNeuralEngine"), (42.5, 42.5, None), (16.6, 175.0, None), (10.0, 8.5, None)],
+    )
+    def test_runs_a_coreml_graph_on_the_neural_engine_alone_only_when_that_is_clearly_faster(
+        self, tmp_path: Path, mocker: MockerFixture, all_ms: float, alone_ms: float, units: str | None
+    ) -> None:
+        mocker.patch.object(settings, "model_revision", "v2")
+        mocker.patch("immich_ml.sessions.prepare.derive")
+        mocker.patch("immich_ml.sessions.prepare.apply_rewrites", side_effect=lambda graph, plan: graph)
+        spec = graph_spec(linear_graph(tmp_path), ["CoreMLExecutionProvider", "CPUExecutionProvider"])
+        opened = []
+
+        def open_session(graph: str, **kwargs: Any) -> mock.Mock:
+            chosen = kwargs["provider_options"][0]["MLComputeUnits"]
+            opened.append(chosen)
+            session = mock.Mock()
+            session.get_inputs.return_value = [SimpleNamespace(name="input", shape=["batch", 64], type="tensor(float)")]
+            session.run.side_effect = lambda *_: None
+            return session
+
+        mocker.patch("immich_ml.sessions.ort.ort.InferenceSession", side_effect=open_session)
+        clock = iter([value for ms in (all_ms, alone_ms) for _ in range(7) for value in (0.0, ms / 1000)])
+        mocker.patch("immich_ml.sessions.prepare.time.perf_counter", side_effect=lambda: next(clock))
+
+        prepare_module.prepare(spec)
+
+        assert opened == ["ALL", "CPUAndNeuralEngine"]
+        assert recorded_units(spec) == units
+
+    def test_opens_a_graph_on_the_units_its_preparation_chose(self, tmp_path: Path, mocker: MockerFixture) -> None:
+        spec = graph_spec(linear_graph(tmp_path), ["CoreMLExecutionProvider", "CPUExecutionProvider"])
+        spec.directory.mkdir(parents=True)
+        spec.manifest.write_text(
+            Manifest(facts=spec.facts, graph="model.onnx", units="CPUAndNeuralEngine").model_dump_json()
+        )
+        session = mocker.patch("immich_ml.sessions.ort.ort.InferenceSession")
+
+        OrtGraph(spec)
+
+        assert session.call_args.kwargs["provider_options"][0]["MLComputeUnits"] == "CPUAndNeuralEngine"
+        assert spec.provider_options[0]["MLComputeUnits"] == "ALL"  # what the facts compare stays as configured
+
+    def test_keeps_the_configured_units_for_a_graph_the_neural_engine_cannot_run(
+        self, tmp_path: Path, mocker: MockerFixture
+    ) -> None:
+        spec = graph_spec(linear_graph(tmp_path), ["CoreMLExecutionProvider", "CPUExecutionProvider"])
+        session = mock.Mock()
+        session.get_inputs.return_value = []
+        mocker.patch.object(GraphSpec, "session", side_effect=RuntimeError("the Neural Engine cannot compile it"))
+
+        assert prepare_module.fastest_units(spec, spec.model_path, session) is None
 
     def test_rewrites_only_the_exports_the_rewriter_was_written_for(
         self, tmp_path: Path, mocker: MockerFixture

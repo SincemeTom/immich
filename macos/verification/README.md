@@ -43,6 +43,13 @@
 |---|---|---|---|
 | M3-1 | 不需要 Homebrew 的 .pkg（分支 `mac/feat/pkg`） | [m3-pkg.md](m3-pkg.md) | 通过：发布目录自带全部依赖（macOS 15+）；屏蔽 Homebrew 和外网后检查 17/17，新装端到端 36/36，接管一键安装版数据全部保留、端到端 36/36；装着 Homebrew 的 Mac 上也不会混加载 Homebrew 的库；4.9 GB 安装包已签名、经 Apple 公证（0 个问题）。图形界面安装待测试机验证 |
 
+## M4 智能化
+
+| 编号 | 内容 | 记录 | 结论 |
+|---|---|---|---|
+| M4-0 | 智能化方案：ANE 利用、Apple Vision、视频语音与画面搜索、夜间视觉语言模型、整句搜索 | [m4-intelligence-plan.md](m4-intelligence-plan.md) | 方案。已实测：现有模型全是 fp32，ANE 不能运行；人脸模型转 fp16 后在 ANE 上快 3 倍 |
+| M4-1 | 模型用 fp16 在神经网络引擎上运行（分支 `mac/feat/ml-v2-ane`） | [m4-ml-ane.md](m4-ml-ane.md) | 通过：换成上游 v2 导出，智能搜索、人脸快约一倍，OCR 检测改为只用 ANE 再快近一倍；结果一致（中文 recall、人脸指标不变，OCR 真实照片 58/58），向量与原来余弦 ≥ 0.998，升级后不用重建索引；整机内存 +6.0 → +1.6 GB，模型目录 30 → 14 GB。顺带修复安装包里混装两个 OpenCV 的问题。新装、接管 42/42 |
+
 ## M2 视频转码用 Apple 硬件
 
 | 编号 | 验证项 | 文件 | 结论 |
@@ -84,6 +91,7 @@
 | 上游不允许编辑实况照片，iPhone 的 HEIC 大多是实况，`R` 对它们无效 | **已完成**：实况照片可旋转、镜像，动态部分一起转；端到端（真实 iPhone 实况照片）23/23，浏览器 6/6 | [m1-video-rotation.md](m1-video-rotation.md) |
 | 新（上游 bug）：读编辑列表时没按顺序，镜像和旋转同时存在时可能顺序颠倒 | **已修复** | [m1-video-rotation.md](m1-video-rotation.md) |
 | 新（上游）：PP-OCRv5_server 在 CoreML 上编译失败，选了它 OCR 全部报错 | **已修复**：该模型自动改用 CPU | [m1-ml-models.md](m1-ml-models.md) |
+| 新：v2 模型的 .pkg 在 Installer 里报"安装失败"：postinstall 同步预热超过 600 秒被系统终止（服务其实已升级并运行，但收尾步骤没做，全新安装时不开网页、没有 `immichctl`） | **已修复**（v3.3.5-mac.2）：预热移到用户会话里的一次性 LaunchAgent，postinstall 约 45 秒结束；预热期间服务器只开 API，网页和 App 可用，任务排队，预热完自动处理 | [m4-pkg-postinstall-timeout.md](m4-pkg-postinstall-timeout.md) |
 
 ## 后续事项
 

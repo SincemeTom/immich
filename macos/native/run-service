@@ -4,11 +4,16 @@
 #
 # Usage: run-service postgres|valkey|ml|server [args]
 #        run-service ml-warm CLIP FACE OCR OCR_MAX_RESOLUTION     (immichctl warm)
+#        run-service model-revision                               the models' exports the service runs
 #
 # Everything comes from $IMMICH_HOME/config: native.env (written by configure.sh) and server.env (yours, extra
 # Immich settings for the server). The release a service runs is the one `current` points at when it starts.
 set -euo pipefail
 
+# The machine learning models' exports: v2, which the service narrows to fp16 for CoreML to run on the Neural Engine,
+# about twice as fast in half the memory as main's fp32, with the same results (macos/verification/m4-ml-ane.md).
+# IMMICH_NATIVE_MODEL_REVISION=main in native.env goes back to the older ones.
+MODEL_REVISION=v2
 home="$(cd "$(dirname "$0")/.." && pwd)"
 # shellcheck source=/dev/null
 . "$home/config/native.env"
@@ -17,6 +22,18 @@ home="$(cd "$(dirname "$0")/.." && pwd)"
 # upgrade does not change what a running process loads
 current_release() {
   cd "$home/current" && pwd -P
+}
+
+# Whether `immichctl warm` is preparing the models. Its flag holds its pid, or `agent` from when the one-off
+# LaunchAgent that runs it in the background (`immichctl warm --schedule`) is set up until it starts.
+warming() {
+  local holder
+  holder="$(cat "$home/run/warming" 2>/dev/null)" || return 1
+  case "$holder" in
+    agent) [ -f "$HOME/Library/LaunchAgents/$IMMICH_NATIVE_LABEL_PREFIX.warm.plist" ] ;;
+    '' | *[!0-9]*) return 1 ;;
+    *) kill -0 "$holder" 2>/dev/null ;;
+  esac
 }
 
 # launchd starts jobs with LANG unset. Postgres then asks macOS for the locale, which starts a thread in the
@@ -62,6 +79,7 @@ case "$service" in
   ml | ml-warm)
     export PYTHONPATH="$release/ml"
     export MACHINE_LEARNING_CACHE_FOLDER="$home/data/models"
+    export MACHINE_LEARNING_MODEL_REVISION="${IMMICH_NATIVE_MODEL_REVISION:-$MODEL_REVISION}"
     export HF_HOME="$home/data/models/hf-cache"
     export IMMICH_LOG_LEVEL="${IMMICH_NATIVE_LOG_LEVEL:-info}"
     if [ "$service" = ml-warm ]; then
@@ -114,6 +132,19 @@ PY
     # shellcheck source=/dev/null
     [ -f "$home/config/server.env" ] && . "$home/config/server.env"
     set +a
+    # While the models are prepared (minutes, the first time: macos/verification/m4-pkg-postinstall-timeout.md), the
+    # server runs its API alone: the web UI and the apps work, uploads too, and the jobs they queue wait for the job
+    # worker, which would fail every one that needs the machine learning service. The warm-up restarts the server
+    # with it once the models are ready. Not for the admin CLI (arguments), which starts no workers.
+    if [ $# -eq 0 ]; then
+      mkdir -p "$home/run"
+      if warming; then
+        export IMMICH_WORKERS_EXCLUDE=microservices
+        echo warm-up >"$home/run/server-workers"
+      else
+        echo all >"$home/run/server-workers"
+      fi
+    fi
 
     export NODE_ENV=production
     export IMMICH_LOG_LEVEL="${IMMICH_LOG_LEVEL:-${IMMICH_NATIVE_LOG_LEVEL:-log}}"
@@ -164,6 +195,11 @@ PY
       mv -f "$node.new" "$node"
     fi
     exec "$node" "$release/server/dist/main.js" "$@"
+    ;;
+
+  model-revision)
+    # for immichctl, which keeps the models' folders: the revision the service runs
+    echo "${IMMICH_NATIVE_MODEL_REVISION:-$MODEL_REVISION}"
     ;;
 
   *)

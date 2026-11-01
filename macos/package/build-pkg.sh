@@ -99,6 +99,11 @@ read -r face ocr <<<"$(cd "$release/server" && "$release/node/bin/node" --input-
 clip="$(sed -n 's/^DEFAULT_CLIP_MODEL=//p' "$release/native/configure.sh")"
 [ -n "$clip" ] && [ -n "$face" ] && [ -n "$ocr" ] || die "cannot tell which models a new install uses"
 info "smart search $clip, faces $face, text $ocr"
+# the exports the release's service runs (run-service), staged where it keeps them
+revision="$(sed -n 's/^MODEL_REVISION=//p' "$release/native/run-service")"
+[ -n "$revision" ] || die "cannot tell which exports of the models the release runs"
+info "exports: $revision"
+MACHINE_LEARNING_MODEL_REVISION="$revision" \
 PYTHONPATH="$release/ml" PYTHONDONTWRITEBYTECODE=1 MACHINE_LEARNING_CACHE_FOLDER="$PAYLOAD/models" \
   "$release/ml/python/bin/python3" "$HERE/stage_models.py" "$models" "$PAYLOAD/models" "$clip" "$face" "$ocr"
 

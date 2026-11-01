@@ -1,6 +1,9 @@
 import fcntl
+import logging
 import pickle
+import statistics
 import sys
+import time
 from pathlib import Path
 from shutil import rmtree
 from typing import Any
@@ -11,11 +14,17 @@ from immich_model.onnx.f16 import derive
 from immich_model.runtime import apply_rewrites
 from onnxruntime.capi.onnxruntime_pybind11_state import InvalidProtobuf, NoSuchFile
 
-from ..config import settings
-from .ort import UNREADABLE, GraphSpec, Manifest, fresh
+from ..config import log, settings
+from .ort import UNREADABLE, GraphSpec, Manifest, fresh, zero_feed
+
+NEURAL_ENGINE = "CPUAndNeuralEngine"
+# what the Neural Engine alone has to save to be chosen over CoreML's own split: more than timing noise
+CLEAR_GAIN = 0.8
 
 
 def main() -> None:
+    # the service's handlers are its own: what this child logs reaches the service's output through its stderr
+    logging.basicConfig(format="Preparing: %(message)s")
     spec: GraphSpec = pickle.loads(sys.stdin.buffer.read())
     with spec.model_path.with_suffix(".lock").open("w") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)  # several workers may want the same graph
@@ -30,12 +39,47 @@ def prepare(spec: GraphSpec) -> None:
     rmtree(spec.directory, ignore_errors=True)  # whatever is here was made under other facts, or not finished
     spec.directory.mkdir(parents=True)
     graph = rewritten(spec, narrowed(spec))
+    units = None
     if spec.provider == "CPUExecutionProvider":
         graph = prepacked(spec, graph)  # allows mmap'ing the file instead of prepacking to dirty heap memory
     elif spec.directory.as_posix() in spec.provider_options[0].values():
-        spec.session(graph)  # the provider keeps what it compiles, in the directory it was given
-    manifest = Manifest(facts=spec.facts, graph=graph.relative_to(spec.model_path.parent).as_posix())
+        session = spec.session(graph)  # the provider keeps what it compiles, in the directory it was given
+        if spec.provider == "CoreMLExecutionProvider" and spec.half:  # the Neural Engine runs fp16 only
+            units = fastest_units(spec, graph, session)
+    manifest = Manifest(facts=spec.facts, graph=graph.relative_to(spec.model_path.parent).as_posix(), units=units)
     spec.manifest.write_text(manifest.model_dump_json())  # last, so that it means complete
+
+
+def fastest_units(spec: GraphSpec, graph: Path, session: Any) -> str | None:
+    """The Neural Engine alone, when it runs the graph clearly faster than CoreML's own choice of units, which
+    can split a graph between the GPU and the Neural Engine worse than either runs it; else what is configured."""
+    configured = spec.provider_options[0].get("MLComputeUnits")
+    if configured == NEURAL_ENGINE:
+        return None
+    try:
+        feed = zero_feed(session, spec.overrides)
+        chosen = timed(session, feed)
+        alone = timed(spec.session(graph, units=NEURAL_ENGINE), feed)
+    except Exception as error:  # a graph that runs only as configured
+        log.info(f"Kept {configured} for {graph.name}: the Neural Engine alone could not be timed ({error})")
+        return None
+    faster = alone < chosen * CLEAR_GAIN
+    log.info(
+        f"{graph.parent.name}: {configured} {chosen:.1f} ms, Neural Engine alone {alone:.1f} ms"
+        f"{', which it runs on' if faster else ''}"
+    )
+    return NEURAL_ENGINE if faster else None
+
+
+def timed(session: Any, feed: dict[str, Any], runs: int = 7) -> float:
+    for _ in range(2):
+        session.run(None, feed)
+    times = []
+    for _ in range(runs):
+        start = time.perf_counter()
+        session.run(None, feed)
+        times.append(time.perf_counter() - start)
+    return statistics.median(times) * 1000
 
 
 def narrowed(spec: GraphSpec) -> Path:
