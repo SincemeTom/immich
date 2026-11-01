@@ -92,6 +92,7 @@
 | 新（上游 bug）：读编辑列表时没按顺序，镜像和旋转同时存在时可能顺序颠倒 | **已修复** | [m1-video-rotation.md](m1-video-rotation.md) |
 | 新（上游）：PP-OCRv5_server 在 CoreML 上编译失败，选了它 OCR 全部报错 | **已修复**：该模型自动改用 CPU | [m1-ml-models.md](m1-ml-models.md) |
 | 新：v2 模型的 .pkg 在 Installer 里报"安装失败"：postinstall 同步预热超过 600 秒被系统终止（服务其实已升级并运行，但收尾步骤没做，全新安装时不开网页、没有 `immichctl`） | **已修复**（v3.3.5-mac.2）：预热移到用户会话里的一次性 LaunchAgent，postinstall 约 45 秒结束；预热期间服务器只开 API，网页和 App 可用，任务排队，预热完自动处理 | [m4-pkg-postinstall-timeout.md](m4-pkg-postinstall-timeout.md) |
+| 新：`v3.3.5-mac.2` 的 .pkg 安装几秒就失败、日志里没有任何输出：postinstall 用 `ps \| awk '… exit }'` 找安装用户，awk 提前退出让 `ps` 收到 SIGPIPE（141），`pipefail` + `set -e` 让脚本立刻退出。是否失败取决于 Installer 的 PID 在进程表中的位置，进程多时几乎必现；这次什么都没装，旧版本照常运行 | **待修复**：awk 读完全部输入，不提前 `exit`；postinstall 开头先打日志并用 `ERR` trap 记下失败的行 | [m4-pkg-postinstall-sigpipe.md](m4-pkg-postinstall-sigpipe.md) |
 
 ## 后续事项
 
