@@ -128,6 +128,25 @@ background_warm() {
   fi
 }
 
+# what the web UI shows under Help and About: this build's own source, at the commit that runs (AGPL section 13)
+source_links() {
+  local home="$1" port="$2" commit about
+  commit="$(sed -n 's/^commit=//p' "$home/current/RELEASE")"
+  about="$("$PYTHON" - "$port" <<'PY'
+import json, sys, httpx
+c = httpx.Client(base_url=f"http://127.0.0.1:{sys.argv[1]}", timeout=30)
+token = c.post("/api/auth/login", json={"email": "m0@immich.local", "password": "m0-password"}).json()["accessToken"]
+about = c.get("/api/server/about", headers={"Authorization": f"Bearer {token}"}).json()
+print(json.dumps({k: about.get(k) for k in ("repository", "sourceCommit", "sourceUrl", "thirdPartySourceUrl")}))
+PY
+)"
+  check "Help and About link this build's source at its commit" \
+    "$(echo "$about" | grep -q "SincemeTom/immich/tree/$commit" && echo 1 || echo 0)" "$about"
+  check "the licenses of everything it carries, in the release" \
+    "$([ -s "$home/current/licenses/THIRD-PARTY-NOTICES.md" ] && [ -f "$home/current/licenses/immich/LICENSE" ] && echo 1 || echo 0)" \
+    "$(grep -c '^| ' "$home/current/licenses/THIRD-PARTY-NOTICES.md" 2>/dev/null) rows"
+}
+
 uninstall() {
   local home="$1"
   # its logs, which uninstalling deletes, for what failed
@@ -169,6 +188,7 @@ if [ "$WHAT" = fresh ] || [ "$WHAT" = both ]; then
   check "no model was downloaded" "$(grep -q 'Downloading' "$log_dir/ml-warm.log" 2>/dev/null && echo 0 || echo 1)" "$log_dir"
   no_homebrew "$home"
   e2e 2294 3014 "$WORK/p10-e2e.log"
+  source_links "$home" 2294
   no_homebrew "$home"
   "$home/bin/immichctl" status | sed 's/^/    /'
   uninstall "$home"

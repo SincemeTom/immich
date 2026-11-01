@@ -146,6 +146,25 @@ PY
       fi
     fi
 
+    # What the web UI shows under Help and About: this build's own source, at the commit that runs, as the AGPL asks
+    # of a modified version used over a network (section 13), and that it is not the Immich team's. server.env may
+    # set these differently.
+    meta() { sed -n "s/^$1=//p" "$release/RELEASE"; }
+    repository_url="$(meta repository)"
+    repository_url="${repository_url:-https://github.com/SincemeTom/immich}"
+    commit="$(meta commit)"
+    : "${IMMICH_REPOSITORY:=${repository_url#https://github.com/}}" "${IMMICH_REPOSITORY_URL:=$repository_url}"
+    if [ -n "$commit" ]; then
+      : "${IMMICH_SOURCE_REF:=$(meta tag)}"
+      : "${IMMICH_SOURCE_REF:=$(meta id)}" "${IMMICH_SOURCE_COMMIT:=$commit}" "${IMMICH_SOURCE_URL:=$repository_url/tree/$commit}"
+    fi
+    : "${IMMICH_THIRD_PARTY_SOURCE_URL:=${IMMICH_SOURCE_URL:-$repository_url}}"
+    : "${IMMICH_THIRD_PARTY_DOCUMENTATION_URL:=$repository_url/blob/mac/main/macos/README.md}"
+    : "${IMMICH_THIRD_PARTY_SUPPORT_URL:=$repository_url}"
+    export IMMICH_REPOSITORY IMMICH_REPOSITORY_URL IMMICH_THIRD_PARTY_SOURCE_URL IMMICH_THIRD_PARTY_DOCUMENTATION_URL \
+      IMMICH_THIRD_PARTY_SUPPORT_URL
+    [ -z "$commit" ] || export IMMICH_SOURCE_REF IMMICH_SOURCE_COMMIT IMMICH_SOURCE_URL
+
     export NODE_ENV=production
     export IMMICH_LOG_LEVEL="${IMMICH_LOG_LEVEL:-${IMMICH_NATIVE_LOG_LEVEL:-log}}"
     export IMMICH_PORT="$IMMICH_NATIVE_SERVER_PORT"

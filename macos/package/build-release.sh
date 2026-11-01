@@ -321,6 +321,7 @@ cat >"$RELEASE/RELEASE" <<EOF
 id=$RELEASE_ID
 version=$VERSION
 commit=$(git -C "$REPO" rev-parse HEAD)
+repository=$(git -C "$REPO" remote get-url origin 2>/dev/null | sed -E 's#^git@github.com:#https://github.com/#; s#\.git$##')
 built=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 standalone=1
 channel=$CHANNEL
@@ -331,6 +332,13 @@ postgres=$PG_VERSION
 pgvector=$PGVECTOR_VERSION
 vectorchord=$VCHORD_VERSION
 EOF
+
+# Everything it redistributes may be passed on only with its license, and a GPL or LGPL part with its source too:
+# the licenses into <release>/licenses, the sources of the copyleft parts beside the release, to keep with it
+step "Licenses"
+python3 "$REPO/macos/package/collect_licenses.py" "$RELEASE" --repo "$REPO" --cache "$CACHE" \
+  --ffmpeg-version "$(basename "$ffmpeg_dir")" --sources "$OUT/sources-$RELEASE_ID" | tee -a "$LOG" | sed 's/^/    /' \
+  || die "a license or a source is missing (above)"
 touch "$RELEASE/.complete"
 
 step "Done: $(du -sh "$RELEASE" | awk '{ print $1 }')"

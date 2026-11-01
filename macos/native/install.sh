@@ -245,6 +245,7 @@ else
 id=$RELEASE_ID
 version=$VERSION
 commit=$(git -C "$REPO" rev-parse HEAD)
+repository=$(git -C "$REPO" remote get-url origin 2>/dev/null | sed -E 's#^git@github.com:#https://github.com/#; s#\.git$##')
 built=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 node=$("$RELEASE/node/bin/node" -v)
 vectorchord=$VCHORD_VERSION

@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><style>
+body { font: 13px -apple-system, "PingFang SC", sans-serif; line-height: 1.55; }
+h2 { font-size: 15px; margin: 0 0 8px; }
+h3 { font-size: 13px; margin: 14px 0 4px; }
+ul { padding-left: 18px; margin: 4px 0 8px; }
+code { font: 12px ui-monospace, Menlo, monospace; }
+</style></head>
+<body>
+<h2>许可与声明</h2>
+
+<h3>非官方版本</h3>
+<p>这是 Immich 的<b>非官方</b> macOS 原生版，由社区开发者基于 Immich 的开源代码修改、打包。它与 Immich 团队和 FUTO 没有关系，没有经过他们认可，也不由他们提供支持；遇到问题请不要去 Immich 官方反馈。"Immich"名称和标志归其所有者。</p>
+
+<h3>开源许可</h3>
+<ul>
+  <li>Immich 和本版本的全部修改都以 <b>GNU Affero 通用公共许可证第 3 版（AGPL-3.0）</b>发布。源代码在 <code>https://github.com/SincemeTom/immich</code>，每个正式版本都有对应的标签（如 <code>v3.3.5-mac.3</code>）；网页的"帮助"里也有指向当前版本源代码的链接。</li>
+  <li>安装包还带有第三方组件（PostgreSQL、Node.js、Python、ffmpeg、libvips、ImageMagick 等），各自按自己的许可分发。完整清单、版本和许可全文，安装后在 <code>~/Library/Application Support/Immich/current/licenses/</code>（先看其中的 <code>THIRD-PARTY-NOTICES.md</code>）。其中 GPL、LGPL 组件的源代码随每个版本保存，可以索取。</li>
+</ul>
+
+<h3>机器学习模型</h3>
+<ul>
+  <li>智能搜索（OpenCLIP，MIT 许可）和文字识别（PaddleOCR，Apache-2.0 许可）的模型可以自由使用。</li>
+  <li><b>人脸识别模型 buffalo_l（InsightFace）的许可只允许非商业研究用途。</b>个人、家庭使用请自行判断是否符合；用于任何商业用途（例如公司、收费服务）之前，需要向 InsightFace 取得授权，或者在"管理 → 设置 → 机器学习"里关闭人脸识别。</li>
+</ul>
+
+<h3>不提供担保</h3>
+<p>本软件按"现状"提供，不提供任何形式的担保（见 AGPL-3.0 第 15、16 条）。请自行备份照片库和数据库；因使用本软件造成的数据丢失或其他损失，作者不承担责任。</p>
+
+<p>点"同意"即表示你接受上述许可和条款。</p>
+</body>
+</html>
