@@ -10,6 +10,7 @@ code { font: 12px ui-monospace, Menlo, monospace; }
 <h2>Immich 已经在运行</h2>
 <ul>
   <li><b>网页</b>：<code>http://localhost:2283</code>。手机 App 里服务器地址填 <code>http://这台Mac的IP:2283</code>（在“系统设置 → 网络”里查看 IP）。</li>
+  <li><b>机器学习模型正在后台准备</b>（第一次安装或升级后，约 10–15 分钟）。这期间网页和 App 照常可用，也可以上传照片；缩略图、智能搜索、人脸和文字识别会先排队，准备好后自动开始。结束时服务器会重启一次（约半分钟）。进度：<code>immichctl status</code>。</li>
   <li><b>第一次访问</b>某个网络共享（NAS）时，macOS 会询问 node 能否访问网络卷，请点“允许”。</li>
   <li><b>管理</b>：在“终端”里运行 <code>immichctl status</code>（状态）、<code>immichctl logs</code>（日志）、<code>immichctl doctor</code>（检查这台 Mac 能否长期无人值守运行）。</li>
   <li><b>日志</b>：<code>~/Library/Logs/Immich</code>。安装过程的记录在其中的 <code>install.log</code>。</li>

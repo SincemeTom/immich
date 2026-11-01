@@ -16,6 +16,8 @@
 #   --label PREFIX     LaunchAgent label prefix (default: local.immich), to run a second install alongside
 #   --clip-model NAME  smart search model (default for a new library: XLM-Roberta-Large-ViT-H-14__frozen_laion5b_s13b_b90k)
 #   --no-warm          skip downloading and preparing the machine learning models
+#   --warm-in-background  prepare them in a one-off LaunchAgent after this ends, not before (the .pkg's postinstall,
+#                      which Installer stops at 600 seconds); the server answers meanwhile, its jobs waiting
 #   --no-start         configure, but leave the services stopped
 #   --check-only       only check this Mac and the ports, as install.sh does before building
 #   --link-dir DIR     where to put an immichctl link, for the default install (default: ~/.local/bin)
@@ -32,7 +34,7 @@ DEFAULT_CLIP_MODEL=XLM-Roberta-Large-ViT-H-14__frozen_laion5b_s13b_b90k
 
 opt_release="" opt_pg_prefix="" opt_home="" opt_library="" opt_server_port="" opt_listen="" opt_listen_set=""
 opt_ml_port="" opt_db_port="" opt_redis_port="" opt_label="" opt_clip_model="" no_warm="" no_start="" check_only=""
-opt_link_dir="" fresh_database=""
+opt_link_dir="" fresh_database="" warm_background=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --release) opt_release="$2"; shift ;;
@@ -47,10 +49,11 @@ while [ $# -gt 0 ]; do
     --label) opt_label="$2"; shift ;;
     --clip-model) opt_clip_model="$2"; shift ;;
     --no-warm) no_warm=1 ;;
+    --warm-in-background) warm_background=1 ;;
     --no-start) no_start=1 ;;
     --check-only) check_only=1 ;;
     --link-dir) opt_link_dir="$2"; shift ;;
-    -h | --help) sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h | --help) sed -n '2,25p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "unknown option: $1" >&2; exit 64 ;;
   esac
   shift
@@ -319,7 +322,15 @@ info "$agents/$LABEL.{postgres,valkey,ml,server}.plist"
 
 previous="$(cd "$IMMICH_HOME/current" 2>/dev/null && pwd -P || true)"
 
+# how the models are prepared: now (install.sh), in the background (the .pkg), or not
+warm=now
+[ -n "$warm_background" ] && warm=background
+[ -n "$no_warm" ] || [ -n "$no_start" ] && warm=""
+
 step "Starting Immich"
+# set up first, so that the server starts with its API alone and runs no job before the models are ready; and before
+# the services stop, as a warm-up still running (the .pkg opened again) stops first
+[ "$warm" = background ] && "$ctl" warm --schedule
 quiet "$ctl" stop
 ln -sfn "$RELEASE" "$IMMICH_HOME/current"
 if [ -n "$no_start" ]; then
@@ -335,7 +346,8 @@ else
   fi
   unset PGPASSWORD
   "$ctl" start valkey
-  "$ctl" start ml
+  # the warm-up starts it, once it has prepared the models: before, it would compile one at its first request
+  [ "$warm" = background ] || "$ctl" start ml
   "$ctl" start server
 
   # Videos transcode on the GPU (macos/verification/m2-videotoolbox.md): set for a new library, and once for one from
@@ -350,10 +362,18 @@ else
   # on a library with photos means re-indexing them, which the web UI's Jobs page starts.
   if [ -n "$fresh_database" ] || [ -n "$opt_clip_model" ]; then
     step "Smart search model ${opt_clip_model:-$DEFAULT_CLIP_MODEL}"
-    "$ctl" clip-model "${opt_clip_model:-$DEFAULT_CLIP_MODEL}" ${no_warm:+--no-warm} | sed 's/^/    /'
-  elif [ -z "$no_warm" ]; then
+    if [ "$warm" = now ]; then
+      "$ctl" clip-model "${opt_clip_model:-$DEFAULT_CLIP_MODEL}" | sed 's/^/    /'
+    else
+      "$ctl" clip-model "${opt_clip_model:-$DEFAULT_CLIP_MODEL}" --no-warm | sed 's/^/    /'
+    fi
+  elif [ "$warm" = now ]; then
     step "Preparing the machine learning models"
     "$ctl" warm | sed 's/^/    /'
+  fi
+  if [ "$warm" = background ]; then
+    step "Preparing the machine learning models"
+    "$ctl" warm --background | sed 's/^/    /'
   fi
 fi
 

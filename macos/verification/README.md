@@ -91,7 +91,7 @@
 | 上游不允许编辑实况照片，iPhone 的 HEIC 大多是实况，`R` 对它们无效 | **已完成**：实况照片可旋转、镜像，动态部分一起转；端到端（真实 iPhone 实况照片）23/23，浏览器 6/6 | [m1-video-rotation.md](m1-video-rotation.md) |
 | 新（上游 bug）：读编辑列表时没按顺序，镜像和旋转同时存在时可能顺序颠倒 | **已修复** | [m1-video-rotation.md](m1-video-rotation.md) |
 | 新（上游）：PP-OCRv5_server 在 CoreML 上编译失败，选了它 OCR 全部报错 | **已修复**：该模型自动改用 CPU | [m1-ml-models.md](m1-ml-models.md) |
-| 新：v2 模型的 .pkg 在 Installer 里报"安装失败"：postinstall 同步预热超过 600 秒被系统终止（服务其实已升级并运行，但收尾步骤没做，全新安装时不开网页、没有 `immichctl`） | **待修复**：预热移出 postinstall，改为后台运行；测试加上真实 Installer 安装 | [m4-pkg-postinstall-timeout.md](m4-pkg-postinstall-timeout.md) |
+| 新：v2 模型的 .pkg 在 Installer 里报"安装失败"：postinstall 同步预热超过 600 秒被系统终止（服务其实已升级并运行，但收尾步骤没做，全新安装时不开网页、没有 `immichctl`） | **已修复**（v3.3.5-mac.2）：预热移到用户会话里的一次性 LaunchAgent，postinstall 约 45 秒结束；预热期间服务器只开 API，网页和 App 可用，任务排队，预热完自动处理 | [m4-pkg-postinstall-timeout.md](m4-pkg-postinstall-timeout.md) |
 
 ## 后续事项
 

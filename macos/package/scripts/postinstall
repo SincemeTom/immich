@@ -77,16 +77,25 @@ while IFS= read -r -d '' marker; do
   fi
 done < <(find "$PAYLOAD/models" -name .immich-native-downloaded -print0)
 
-as_user "$PAYLOAD/release/native/configure.sh" --release "$PAYLOAD/release"
+# Installer stops this script at 600 seconds, and preparing the models the first time takes longer: configure.sh sets
+# that up as a LaunchAgent of the user's, which goes on after Installer closes (macos/verification/
+# m4-pkg-postinstall-timeout.md). What follows it runs whether it succeeded or not.
+status=0
+started=$SECONDS
+as_user "$PAYLOAD/release/native/configure.sh" --release "$PAYLOAD/release" --warm-in-background || status=$?
+log "configure.sh: exit $status after $((SECONDS - started)) s"
 
 # immichctl on every user's PATH: /usr/local/bin is on it from the first login, unlike ~/.local/bin
 link=/usr/local/bin/immichctl
-if [ ! -e "$link" ] || [ "$(basename "$(readlink "$link")")" = immichctl ]; then
+if [ -x "$immich_home/bin/immichctl" ] && { [ ! -e "$link" ] || [ "$(basename "$(readlink "$link")")" = immichctl ]; }; then
   mkdir -p /usr/local/bin
   ln -sfn "$immich_home/bin/immichctl" "$link"
 fi
 
 # the web UI, for creating the admin account
-port="$(sed -n 's/^IMMICH_NATIVE_SERVER_PORT=//p' "$immich_home/config/native.env")"
-as_user open "http://localhost:${port:-2283}" || true
+if [ "$status" -eq 0 ]; then
+  port="$(sed -n 's/^IMMICH_NATIVE_SERVER_PORT=//p' "$immich_home/config/native.env")"
+  as_user open "http://localhost:${port:-2283}" || true
+fi
 log "done"
+exit "$status"

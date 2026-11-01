@@ -1,8 +1,10 @@
 #!/bin/bash
 # M3: the self-contained release, run the way the .pkg runs it, on this Mac, with Homebrew out of reach.
 #
-#   fresh     configure.sh from the release on a new install, the models placed as postinstall places them; then
-#             m0_e2e.py: sign-up, every test format, videos, faces, OCR, smart search, transcoding, a database backup
+#   fresh     configure.sh from the release on a new install, as postinstall runs it: the models placed as it places
+#             them, prepared in the background (well within Installer's 600 seconds); meanwhile the server answers and
+#             a photo uploaded waits for its jobs (m4_warm_queue.py), which run after; then m0_e2e.py: sign-up, every
+#             test format, videos, faces, OCR, smart search, transcoding, a database backup
 #   takeover  an install.sh install first (Homebrew's PostgreSQL, Valkey and libvips, a release from install.sh) with
 #             photos (m0_e2e.py), then configure.sh from the self-contained release on it, as the .pkg does on a Mac
 #             that has one: the same photos, people and settings after, then m0_e2e.py again on it
@@ -94,6 +96,38 @@ e2e() {
   check "m0_e2e.py" "$(grep -q '\[FAIL\]' "$log" || [ -z "$summary" ] && echo 0 || echo 1)" "${summary:-no summary, see $log}"
 }
 
+# The models prepared in the background, as after the .pkg: configure.sh has just set it going. Meanwhile the server
+# answers with its API alone, and a photo uploaded waits for its jobs; the warm-up then removes its LaunchAgent and
+# restarts the server with its job worker, which takes them up.
+background_warm() {
+  local home="$1" port="$2" label="$3" asset waited=0 workers
+  workers="$(cat "$home/run/server-workers" 2>/dev/null || echo none)"
+  check "the server answers while the models are prepared, with its API alone" \
+    "$(curl -fsS -m 5 "http://127.0.0.1:$port/api/server/ping" | grep -q pong && [ "$workers" = warm-up ] && echo 1 || echo 0)" \
+    "workers: $workers"
+  if "$PYTHON" "$REPO/macos/scripts/m4_warm_queue.py" upload "http://127.0.0.1:$port" >"$WORK/warm-queue.log" 2>&1; then
+    check "a photo uploaded meanwhile is taken, its jobs waiting" 1 "$(head -1 "$WORK/warm-queue.log" | cut -c6-)"
+  else
+    check "a photo uploaded meanwhile is taken, its jobs waiting" 0 "$(head -3 "$WORK/warm-queue.log" | tr '\n' ' ')"
+  fi
+  asset="$(tail -1 "$WORK/warm-queue.log")"
+  while [ -f "$HOME/Library/LaunchAgents/$label.warm.plist" ] && [ "$waited" -lt 1800 ]; do
+    sleep 10
+    waited=$((waited + 10))
+  done
+  check "the background warm-up finished and removed its LaunchAgent" \
+    "$([ ! -f "$HOME/Library/LaunchAgents/$label.warm.plist" ] && echo 1 || echo 0)" \
+    "about $waited s; $(grep -a 'ready after' "$home/logs/warm.log" 2>/dev/null | tail -1 | sed 's/^ *//')"
+  workers="$(cat "$home/run/server-workers" 2>/dev/null || echo none)"
+  check "the server back with its job worker" "$([ "$workers" = all ] \
+    && curl -fsS -m 5 "http://127.0.0.1:$port/api/server/ping" | grep -q pong && echo 1 || echo 0)" "workers: $workers"
+  if "$PYTHON" "$REPO/macos/scripts/m4_warm_queue.py" check "http://127.0.0.1:$port" "$asset" >>"$WORK/warm-queue.log" 2>&1; then
+    check "the photo's jobs ran after it" 1 "$(tail -1 "$WORK/warm-queue.log" | cut -c6-)"
+  else
+    check "the photo's jobs ran after it" 0 "$(tail -2 "$WORK/warm-queue.log" | tr '\n' ' ')"
+  fi
+}
+
 uninstall() {
   local home="$1"
   # its logs, which uninstalling deletes, for what failed
@@ -114,8 +148,11 @@ if [ "$WHAT" = fresh ] || [ "$WHAT" = both ]; then
   place_models "$home"
   started=$SECONDS
   if "$release/native/configure.sh" --release "$release" --home "$home" --library "$WORK/library-p10" \
-    --server-port 2294 --ml-port 3014 --db-port 5444 --redis-port 6391 --label local.immich-p10 >"$WORK/p10-configure.log" 2>&1; then
-    check "configure.sh, as postinstall runs it" 1 "$((SECONDS - started)) s"
+    --server-port 2294 --ml-port 3014 --db-port 5444 --redis-port 6391 --label local.immich-p10 --warm-in-background \
+    >"$WORK/p10-configure.log" 2>&1; then
+    # what Installer allows postinstall is 600 s; well within it, for a slower Mac
+    check "configure.sh, as postinstall runs it, within 180 s" "$([ $((SECONDS - started)) -le 180 ] && echo 1 || echo 0)" \
+      "$((SECONDS - started)) s"
   else
     check "configure.sh, as postinstall runs it" 0 "see $WORK/p10-configure.log"
     tail -n 20 "$WORK/p10-configure.log"
@@ -125,8 +162,11 @@ if [ "$WHAT" = fresh ] || [ "$WHAT" = both ]; then
   # shellcheck source=/dev/null
   pg_prefix="$(. "$home/config/native.env" && echo "$IMMICH_NATIVE_PG_PREFIX")"
   check "PostgreSQL is the release's own" "$([ "$pg_prefix" = "$home/current/postgres" ] && echo 1 || echo 0)" "$pg_prefix"
-  check "no model was downloaded" "$(grep -q 'Downloading' "$home/../../Logs/Immich/ml-warm.log" 2>/dev/null \
-    || grep -q 'Downloading' "$home/logs/ml-warm.log" 2>/dev/null && echo 0 || echo 1)"
+  background_warm "$home" 2294 local.immich-p10
+  # in this install's own logs (not the default install's, ~/Library/Logs/Immich)
+  # shellcheck source=/dev/null
+  log_dir="$(. "$home/config/native.env" && echo "$IMMICH_NATIVE_LOG_DIR")"
+  check "no model was downloaded" "$(grep -q 'Downloading' "$log_dir/ml-warm.log" 2>/dev/null && echo 0 || echo 1)" "$log_dir"
   no_homebrew "$home"
   e2e 2294 3014 "$WORK/p10-e2e.log"
   no_homebrew "$home"
@@ -162,8 +202,9 @@ if [ "$WHAT" = takeover ] || [ "$WHAT" = both ]; then
   release="$(sandboxed_release p11)"
   sandbox_profile "$home"
   started=$SECONDS
-  if "$release/native/configure.sh" --release "$release" --home "$home" >"$WORK/p11-takeover.log" 2>&1; then
-    check "configure.sh from the self-contained release, on it" 1 "$((SECONDS - started)) s"
+  if "$release/native/configure.sh" --release "$release" --home "$home" --warm-in-background >"$WORK/p11-takeover.log" 2>&1; then
+    check "configure.sh from the self-contained release, on it, within 180 s" \
+      "$([ $((SECONDS - started)) -le 180 ] && echo 1 || echo 0)" "$((SECONDS - started)) s"
   else
     check "configure.sh from the self-contained release, on it" 0 "see $WORK/p11-takeover.log"
     tail -n 20 "$WORK/p11-takeover.log"
@@ -179,6 +220,7 @@ if [ "$WHAT" = takeover ] || [ "$WHAT" = both ]; then
   releases=("$home"/releases/*)
   check "the release before kept, for going back" "$([ ${#releases[@]} -eq 2 ] && echo 1 || echo 0)" \
     "$(for r in "${releases[@]}"; do basename "$r"; done | tr '\n' ' ')"
+  background_warm "$home" 2295 local.immich-p11
   no_homebrew "$home"
   e2e 2295 3015 "$WORK/p11-e2e-after.log"
   no_homebrew "$home"

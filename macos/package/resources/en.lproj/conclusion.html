@@ -11,6 +11,10 @@ code { font: 12px ui-monospace, Menlo, monospace; }
 <ul>
   <li><b>Web UI</b>: <code>http://localhost:2283</code>. In the phone app, the server is
     <code>http://this-Mac's-IP:2283</code> (System Settings &gt; Network shows the IP).</li>
+  <li>The <b>machine learning models are being prepared</b> in the background (after a first install or an upgrade,
+    10-15 minutes). The web UI and the apps work meanwhile, uploads too; thumbnails, smart search, faces and text wait in
+    the queue and start once it is done, when the server restarts once (about half a minute). Progress:
+    <code>immichctl status</code>.</li>
   <li>The <b>first time</b> a network share (NAS) is used, macOS asks whether node may access network volumes:
     click Allow.</li>
   <li><b>Manage</b> it in Terminal: <code>immichctl status</code>, <code>immichctl logs</code>,
