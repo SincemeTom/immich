@@ -88,22 +88,22 @@ describe(ContentAnalysisService.name, () => {
     mocks.stack.update.mockResolvedValue({} as any);
   });
 
-  describe('onBootstrap', () => {
+  describe('queueMissing (at start)', () => {
     it('queues what is missing, unless that is queued already', async () => {
       mocks.job.getJobCounts.mockResolvedValue({ waiting: 0, active: 0 } as any);
-      await sut.onBootstrap();
+      await sut.queueMissing();
       expect(mocks.job.queue).toHaveBeenCalledWith({ name: JobName.ContentAnalysisQueueAll, data: { force: false } });
       expect(mocks.job.getJobCounts).toHaveBeenCalledWith(QueueName.ContentAnalysis);
 
       mocks.job.queue.mockClear();
       mocks.job.getJobCounts.mockResolvedValue({ waiting: 12, active: 2 } as any);
-      await sut.onBootstrap();
+      await sut.queueMissing();
       expect(mocks.job.queue).not.toHaveBeenCalled();
     });
 
     it('does nothing without the helper', async () => {
       mocks.vision.isAvailable.mockReturnValue(false);
-      await sut.onBootstrap();
+      await sut.queueMissing();
       expect(mocks.vision.getCapabilities).not.toHaveBeenCalled();
       expect(mocks.job.queue).not.toHaveBeenCalled();
     });

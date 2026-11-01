@@ -2,7 +2,15 @@ import { Injectable } from '@nestjs/common';
 
 import type { JobOf } from 'src/types.js';
 import { OnEvent, OnJob } from 'src/decorators.js';
-import { AssetType, AssetVisibility, ImmichWorker, JobName, JobStatus, QueueName } from 'src/enum.js';
+import {
+  AssetType,
+  AssetVisibility,
+  BootstrapEventPriority,
+  ImmichWorker,
+  JobName,
+  JobStatus,
+  QueueName,
+} from 'src/enum.js';
 import { BaseService } from 'src/services/base.service.js';
 import { compareForPrimary, isBetterCover } from 'src/utils/auto-stack.js';
 import {
@@ -43,8 +51,20 @@ const SPEECH_TIMEOUT = 30 * 60_000;
  */
 @Injectable()
 export class ContentAnalysisService extends BaseService {
-  @OnEvent({ name: 'AppBootstrap', workers: [ImmichWorker.Microservices] })
-  async onBootstrap() {
+  /**
+   * After the config is initialized (it reads it), and without holding up the rest of the start: the job workers are
+   * running by then, and what holds up the bootstrap before the config is set up lets them start jobs that need it
+   */
+  @OnEvent({
+    name: 'AppBootstrap',
+    priority: BootstrapEventPriority.ContentAnalysis,
+    workers: [ImmichWorker.Microservices],
+  })
+  onBootstrap() {
+    this.queueMissing().catch((error) => this.logger.warn(`Content analysis at start: ${error}`));
+  }
+
+  async queueMissing() {
     const { machineLearning } = await this.getConfig({ withCache: false });
     if (!isContentAnalysisEnabled(machineLearning) || !this.visionRepository.isAvailable()) {
       return;
