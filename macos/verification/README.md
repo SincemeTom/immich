@@ -49,6 +49,7 @@
 |---|---|---|---|
 | M4-0 | 智能化方案：ANE 利用、Apple Vision、视频语音与画面搜索、夜间视觉语言模型、整句搜索 | [m4-intelligence-plan.md](m4-intelligence-plan.md) | 方案。已实测：现有模型全是 fp32，ANE 不能运行；人脸模型转 fp16 后在 ANE 上快 3 倍 |
 | M4-1 | 模型用 fp16 在神经网络引擎上运行（分支 `mac/feat/ml-v2-ane`） | [m4-ml-ane.md](m4-ml-ane.md) | 通过：换成上游 v2 导出，智能搜索、人脸快约一倍，OCR 检测改为只用 ANE 再快近一倍；结果一致（中文 recall、人脸指标不变，OCR 真实照片 58/58），向量与原来余弦 ≥ 0.998，升级后不用重建索引；整机内存 +6.0 → +1.6 GB，模型目录 30 → 14 GB。顺带修复安装包里混装两个 OpenCV 的问题。新装、接管 42/42 |
+| M4-2 | Apple Vision 调研（方案 A3） | [m4-vision-research.md](m4-vision-research.md) | 调研：自动标签、美学评分（挑堆叠封面）、截图识别（元数据规则，两个库误报 0）、二维码（6/6）、猫狗可以做；Vision 的"工具类"判断主库误报 16/78，不能直接自动归档；OCR（真实照片 49/58 对 PP-OCRv6 58/58）和人脸（合影 0/45）都不换。macOS 26 的文档识别、镜头脏污待测试机验证 |
 
 ## M2 视频转码用 Apple 硬件
 
@@ -92,6 +93,7 @@
 | 新（上游 bug）：读编辑列表时没按顺序，镜像和旋转同时存在时可能顺序颠倒 | **已修复** | [m1-video-rotation.md](m1-video-rotation.md) |
 | 新（上游）：PP-OCRv5_server 在 CoreML 上编译失败，选了它 OCR 全部报错 | **已修复**：该模型自动改用 CPU | [m1-ml-models.md](m1-ml-models.md) |
 | 新：v2 模型的 .pkg 在 Installer 里报"安装失败"：postinstall 同步预热超过 600 秒被系统终止（服务其实已升级并运行，但收尾步骤没做，全新安装时不开网页、没有 `immichctl`） | **已修复**（v3.3.5-mac.2）：预热移到用户会话里的一次性 LaunchAgent，postinstall 约 45 秒结束；预热期间服务器只开 API，网页和 App 可用，任务排队，预热完自动处理 | [m4-pkg-postinstall-timeout.md](m4-pkg-postinstall-timeout.md) |
+| 新：`v3.3.5-mac.2` 的 .pkg 安装几秒就失败、日志里没有任何输出：postinstall 用 `ps \| awk '… exit }'` 找安装用户，awk 提前退出让 `ps` 收到 SIGPIPE（141），`pipefail` + `set -e` 让脚本立刻退出。是否失败取决于 Installer 的 PID 在进程表中的位置，进程多时几乎必现；这次什么都没装，旧版本照常运行 | **已修复**（v3.3.5-mac.3）：所有在 `pipefail` 下提前停止读取的管道改为读完；postinstall 开头先记日志，失败时记下行号；新增回归测试 `macos/package/tests/postinstall-pipes.sh`（旧写法 20/20 失败，新写法 0/20） | [m4-pkg-postinstall-sigpipe.md](m4-pkg-postinstall-sigpipe.md) |
 
 ## 后续事项
 

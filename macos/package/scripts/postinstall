@@ -13,6 +13,9 @@ PAYLOAD="$STAGE/$RELEASE_ID"
 export PATH=/usr/bin:/bin:/usr/sbin:/sbin
 
 log() { echo "immich postinstall: $*"; }
+log "started: $RELEASE_ID"
+# what failed, if anything does: Installer shows only that the script did
+trap 'log "failed at line $LINENO (exit $?)"' ERR
 cleanup() {
   rm -rf "$PAYLOAD"
   rmdir "$STAGE" "/Library/Application Support/Immich" 2>/dev/null || true
@@ -26,8 +29,15 @@ is_user() {
   [ -n "$1" ] && [ "$1" != root ] && [ "$1" != loginwindow ] && [ "$1" != _mbsetupuser ] \
     && [ "$(id -u "$1" 2>/dev/null || echo 0)" -ge 500 ]
 }
-installer_user="$(ps -axo user=,comm= \
-  | awk '$2 == "/System/Library/CoreServices/Installer.app/Contents/MacOS/Installer" && $1 != "root" { print $1; exit }')"
+# The first user, not root, running COMMAND. awk reads all of ps' output rather than leaving at the first match: ps
+# writes more than a pipe holds (hundreds of processes), and one left with more to write dies of SIGPIPE, which
+# pipefail makes this script's failure, before it has logged anything (macos/verification/m4-pkg-postinstall-sigpipe.md).
+# BEGIN first_user_running (macos/package/tests/postinstall-pipes.sh runs it)
+first_user_running() {
+  ps -axo user=,comm= | awk -v command="$1" '$2 == command && $1 != "root" && !found { print $1; found = 1 }'
+}
+# END first_user_running
+installer_user="$(first_user_running /System/Library/CoreServices/Installer.app/Contents/MacOS/Installer)"
 console_user="$(stat -f%Su /dev/console 2>/dev/null || true)"
 log "Installer opened by: ${installer_user:-nobody}; at the screen: ${console_user:-nobody}; USER: ${USER:-unset}"
 user=""
