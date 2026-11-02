@@ -232,6 +232,8 @@ export type AdminConfigDuplicateDetectionDto = {
 export type AdminConfigFacialRecognitionDto = {
     /** Whether the task is enabled */
     enabled: boolean;
+    /** Whether the people facial recognition finds are hidden until shown, as when all unnamed are hidden */
+    hideNewPeople: boolean;
     /** Maximum distance threshold for face recognition */
     maxDistance: number;
     /** Minimum number of faces required for recognition */
