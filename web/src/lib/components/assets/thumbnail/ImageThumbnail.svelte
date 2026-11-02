@@ -43,16 +43,19 @@
     preload = true,
   }: Props = $props();
 
-  let loaded = $state(false);
-  let errored = $state(false);
+  // per url: a new url (a person's new thumbnail, with its new updatedAt) loads again, and its own state is fresh
+  let loadedUrl = $state<string>();
+  let erroredUrl = $state<string>();
+  const loaded = $derived(loadedUrl === url);
+  const errored = $derived(erroredUrl === url);
 
-  const setLoaded = () => {
-    loaded = true;
+  const setLoaded = (loading: string) => {
+    loadedUrl = loading;
     onComplete?.(false);
   };
 
-  const setErrored = () => {
-    errored = true;
+  const setErrored = (loading: string) => {
+    erroredUrl = loading;
     onComplete?.(true);
   };
 
@@ -73,17 +76,21 @@
 {#if errored}
   <BrokenAsset class={[sharedClasses, brokenAssetClass]} width={widthStyle} height={heightStyle} />
 {:else}
-  <Image
-    src={url}
-    onLoad={setLoaded}
-    onError={setErrored}
-    class={['bg-gray-300 object-cover dark:bg-gray-700', sharedClasses, imageClass]}
-    {style}
-    alt={loaded || errored ? altText : ''}
-    draggable={false}
-    title={title ?? undefined}
-    loading={preload ? 'eager' : 'lazy'}
-  />
+  <!-- Image takes the first src it is given: a new url needs a new one -->
+  {#key url}
+    {@const loading = url}
+    <Image
+      src={loading}
+      onLoad={() => setLoaded(loading)}
+      onError={() => setErrored(loading)}
+      class={['bg-gray-300 object-cover dark:bg-gray-700', sharedClasses, imageClass]}
+      {style}
+      alt={loaded || errored ? altText : ''}
+      draggable={false}
+      title={title ?? undefined}
+      loading={preload ? 'eager' : 'lazy'}
+    />
+  {/key}
 {/if}
 
 {#if hidden}
