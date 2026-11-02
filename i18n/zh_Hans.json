@@ -1002,6 +1002,7 @@
   "editor_discard_edits_title": "确定放弃编辑吗？",
   "editor_edits_applied_error": "应用编辑失败",
   "editor_edits_applied_success": "编辑已成功应用",
+  "editor_edits_applying": "编辑已保存，正在后台处理，完成后照片会自动更新",
   "editor_flip_horizontal": "水平翻转",
   "editor_flip_vertical": "垂直翻转",
   "editor_handle_corner": "{corner, select, top_left {左上角} top_right {右上角} bottom_left {左下角} bottom_right {右下角} other {某个}}角落的控制手柄",

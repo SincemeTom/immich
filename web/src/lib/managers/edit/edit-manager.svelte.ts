@@ -4,9 +4,7 @@ import { mdiCropRotate } from '@mdi/js';
 import type { Component } from 'svelte';
 import TransformTool from '$lib/components/asset-viewer/editor/transform-tool/TransformTool.svelte';
 import { transformManager } from '$lib/managers/edit/transform-manager.svelte';
-import { eventManager } from '$lib/managers/event-manager.svelte';
-import { waitForWebsocketEvent } from '$lib/stores/websocket';
-import { getEditTimeout } from '$lib/utils/asset-rotate';
+import { listenForEditsApplied } from '$lib/utils/asset-edit-ready';
 import { getFormatter } from '$lib/utils/i18n';
 
 export type EditAction = AssetEditsCreateDto['edits'][number];
@@ -126,14 +124,9 @@ export class EditManager {
     const assetId = this.currentAsset.id;
     const t = await getFormatter();
 
+    // before the edits are sent, so as not to miss a quick job
+    const edit = listenForEditsApplied(assetId);
     try {
-      // Setup the websocket listener before sending the edit request
-      const editCompleted = waitForWebsocketEvent(
-        'AssetEditReadyV2',
-        (event) => event.asset.id === assetId,
-        getEditTimeout(this.currentAsset),
-      );
-
       await (edits.length === 0
         ? removeAssetEdits({ id: assetId })
         : editAsset({
@@ -142,18 +135,22 @@ export class EditManager {
               edits,
             },
           }));
-
-      await editCompleted;
-
-      eventManager.emit('AssetEditsApplied', assetId);
-
-      toastManager.primary(t('editor_edits_applied_success'));
-      this.hasAppliedEdits = true;
-
-      return true;
     } catch {
+      edit.cancel();
       toastManager.danger(t('editor_edits_applied_error'));
+      this.isApplyingEdits = false;
       return false;
+    }
+
+    // saved: the server applies them however long it takes, and the asset shows them once it has
+    try {
+      if (await edit.ready()) {
+        toastManager.primary(t('editor_edits_applied_success'));
+      } else {
+        toastManager.info(t('editor_edits_applying'));
+      }
+      this.hasAppliedEdits = true;
+      return true;
     } finally {
       this.isApplyingEdits = false;
     }

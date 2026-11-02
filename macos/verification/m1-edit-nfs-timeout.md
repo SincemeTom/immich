@@ -3,7 +3,7 @@
 - 正式版：`v3.3.5-mac.4`（`/Users/…/Immich/releases/3.3.5-mac.4`）
 - 环境：照片库在 NFS 网络共享（群晖）上；服务器四个服务均正常（`immichctl status` 全 ok）
 - 日期：2026-11-02
-- 状态：**已修复**（`web/src/lib/utils/asset-rotate.ts`），见文末"修复"
+- 状态：**已修复**（`web/src/lib/utils/asset-edit-ready.ts`），见文末"修复"
 - 结论：服务器端的编辑任务每次都成功，失败的是**网页前端的等待超时**。图片只等 30 秒，NFS 上编辑任务的读写要吃网络延迟，超过 30 秒前端就报错；任务本身不受影响，刷新后图片已是旋转后的。视频的等待是 300 秒，所以视频旋转（`m1-video-rotation.md` 的功能）从没报过错
 
 ## 现象
@@ -64,13 +64,17 @@ export const getEditTimeout = (asset: { type: AssetTypeEnum }) =>
 
 ## 修复
 
-`web/src/lib/utils/asset-rotate.ts`：图片和视频统一等 300 秒。
+第一版（b827c3d69）把图片的等待时间也改成 300 秒，误报没有了，但编辑器保存时转圈最长要等 5 分钟。第二版改为：**保存成功就算成功，等待只决定提示内容**。
 
 | 位置 | 改动 |
 |---|---|
-| `web/src/lib/utils/asset-rotate.ts` | `getEditTimeout` 不再区分类型，一律 `300_000`。两处调用方（编辑器保存、`R` 键旋转）都经过它，一处改动全部生效 |
+| `web/src/lib/utils/asset-edit-ready.ts`（新增） | `listenForEditsApplied(assetId)`：发送编辑前开始监听 `AssetEditReadyV2`。`ready()` 最多等 30 秒（`EDIT_WAIT`），返回是否已经处理完；没完成的继续在后台等，最多 30 分钟（`EDIT_BACKGROUND_WAIT`），一完成就发 `AssetEditsApplied`，查看器自动刷新 |
+| `web/src/lib/managers/edit/edit-manager.svelte.ts` | 编辑器保存：只有 `editAsset` / `removeAssetEdits` 请求本身失败才提示「应用编辑失败」。30 秒内处理完提示「编辑已成功应用」，否则提示「编辑已保存，正在后台处理，完成后照片会自动更新」，两种情况都关闭编辑器 |
+| `web/src/lib/services/asset.service.ts` | 查看时按 `R` 旋转：同上。连续按的旋转要等前一次处理完再发，不会让两个任务同时改同一张图 |
+| `web/src/lib/utils/asset-rotate.ts` | 删除 `getEditTimeout` |
+| `i18n/en.json`、`zh_Hans.json` | 新增 `editor_edits_applying` |
 
-等待变长没有副作用：事件到了就立即继续；只有真正失败时，错误提示会比以前晚出现（而以前 NFS 上是**必然**误报）。
+已知限制：服务端任务真的失败时不会发事件，网页不会提示，照片保持原样。以前这种情况会弹「应用编辑失败」，但 NFS 上每次都会误报，提示本身没有参考价值。
 
 ### 已经装了正式版的机器
 
@@ -87,4 +91,5 @@ immichctl restart server   # www 目录只在启动时检查
 ## 验证
 
 - 修复前（v3.3.5-mac.4）：NFS 库上旋转图片，大小图片全部报「应用编辑失败」；刷新后全部实际成功；视频不报错
-- 待测试机复验：热修后 NFS 库上旋转大图、小图、实况照片各一次，30 秒内任务未完成时不再误报；本地库上行为不变
+- 单测：`web/src/lib/utils/asset-edit-ready.spec.ts`（及时完成、转入后台后完成、放弃、请求失败时取消监听）
+- 待测试机复验：NFS 库上分别用编辑器和 `R` 键旋转大图、小图、实况照片各一次。超过 30 秒的应提示"正在后台处理"，处理完照片自动转过来，不需要刷新；本地库上仍提示"编辑已成功应用"
