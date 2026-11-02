@@ -19912,6 +19912,10 @@
       },
       "AdminConfigLibraryDto": {
         "properties": {
+          "includeInStatistics": {
+            "description": "Whether the server statistics count the external libraries' files in the usage, not only the uploaded (quotas count the uploaded only)",
+            "type": "boolean"
+          },
           "scan": {
             "$ref": "#/components/schemas/AdminConfigLibraryScanDto"
           },
@@ -19920,6 +19924,7 @@
           }
         },
         "required": [
+          "includeInStatistics",
           "scan",
           "watch"
         ],

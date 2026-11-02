@@ -87,6 +87,21 @@
           </div>
         </SettingAccordion>
 
+        <SettingAccordion
+          key="library-statistics"
+          title={$t('admin.library_statistics')}
+          subtitle={$t('admin.library_statistics_description')}
+        >
+          <div class="ms-4 mt-4 flex flex-col gap-4">
+            <SettingSwitch
+              title={$t('admin.library_statistics_include')}
+              subtitle={$t('admin.library_statistics_include_description')}
+              {disabled}
+              bind:checked={configToEdit.library.includeInStatistics}
+            />
+          </div>
+        </SettingAccordion>
+
         <SettingButtonsRow bind:configToEdit keys={['library']} {disabled} />
       </div>
     </form>

@@ -265,7 +265,16 @@ describe(ServerService.name, () => {
         ],
       });
 
-      expect(mocks.user.getUserStats).toHaveBeenCalled();
+      expect(mocks.user.getUserStats).toHaveBeenCalledWith({ includeExternal: false });
+    });
+
+    it('should count the external libraries when the config says so', async () => {
+      mocks.systemMetadata.get.mockResolvedValue({ library: { includeInStatistics: true } });
+      mocks.user.getUserStats.mockResolvedValue([]);
+
+      await sut.getStatistics();
+
+      expect(mocks.user.getUserStats).toHaveBeenCalledWith({ includeExternal: true });
     });
   });
 
