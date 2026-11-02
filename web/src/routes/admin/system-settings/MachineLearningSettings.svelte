@@ -8,6 +8,7 @@
   import FormatMessage from '$lib/elements/FormatMessage.svelte';
   import { featureFlagsManager } from '$lib/managers/feature-flags-manager.svelte';
   import { systemConfigManager } from '$lib/managers/system-config-manager.svelte';
+  import { ContentAnalysisSpeechLanguage } from '@immich/sdk';
   import { Button, IconButton } from '@immich/ui';
   import { mdiPlus, mdiTrashCanOutline } from '@mdi/js';
   import { isEqual } from 'lodash-es';
@@ -251,6 +252,15 @@
             isEdited={configToEdit.machineLearning.facialRecognition.minFaces !==
               config.machineLearning.facialRecognition.minFaces}
           />
+
+          <SettingSwitch
+            title={$t('admin.machine_learning_hide_new_people')}
+            subtitle={$t('admin.machine_learning_hide_new_people_description')}
+            bind:checked={configToEdit.machineLearning.facialRecognition.hideNewPeople}
+            disabled={disabled ||
+              !configToEdit.machineLearning.enabled ||
+              !configToEdit.machineLearning.facialRecognition.enabled}
+          />
         </div>
       </SettingAccordion>
 
@@ -331,6 +341,71 @@
             min={1}
             disabled={disabled || !configToEdit.machineLearning.enabled || !configToEdit.machineLearning.ocr.enabled}
             isEdited={configToEdit.machineLearning.ocr.maxResolution !== config.machineLearning.ocr.maxResolution}
+          />
+        </div>
+      </SettingAccordion>
+
+      <SettingAccordion
+        key="content-analysis"
+        title={$t('admin.machine_learning_content_analysis')}
+        subtitle={$t('admin.machine_learning_content_analysis_description')}
+      >
+        <div class="mt-4 ml-4 flex flex-col gap-4">
+          <SettingSwitch
+            title={$t('admin.machine_learning_content_analysis_enabled')}
+            subtitle={$t('admin.machine_learning_content_analysis_enabled_description')}
+            bind:checked={configToEdit.machineLearning.contentAnalysis.enabled}
+            disabled={disabled || !configToEdit.machineLearning.enabled}
+          />
+
+          <hr />
+
+          <SettingSwitch
+            title={$t('admin.machine_learning_content_analysis_tags')}
+            subtitle={$t('admin.machine_learning_content_analysis_tags_description')}
+            bind:checked={configToEdit.machineLearning.contentAnalysis.tags}
+            disabled={disabled ||
+              !configToEdit.machineLearning.enabled ||
+              !configToEdit.machineLearning.contentAnalysis.enabled}
+          />
+
+          <SettingSwitch
+            title={$t('admin.machine_learning_content_analysis_archive_screenshots')}
+            subtitle={$t('admin.machine_learning_content_analysis_archive_screenshots_description')}
+            bind:checked={configToEdit.machineLearning.contentAnalysis.archiveScreenshots}
+            disabled={disabled ||
+              !configToEdit.machineLearning.enabled ||
+              !configToEdit.machineLearning.contentAnalysis.enabled}
+          />
+
+          <SettingSwitch
+            title={$t('admin.machine_learning_content_analysis_speech')}
+            subtitle={$t('admin.machine_learning_content_analysis_speech_description')}
+            bind:checked={configToEdit.machineLearning.contentAnalysis.speech}
+            disabled={disabled ||
+              !configToEdit.machineLearning.enabled ||
+              !configToEdit.machineLearning.contentAnalysis.enabled}
+          />
+
+          <SettingSelect
+            label={$t('admin.machine_learning_content_analysis_speech_language')}
+            desc={$t('admin.machine_learning_content_analysis_speech_language_description')}
+            name="content-analysis-speech-language"
+            bind:value={configToEdit.machineLearning.contentAnalysis.speechLanguage}
+            options={[
+              { text: '普通话（简体）', value: ContentAnalysisSpeechLanguage.ZhCn },
+              { text: '粤语', value: ContentAnalysisSpeechLanguage.ZhHk },
+              { text: '普通话（繁体）', value: ContentAnalysisSpeechLanguage.ZhTw },
+              { text: 'English', value: ContentAnalysisSpeechLanguage.EnUs },
+              { text: '日本語', value: ContentAnalysisSpeechLanguage.JaJp },
+              { text: '한국어', value: ContentAnalysisSpeechLanguage.KoKr },
+            ]}
+            disabled={disabled ||
+              !configToEdit.machineLearning.enabled ||
+              !configToEdit.machineLearning.contentAnalysis.enabled ||
+              !configToEdit.machineLearning.contentAnalysis.speech}
+            isEdited={configToEdit.machineLearning.contentAnalysis.speechLanguage !==
+              config.machineLearning.contentAnalysis.speechLanguage}
           />
         </div>
       </SettingAccordion>

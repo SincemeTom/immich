@@ -79,6 +79,10 @@
       missingText: $t('missing'),
       disabled: !featureFlags.ocr,
     },
+    [QueueName.ContentAnalysis]: {
+      allText: $t('all'),
+      missingText: $t('missing'),
+    },
     [QueueName.VideoConversion]: {
       allText: $t('all'),
       missingText: $t('missing'),

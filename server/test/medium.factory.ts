@@ -66,6 +66,7 @@ import { TagRepository } from 'src/repositories/tag.repository.js';
 import { TelemetryRepository } from 'src/repositories/telemetry.repository.js';
 import { UserRepository } from 'src/repositories/user.repository.js';
 import { VersionHistoryRepository } from 'src/repositories/version-history.repository.js';
+import { VisionRepository } from 'src/repositories/vision.repository.js';
 import { WebsocketRepository } from 'src/repositories/websocket.repository.js';
 import { WorkflowRepository } from 'src/repositories/workflow.repository.js';
 import { DB } from 'src/schema/index.js';
@@ -541,6 +542,10 @@ const newRealRepository = <T extends BaseServiceDeps[number]>(key: T, db: Kysely
       return new key(db, LoggingRepository.create()) as InstanceType<T>;
     }
 
+    case VisionRepository: {
+      return new key(db, new ConfigRepository(), LoggingRepository.create()) as InstanceType<T>;
+    }
+
     case LoggingRepository: {
       return new key(undefined, undefined) as InstanceType<T>;
     }
@@ -627,6 +632,10 @@ const newMockRepository = <T>(key: ClassConstructor<T>) => {
 
     case StorageRepository: {
       return automock(StorageRepository, { args: [{ setContext: () => {} }] });
+    }
+
+    case VisionRepository: {
+      return automock(VisionRepository, { args: [undefined, undefined, { setContext: () => {} }] });
     }
 
     case WebsocketRepository: {

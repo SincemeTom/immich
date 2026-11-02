@@ -1,4 +1,4 @@
-import { AssetEditAction, AssetTypeEnum, type AssetEditsCreateDto } from '@immich/sdk';
+import { AssetEditAction, type AssetEditsCreateDto } from '@immich/sdk';
 
 type EditActions = AssetEditsCreateDto['edits'];
 
@@ -24,7 +24,3 @@ export const rotateEdits = (edits: EditActions, degrees: number): EditActions =>
   }
   return edits.map((edit, i) => (i === index ? { action: AssetEditAction.Rotate, parameters: { angle } } : edit));
 };
-
-/** How long applying edits may take: a video's stream is copied anew, longer than an image's thumbnails, on a NAS more */
-export const getEditTimeout = (asset: { type: AssetTypeEnum }) =>
-  asset.type === AssetTypeEnum.Video ? 300_000 : 30_000;

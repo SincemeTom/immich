@@ -537,6 +537,60 @@ from
 where
   "asset"."id" = $1
 
+-- AssetJobRepository.getForContentAnalysis
+select
+  "asset"."id",
+  "asset"."ownerId",
+  "asset"."visibility",
+  "asset"."type",
+  "asset"."originalFileName",
+  "asset"."originalPath",
+  "asset"."width",
+  "asset"."height",
+  "asset"."stackId",
+  "stack"."isAutomatic" as "stackIsAutomatic",
+  "stack"."primaryAssetId" as "stackPrimaryAssetId",
+  "asset_exif"."make",
+  "asset_exif"."model",
+  "asset_exif"."exifImageWidth",
+  "asset_exif"."exifImageHeight",
+  (
+    select
+      "asset_file"."path"
+    from
+      "asset_file"
+    where
+      "asset_file"."assetId" = "asset"."id"
+      and "asset_file"."type" = 'preview'
+      and "asset_file"."isEdited" = false
+  ) as "previewFile"
+from
+  "asset"
+  left join "asset_exif" on "asset_exif"."assetId" = "asset"."id"
+  left join "stack" on "stack"."id" = "asset"."stackId"
+where
+  "asset"."id" = $1
+
+-- AssetJobRepository.streamForContentAnalysis
+select
+  "asset"."id"
+from
+  "asset"
+  left join "asset_vision" on "asset_vision"."assetId" = "asset"."id"
+where
+  (
+    "asset_vision"."assetId" is null
+    or "asset_vision"."version" < $1
+    or not (
+      asset_vision.features @> case
+        when asset.type = $2 then array['classify', 'speech']::text[]
+        else array['classify']::text[]
+      end
+    )
+  )
+  and "asset"."deletedAt" is null
+  and "asset"."visibility" != $3
+
 -- AssetJobRepository.getForOcr
 select
   "asset"."visibility",

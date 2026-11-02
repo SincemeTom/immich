@@ -808,21 +808,31 @@ where
     "asset"."visibility" != $2
     or "asset"."ownerId" = $3
   )
-  and exists (
-    select
-    from
-      "ocr_search"
-    where
-      "ocr_search"."assetId" = "asset"."id"
-      and f_unaccent (ocr_search.text) %>> f_unaccent ($4)
+  and (
+    exists (
+      select
+      from
+        "ocr_search"
+      where
+        "ocr_search"."assetId" = "asset"."id"
+        and f_unaccent (ocr_search.text) %>> f_unaccent ($4)
+    )
+    or exists (
+      select
+      from
+        "asset_vision"
+      where
+        "asset_vision"."assetId" = "asset"."id"
+        and f_unaccent (asset_vision.transcript) %>> f_unaccent ($5)
+    )
   )
 order by
   "asset"."fileCreatedAt" desc,
   "asset"."id" desc
 limit
-  $5
-offset
   $6
+offset
+  $7
 
 -- SearchRepository.searchMetadataV3 (ids-any)
 select

@@ -266,7 +266,9 @@ export class JobRepository {
         return { jobId: item.data.id };
       }
       case JobName.PersonGenerateThumbnail: {
-        return { priority: 1 };
+        // ahead of the queue's other jobs, so that a featured photo shows in seconds. Not a priority: BullMQ takes a
+        // prioritized job only once no other waits, which behind an import or a library scan was minutes, or hours
+        return { lifo: true };
       }
       case JobName.FacialRecognitionQueueAll: {
         return { deduplication: { id: JobName.FacialRecognitionQueueAll } };

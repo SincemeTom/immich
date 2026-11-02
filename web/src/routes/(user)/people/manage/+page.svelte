@@ -20,6 +20,8 @@
 
   const { data }: Props = $props();
 
+  const UPDATE_BATCH = 500;
+
   let people = $derived(data.people.people);
   const totalPeopleCount = $derived(data.people.total);
   let nextPage = $state(data.people.hasNextPage ? 2 : null);
@@ -34,7 +36,23 @@
     return toggleVisibility === ToggleVisibility.HIDE_UNNANEMD ? ToggleVisibility.HIDE_ALL : ToggleVisibility.SHOW_ALL;
   };
 
-  const handleToggleVisibility = () => {
+  const handleToggleVisibility = async () => {
+    // all of them, not only the pages shown so far: hiding the unnamed left those further down shown
+    if (nextPage) {
+      showLoadingSpinner = true;
+      try {
+        let loaded = true;
+        while (nextPage && loaded) {
+          loaded = await loadNextPage();
+        }
+      } finally {
+        showLoadingSpinner = false;
+      }
+      if (nextPage) {
+        return;
+      }
+    }
+
     toggleVisibility = getNextVisibility(toggleVisibility);
 
     for (const person of people) {
@@ -58,7 +76,11 @@
 
     try {
       if (changed.length > 0) {
-        const results = await updatePeople({ peopleUpdateDto: { people: changed } });
+        // in batches: thousands of people are more than a request takes (100 kB)
+        const results = [];
+        for (let i = 0; i < changed.length; i += UPDATE_BATCH) {
+          results.push(...(await updatePeople({ peopleUpdateDto: { people: changed.slice(i, i + UPDATE_BATCH) } })));
+        }
         const successCount = results.filter(({ success }) => success).length;
         const failCount = results.length - successCount;
         if (failCount > 0) {
@@ -91,16 +113,19 @@
     overrides.set(person.id, isHidden);
   };
 
+  /** whether the next page loaded */
   const loadNextPage = async () => {
     if (!nextPage) {
-      return;
+      return false;
     }
     try {
       const { people: newPeople, hasNextPage } = await getAllPeople({ withHidden: true, page: nextPage });
       people = people.concat(newPeople);
       nextPage = hasNextPage ? nextPage + 1 : null;
+      return true;
     } catch (error) {
       handleError(error, $t('errors.failed_to_load_people'));
+      return false;
     }
   };
 

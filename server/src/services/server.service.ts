@@ -135,7 +135,10 @@ export class ServerService extends BaseService {
   }
 
   async getStatistics(): Promise<ServerStatsResponseDto> {
-    const userStats: UserStatsQueryResponse[] = await this.userRepository.getUserStats();
+    const { library } = await this.getConfig({ withCache: false });
+    const userStats: UserStatsQueryResponse[] = await this.userRepository.getUserStats({
+      includeExternal: library.includeInStatistics,
+    });
     const serverStats = new ServerStatsResponseDto();
     serverStats.photos ??= 0;
     serverStats.videos ??= 0;

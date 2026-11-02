@@ -100,6 +100,7 @@ export interface EnvData {
       indexHtml: string;
     };
     corePlugin: string;
+    vision: string;
   };
 
   redis: RedisOptions;
@@ -354,6 +355,8 @@ const getEnv = (): EnvData => {
         indexHtml: join(folders.web, 'index.html'),
       },
       corePlugin: join(buildFolder, 'plugins', 'immich-plugin-core'),
+      // the Apple Vision helper of a native macOS release (macos/vision/immich-vision.swift)
+      vision: join(buildFolder, 'vision', 'immich-vision'),
     },
 
     setup: {

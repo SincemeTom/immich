@@ -45,6 +45,7 @@ const updatedConfig = Object.freeze<SystemConfig>({
     [QueueName.Workflow]: { concurrency: 5 },
     [QueueName.IntegrityCheck]: { concurrency: 1 },
     [QueueName.Editor]: { concurrency: 2 },
+    [QueueName.ContentAnalysis]: { concurrency: 2 },
   },
   backup: {
     database: {
@@ -128,6 +129,7 @@ const updatedConfig = Object.freeze<SystemConfig>({
       minScore: 0.7,
       maxDistance: 0.5,
       minFaces: 3,
+      hideNewPeople: false,
     },
     ocr: {
       enabled: true,
@@ -135,6 +137,13 @@ const updatedConfig = Object.freeze<SystemConfig>({
       minDetectionScore: 0.5,
       minRecognitionScore: 0.8,
       maxResolution: 1024,
+    },
+    contentAnalysis: {
+      enabled: true,
+      tags: true,
+      archiveScreenshots: false,
+      speech: true,
+      speechLanguage: 'zh-CN',
     },
   },
   map: {
@@ -226,6 +235,7 @@ const updatedConfig = Object.freeze<SystemConfig>({
     watch: {
       enabled: false,
     },
+    includeInStatistics: false,
   },
   user: {
     deleteDelay: 15,

@@ -10,6 +10,7 @@ import { AuthService } from 'src/services/auth.service.js';
 import { AutoStackService } from 'src/services/auto-stack.service.js';
 import { CliService } from 'src/services/cli.service.js';
 import { ClusterGroupService } from 'src/services/cluster-group.service.js';
+import { ContentAnalysisService } from 'src/services/content-analysis.service.js';
 import { DatabaseBackupService } from 'src/services/database-backup.service.js';
 import { DatabaseService } from 'src/services/database.service.js';
 import { DownloadService } from 'src/services/download.service.js';
@@ -24,7 +25,6 @@ import { MediaService } from 'src/services/media.service.js';
 import { MemoryService } from 'src/services/memory.service.js';
 import { MetadataService } from 'src/services/metadata.service.js';
 import { NetworkShareService } from 'src/services/network-share.service.js';
-import { StorageLocationService } from 'src/services/storage-location.service.js';
 import { NotificationAdminService } from 'src/services/notification-admin.service.js';
 import { NotificationService } from 'src/services/notification.service.js';
 import { OcrService } from 'src/services/ocr.service.js';
@@ -38,6 +38,7 @@ import { SessionService } from 'src/services/session.service.js';
 import { SharedLinkService } from 'src/services/shared-link.service.js';
 import { SmartInfoService } from 'src/services/smart-info.service.js';
 import { StackService } from 'src/services/stack.service.js';
+import { StorageLocationService } from 'src/services/storage-location.service.js';
 import { StorageTemplateService } from 'src/services/storage-template.service.js';
 import { StorageService } from 'src/services/storage.service.js';
 import { SyncService } from 'src/services/sync.service.js';
@@ -85,6 +86,7 @@ export const services = [
   NotificationService,
   NotificationAdminService,
   OcrService,
+  ContentAnalysisService,
   ClusterGroupService,
   PartnerService,
   PersonService,

@@ -19285,6 +19285,37 @@
         ],
         "type": "object"
       },
+      "AdminConfigContentAnalysisDto": {
+        "properties": {
+          "archiveScreenshots": {
+            "description": "Archive screenshots once they are found",
+            "type": "boolean"
+          },
+          "enabled": {
+            "description": "Analyze photos with Apple Vision (macOS)",
+            "type": "boolean"
+          },
+          "speech": {
+            "description": "Recognize what is said in videos, to search it (macOS 26)",
+            "type": "boolean"
+          },
+          "speechLanguage": {
+            "$ref": "#/components/schemas/ContentAnalysisSpeechLanguage"
+          },
+          "tags": {
+            "description": "Tag photos with what they show, under \"自动\"",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "archiveScreenshots",
+          "enabled",
+          "speech",
+          "speechLanguage",
+          "tags"
+        ],
+        "type": "object"
+      },
       "AdminConfigDatabaseBackupDto": {
         "properties": {
           "cronExpression": {
@@ -19600,6 +19631,10 @@
             "description": "Whether the task is enabled",
             "type": "boolean"
           },
+          "hideNewPeople": {
+            "description": "Whether the people facial recognition finds are hidden until shown, as when all unnamed are hidden",
+            "type": "boolean"
+          },
           "maxDistance": {
             "description": "Maximum distance threshold for face recognition",
             "format": "double",
@@ -19627,6 +19662,7 @@
         },
         "required": [
           "enabled",
+          "hideNewPeople",
           "maxDistance",
           "minFaces",
           "minScore",
@@ -19794,6 +19830,9 @@
           "backgroundTask": {
             "$ref": "#/components/schemas/AdminConfigJobSettingsDto"
           },
+          "contentAnalysis": {
+            "$ref": "#/components/schemas/AdminConfigJobSettingsDto"
+          },
           "editor": {
             "$ref": "#/components/schemas/AdminConfigJobSettingsDto"
           },
@@ -19839,6 +19878,7 @@
         },
         "required": [
           "backgroundTask",
+          "contentAnalysis",
           "editor",
           "faceDetection",
           "integrityCheck",
@@ -19872,6 +19912,10 @@
       },
       "AdminConfigLibraryDto": {
         "properties": {
+          "includeInStatistics": {
+            "description": "Whether the server statistics count the external libraries' files in the usage, not only the uploaded (quotas count the uploaded only)",
+            "type": "boolean"
+          },
           "scan": {
             "$ref": "#/components/schemas/AdminConfigLibraryScanDto"
           },
@@ -19880,6 +19924,7 @@
           }
         },
         "required": [
+          "includeInStatistics",
           "scan",
           "watch"
         ],
@@ -19962,6 +20007,9 @@
           "clip": {
             "$ref": "#/components/schemas/AdminConfigClipDto"
           },
+          "contentAnalysis": {
+            "$ref": "#/components/schemas/AdminConfigContentAnalysisDto"
+          },
           "duplicateDetection": {
             "$ref": "#/components/schemas/AdminConfigDuplicateDetectionDto"
           },
@@ -19987,6 +20035,7 @@
         "required": [
           "availabilityChecks",
           "clip",
+          "contentAnalysis",
           "duplicateDetection",
           "enabled",
           "facialRecognition",
@@ -22641,6 +22690,18 @@
         ],
         "type": "string"
       },
+      "ContentAnalysisSpeechLanguage": {
+        "description": "The language spoken in the videos",
+        "enum": [
+          "zh-CN",
+          "zh-HK",
+          "zh-TW",
+          "en-US",
+          "ja-JP",
+          "ko-KR"
+        ],
+        "type": "string"
+      },
       "ContributorCountResponseDto": {
         "properties": {
           "assetCount": {
@@ -23696,6 +23757,8 @@
           "VersionCheck",
           "OcrQueueAll",
           "Ocr",
+          "ContentAnalysisQueueAll",
+          "ContentAnalysis",
           "WorkflowAssetTrigger",
           "IntegrityUntrackedFilesQueueAll",
           "IntegrityUntrackedFiles",
@@ -27283,7 +27346,8 @@
           "workflow",
           "integrityCheck",
           "editor",
-          "autoStack"
+          "autoStack",
+          "contentAnalysis"
         ],
         "type": "string"
       },
@@ -27408,6 +27472,9 @@
           "backupDatabase": {
             "$ref": "#/components/schemas/QueueResponseLegacyDto"
           },
+          "contentAnalysis": {
+            "$ref": "#/components/schemas/QueueResponseLegacyDto"
+          },
           "duplicateDetection": {
             "$ref": "#/components/schemas/QueueResponseLegacyDto"
           },
@@ -27464,6 +27531,7 @@
           "autoStack",
           "backgroundTask",
           "backupDatabase",
+          "contentAnalysis",
           "duplicateDetection",
           "editor",
           "faceDetection",

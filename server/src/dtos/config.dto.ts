@@ -32,6 +32,7 @@ import {
   VideoContainer,
   VideoContainerSchema,
 } from 'src/enum.js';
+import { SPEECH_LANGUAGES } from 'src/utils/content-analysis.js';
 
 const { Admin, User, Public } = ConfigVisibility;
 
@@ -196,6 +197,7 @@ const AdminConfigSchemaWithVisibility = z
         workflow: AdminConfigJobSettingsSchema,
         editor: AdminConfigJobSettingsSchema,
         integrityCheck: AdminConfigJobSettingsSchema,
+        contentAnalysis: AdminConfigJobSettingsSchema,
       })
       .meta({ id: 'AdminConfigJobDto' }),
     logging: z
@@ -242,6 +244,11 @@ const AdminConfigSchemaWithVisibility = z
             .min(1)
             .describe('Minimum number of faces required for recognition')
             .meta({ visibility: User }),
+          hideNewPeople: z
+            .boolean()
+            .describe(
+              'Whether the people facial recognition finds are hidden until shown, as when all unnamed are hidden',
+            ),
         }).meta({ id: 'AdminConfigFacialRecognitionDto' }),
         ocr: AdminConfigMachineLearningModelSchema.extend({
           maxResolution: z.int().min(1).describe('Maximum resolution for OCR processing'),
@@ -258,6 +265,18 @@ const AdminConfigSchemaWithVisibility = z
             .describe('Minimum confidence score for text recognition')
             .meta({ format: 'double' }),
         }).meta({ id: 'AdminConfigOcrDto' }),
+        contentAnalysis: z
+          .object({
+            enabled: configBool.describe('Analyze photos with Apple Vision (macOS)'),
+            tags: configBool.describe('Tag photos with what they show, under "自动"'),
+            archiveScreenshots: configBool.describe('Archive screenshots once they are found'),
+            speech: configBool.describe('Recognize what is said in videos, to search it (macOS 26)'),
+            speechLanguage: z
+              .enum(SPEECH_LANGUAGES)
+              .describe('The language spoken in the videos')
+              .meta({ id: 'ContentAnalysisSpeechLanguage' }),
+          })
+          .meta({ id: 'AdminConfigContentAnalysisDto' }),
       })
       .meta({ id: 'AdminConfigMachineLearningDto' }),
     map: z
@@ -384,6 +403,9 @@ const AdminConfigSchemaWithVisibility = z
           })
           .meta({ id: 'AdminConfigLibraryScanDto' }),
         watch: z.object({ enabled: configBool.describe('Enabled') }).meta({ id: 'AdminConfigLibraryWatchDto' }),
+        includeInStatistics: configBool.describe(
+          "Whether the server statistics count the external libraries' files in the usage, not only the uploaded (quotas count the uploaded only)",
+        ),
       })
       .meta({ id: 'AdminConfigLibraryDto' }),
     notifications: z.object({ smtp: AdminConfigSmtpSchema }).meta({ id: 'AdminConfigNotificationsDto' }),
@@ -611,6 +633,7 @@ export const defaults = Object.freeze<SystemConfig>({
     workflow: { concurrency: 5 },
     editor: { concurrency: 2 },
     integrityCheck: { concurrency: 1 },
+    contentAnalysis: { concurrency: 2 },
   },
   logging: {
     enabled: true,
@@ -638,6 +661,7 @@ export const defaults = Object.freeze<SystemConfig>({
       minScore: 0.7,
       maxDistance: 0.5,
       minFaces: 3,
+      hideNewPeople: false,
     },
     ocr: {
       enabled: true,
@@ -645,6 +669,13 @@ export const defaults = Object.freeze<SystemConfig>({
       minDetectionScore: 0.5,
       minRecognitionScore: 0.8,
       maxResolution: 1024,
+    },
+    contentAnalysis: {
+      enabled: true,
+      tags: true,
+      archiveScreenshots: false,
+      speech: true,
+      speechLanguage: 'zh-CN',
     },
   },
   map: {
@@ -741,6 +772,7 @@ export const defaults = Object.freeze<SystemConfig>({
     watch: {
       enabled: false,
     },
+    includeInStatistics: false,
   },
   server: {
     externalDomain: '',

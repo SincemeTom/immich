@@ -29,6 +29,7 @@ import {
   mdiStateMachine,
   mdiTable,
   mdiTagFaces,
+  mdiTagMultiple,
   mdiTrashCanOutline,
   mdiTrayFull,
   mdiVideo,
@@ -255,6 +256,11 @@ export const asQueueItem = ($t: MessageFormatter, queue: { name: QueueName }): Q
       icon: mdiCameraBurst,
       title: $t('admin.auto_stack_job'),
       subtitle: $t('admin.auto_stack_job_description'),
+    },
+    [QueueName.ContentAnalysis]: {
+      icon: mdiTagMultiple,
+      title: $t('admin.content_analysis_job'),
+      subtitle: $t('admin.content_analysis_job_description'),
     },
   };
 

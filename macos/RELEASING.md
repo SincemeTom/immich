@@ -22,6 +22,7 @@
 | `v3.3.5-mac.2` | 2026-11-01 | 模型在神经网络引擎上运行；模型改为后台准备。**有缺陷**：Installer 在进程表靠前时安装失败，请用 mac.3 |
 | `v3.3.5-mac.3` | 2026-11-01 | 修复 mac.2 的安装失败；许可页、第三方许可清单、源码留档 |
 | `v3.3.5-mac.4` | 2026-11-01 | 照片地点显示中文（国内到乡镇、街道） |
+| `v3.3.5-mac.5` | 2026-11-02 | Apple Vision 内容分析（中文自动标签、截图、二维码；macOS 26 起视频语音可搜索、文档、镜头脏污）；人物头像、隐藏人物、NAS 上编辑保存的修复；用量统计可计入外部库 |
 
 每个版本的详细内容见 [CHANGELOG.md](CHANGELOG.md)。
 
@@ -99,6 +100,17 @@ gh release create v3.3.5-mac.3 --repo SincemeTom/immich --draft --title "v3.3.5-
 
 - [ ] 测试机、正式环境装上新版本，`immichctl status` 正常
 - [ ] `macos/verification/README.md` 里相关问题标为"已修复（v3.3.5-mac.3）"
+
+## Homebrew on a newer macOS（打包机升级系统以后）
+
+发布包要能在 macOS 15 上运行，带进去的 Homebrew 库也必须是给 15 编译的。打包机升级到更新的 macOS（例如 27）后，Homebrew 下载的新版本只提供给新系统编译的预编译包（`brew info --json=v2 <名字>` 里的 bottle 只有新系统的标签）。这样的库带进包里，整个包就只能在新系统上运行。
+
+`build-release.sh` 打包时会检查：只要有库要求高于 15，就列出这些库并报错停下。处理办法：
+
+1. 本机还留着给 15 编译的旧版本时（`brew list --versions <名字>` 能看到两个版本），先把新版本从 Cellar 挪到别处，再执行 `brew link --overwrite <名字>`，然后 `brew pin <名字>`。keg-only 的库（如 libarchive）要手动改 `opt` 链接：`ln -sfn ../Cellar/<名字>/<旧版本> /opt/homebrew/opt/<名字>`。许可证收集会按当前链接的版本，从配方地址推出对应版本的源码地址
+2. 本机没有旧版本时，只能用 `MACOSX_DEPLOYMENT_TARGET=15.0` 从源码编译这个库（需要能编译的命令行工具），或者在一台 macOS 15 的 Mac 上打包
+
+2026-11-02：打包机升级到 macOS 27.2 后，`brew upgrade` 了 aom、fribidi、imagemagick、libarchive、openexr，结果包变成"runs on macOS 27.2 or later"。按第 1 条处理：新版本挪到 `~/Library/Caches/immich-package/brew-kegs-macos27/`，这 5 个库已 pin，`brew upgrade` 不会再升级它们。
 
 ## 证书
 

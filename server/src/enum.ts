@@ -843,6 +843,8 @@ export enum BootstrapEventPriority {
   JobService = -190,
   // Initialize config after other bootstrap services, stop other services from using config on bootstrap
   SystemConfig = 100,
+  // Content analysis reads the config, and queues what is missing: after it
+  ContentAnalysis = 110,
   PluginSync = 190,
   // Load plugins into memory after sync
   PluginLoad = 200,
@@ -869,6 +871,7 @@ export enum QueueName {
   IntegrityCheck = 'integrityCheck',
   Editor = 'editor',
   AutoStack = 'autoStack',
+  ContentAnalysis = 'contentAnalysis',
 }
 
 export const QueueNameSchema = z.enum(QueueName).describe('Queue name').meta({ id: 'QueueName' });
@@ -964,6 +967,10 @@ export enum JobName {
   // OCR
   OcrQueueAll = 'OcrQueueAll',
   Ocr = 'Ocr',
+
+  // Content analysis (Apple Vision, on macOS)
+  ContentAnalysisQueueAll = 'ContentAnalysisQueueAll',
+  ContentAnalysis = 'ContentAnalysis',
 
   // Workflow
   WorkflowAssetTrigger = 'WorkflowAssetTrigger',

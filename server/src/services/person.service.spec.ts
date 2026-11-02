@@ -1404,6 +1404,29 @@ describe(PersonService.name, () => {
       });
     });
 
+    it('should create the new person hidden when new people are to be hidden', async () => {
+      const asset = AssetFactory.create();
+      const [noPerson1, noPerson2] = [AssetFaceFactory.create({ assetId: asset.id }), AssetFaceFactory.create()];
+      const person = PersonFactory.create();
+
+      mocks.systemMetadata.get.mockResolvedValue({
+        machineLearning: { facialRecognition: { minFaces: 1, hideNewPeople: true } },
+      });
+      mocks.search.searchFaces.mockResolvedValue([getForFaceSearch(noPerson1, 0), getForFaceSearch(noPerson2, 0.3)]);
+      mocks.person.getFaceForFacialRecognitionJob.mockResolvedValue(getForFacialRecognitionJob(noPerson1, asset));
+      mocks.person.createGroup.mockResolvedValue(PersonGroupFactory.create({ id: person.personGroupId }));
+      mocks.person.create.mockResolvedValue(person);
+
+      await sut.handleRecognizeFaces({ id: noPerson1.id });
+
+      expect(mocks.person.create).toHaveBeenCalledWith({
+        ownerId: asset.ownerId,
+        faceAssetId: noPerson1.id,
+        personGroupId: person.personGroupId,
+        isHidden: true,
+      });
+    });
+
     it('should create a person in the matched group when the match belongs to another user', async () => {
       const asset = AssetFactory.create();
       const [noPerson, otherOwnerFace] = [

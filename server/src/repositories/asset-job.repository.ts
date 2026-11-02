@@ -22,6 +22,9 @@ import {
 } from 'src/utils/database.js';
 import { mimeTypes } from 'src/utils/mime-types.js';
 
+/** a list of task names as a text[] literal (they are the server's own constants) */
+const taskArray = (values: string[]) => sql`array[${sql.join(values.map((value) => sql.lit(value)))}]::text[]`;
+
 @Injectable()
 export class AssetJobRepository {
   constructor(@InjectKysely() private db: Kysely<DB>) {}
@@ -264,6 +267,59 @@ export class AssetJobRepository {
       )
       .where('asset.id', '=', id)
       .executeTakeFirst();
+  }
+
+  @GenerateSql({ params: [DummyValue.UUID] })
+  getForContentAnalysis(id: string) {
+    return this.db
+      .selectFrom('asset')
+      .leftJoin('asset_exif', 'asset_exif.assetId', 'asset.id')
+      .leftJoin('stack', 'stack.id', 'asset.stackId')
+      .select((eb) => [
+        'asset.id',
+        'asset.ownerId',
+        'asset.visibility',
+        'asset.type',
+        'asset.originalFileName',
+        'asset.originalPath',
+        'asset.width',
+        'asset.height',
+        'asset.stackId',
+        'stack.isAutomatic as stackIsAutomatic',
+        'stack.primaryAssetId as stackPrimaryAssetId',
+        'asset_exif.make',
+        'asset_exif.model',
+        'asset_exif.exifImageWidth',
+        'asset_exif.exifImageHeight',
+        withFilePath(eb, AssetFileType.Preview).as('previewFile'),
+      ])
+      .where('asset.id', '=', id)
+      .executeTakeFirst();
+  }
+
+  /**
+   * Those not analyzed yet, by an earlier version, or for fewer requests than this Mac makes now (a photo, imageTasks;
+   * a video, videoTasks: after an upgrade to macOS 26, its requests); all of them, with force
+   */
+  @GenerateSql({ params: [DummyValue.NUMBER, ['classify'], ['classify', 'speech'], false], stream: true })
+  streamForContentAnalysis(version: number, imageTasks: string[], videoTasks: string[], force?: boolean) {
+    return this.db
+      .selectFrom('asset')
+      .select(['asset.id'])
+      .$if(!force, (qb) =>
+        qb
+          .leftJoin('asset_vision', 'asset_vision.assetId', 'asset.id')
+          .where((eb) =>
+            eb.or([
+              eb('asset_vision.assetId', 'is', null),
+              eb('asset_vision.version', '<', version),
+              sql<boolean>`not (asset_vision.features @> case when asset.type = ${AssetType.Video} then ${taskArray(videoTasks)} else ${taskArray(imageTasks)} end)`,
+            ]),
+          ),
+      )
+      .where('asset.deletedAt', 'is', null)
+      .where('asset.visibility', '!=', AssetVisibility.Hidden)
+      .stream();
   }
 
   @GenerateSql({ params: [DummyValue.UUID] })

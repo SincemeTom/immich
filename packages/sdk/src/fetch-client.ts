@@ -165,6 +165,7 @@ export type AdminConfigJobSettingsDto = {
 };
 export type AdminConfigJobDto = {
     backgroundTask: AdminConfigJobSettingsDto;
+    contentAnalysis: AdminConfigJobSettingsDto;
     editor: AdminConfigJobSettingsDto;
     faceDetection: AdminConfigJobSettingsDto;
     integrityCheck: AdminConfigJobSettingsDto;
@@ -191,6 +192,8 @@ export type AdminConfigLibraryWatchDto = {
     enabled: boolean;
 };
 export type AdminConfigLibraryDto = {
+    /** Whether the server statistics count the external libraries' files in the usage, not only the uploaded (quotas count the uploaded only) */
+    includeInStatistics: boolean;
     scan: AdminConfigLibraryScanDto;
     watch: AdminConfigLibraryWatchDto;
 };
@@ -211,6 +214,17 @@ export type AdminConfigClipDto = {
     /** Name of the model to use */
     modelName: string;
 };
+export type AdminConfigContentAnalysisDto = {
+    /** Archive screenshots once they are found */
+    archiveScreenshots: boolean;
+    /** Analyze photos with Apple Vision (macOS) */
+    enabled: boolean;
+    /** Recognize what is said in videos, to search it (macOS 26) */
+    speech: boolean;
+    speechLanguage: ContentAnalysisSpeechLanguage;
+    /** Tag photos with what they show, under "自动" */
+    tags: boolean;
+};
 export type AdminConfigDuplicateDetectionDto = {
     /** Whether the task is enabled */
     enabled: boolean;
@@ -220,6 +234,8 @@ export type AdminConfigDuplicateDetectionDto = {
 export type AdminConfigFacialRecognitionDto = {
     /** Whether the task is enabled */
     enabled: boolean;
+    /** Whether the people facial recognition finds are hidden until shown, as when all unnamed are hidden */
+    hideNewPeople: boolean;
     /** Maximum distance threshold for face recognition */
     maxDistance: number;
     /** Minimum number of faces required for recognition */
@@ -244,6 +260,7 @@ export type AdminConfigOcrDto = {
 export type AdminConfigMachineLearningDto = {
     availabilityChecks: AdminConfigMachineLearningAvailabilityChecksDto;
     clip: AdminConfigClipDto;
+    contentAnalysis: AdminConfigContentAnalysisDto;
     duplicateDetection: AdminConfigDuplicateDetectionDto;
     /** Enabled */
     enabled: boolean;
@@ -1949,6 +1966,7 @@ export type QueuesResponseLegacyDto = {
     autoStack: QueueResponseLegacyDto;
     backgroundTask: QueueResponseLegacyDto;
     backupDatabase: QueueResponseLegacyDto;
+    contentAnalysis: QueueResponseLegacyDto;
     duplicateDetection: QueueResponseLegacyDto;
     editor: QueueResponseLegacyDto;
     faceDetection: QueueResponseLegacyDto;
@@ -8394,6 +8412,14 @@ export enum LogLevel {
     Error = "error",
     Fatal = "fatal"
 }
+export enum ContentAnalysisSpeechLanguage {
+    ZhCn = "zh-CN",
+    ZhHk = "zh-HK",
+    ZhTw = "zh-TW",
+    EnUs = "en-US",
+    JaJp = "ja-JP",
+    KoKr = "ko-KR"
+}
 export enum ReleaseChannel {
     Stable = "stable",
     ReleaseCandidate = "releaseCandidate"
@@ -8481,7 +8507,8 @@ export enum QueueName {
     Workflow = "workflow",
     IntegrityCheck = "integrityCheck",
     Editor = "editor",
-    AutoStack = "autoStack"
+    AutoStack = "autoStack",
+    ContentAnalysis = "contentAnalysis"
 }
 export enum UserStatus {
     Active = "active",
@@ -8864,6 +8891,8 @@ export enum JobName {
     VersionCheck = "VersionCheck",
     OcrQueueAll = "OcrQueueAll",
     Ocr = "Ocr",
+    ContentAnalysisQueueAll = "ContentAnalysisQueueAll",
+    ContentAnalysis = "ContentAnalysis",
     WorkflowAssetTrigger = "WorkflowAssetTrigger",
     IntegrityUntrackedFilesQueueAll = "IntegrityUntrackedFilesQueueAll",
     IntegrityUntrackedFiles = "IntegrityUntrackedFiles",

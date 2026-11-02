@@ -177,6 +177,7 @@ select
   "asset_exif"."rating",
   "asset_exif"."autoStackId",
   "asset_job_status"."autoStackedAt",
+  "asset_vision"."aestheticScore",
   "asset"."visibility",
   "asset"."deletedAt",
   "smart_search"."embedding",
@@ -186,6 +187,7 @@ from
   "asset"
   left join "asset_exif" on "asset_exif"."assetId" = "asset"."id"
   left join "asset_job_status" on "asset_job_status"."assetId" = "asset"."id"
+  left join "asset_vision" on "asset_vision"."assetId" = "asset"."id"
   left join "smart_search" on "smart_search"."assetId" = "asset"."id"
   left join "stack" on "stack"."id" = "asset"."stackId"
 where
@@ -208,6 +210,7 @@ select
   "asset_exif"."rating",
   "asset_exif"."autoStackId",
   "asset_job_status"."autoStackedAt",
+  "asset_vision"."aestheticScore",
   "stack"."isAutomatic",
   "stack"."primaryAssetId",
   smart_search.embedding <=> $1 as "distance"
@@ -215,6 +218,7 @@ from
   "asset"
   left join "asset_exif" on "asset_exif"."assetId" = "asset"."id"
   left join "asset_job_status" on "asset_job_status"."assetId" = "asset"."id"
+  left join "asset_vision" on "asset_vision"."assetId" = "asset"."id"
   left join "smart_search" on "smart_search"."assetId" = "asset"."id"
   left join "stack" on "stack"."id" = "asset"."stackId"
 where
@@ -320,11 +324,13 @@ select
   "asset_exif"."model",
   "asset_exif"."rating",
   "asset_exif"."autoStackId",
-  "asset_job_status"."autoStackedAt"
+  "asset_job_status"."autoStackedAt",
+  "asset_vision"."aestheticScore"
 from
   "asset"
   left join "asset_exif" on "asset_exif"."assetId" = "asset"."id"
   left join "asset_job_status" on "asset_job_status"."assetId" = "asset"."id"
+  left join "asset_vision" on "asset_vision"."assetId" = "asset"."id"
 where
   "asset"."stackId" = any ($1::uuid[])
   and "asset"."deletedAt" is null

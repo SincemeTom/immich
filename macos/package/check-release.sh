@@ -186,6 +186,17 @@ assert "闵行区" in best[1] and best[2] == "上海市" and best[3] == "中国"
 print(place, "|", (folder / "geodata-date.txt").read_text().strip())
 PY
 
+echo "== Apple Vision helper"
+# content analysis: a photo of a cactus, which it labels so, and the job's answer as the server reads it (the photo
+# copied out of this checkout, which the sandbox hides)
+cactus="$WORK/cactus.jpg"
+cp "$REPO/e2e/test-assets/albums/nature/notocactus_minimus.jpg" "$cactus"
+job="{\"id\": \"check\", \"path\": \"$cactus\", \"tasks\": [\"classify\", \"aesthetics\"]}"
+check "immich-vision labels a photo of a cactus" bash -c "printf '%s\n' '$job' \
+  | sandbox-exec -f '$PROFILE' '$RELEASE/build/vision/immich-vision' 2>/dev/null \
+  | python3 -c 'import json, sys; r = json.loads(sys.stdin.readline()); top = r[\"classify\"][0]
+assert r[\"id\"] == \"check\" and top[\"label\"] == \"cactus\", r; print(top, r[\"aesthetics\"], r[\"ms\"], \"ms\")'"
+
 echo "== ffmpeg, gzip"
 check "ffmpeg with VideoToolbox and tonemapx" bash -c "sandbox-exec -f '$PROFILE' '$RELEASE/ffmpeg/ffmpeg' -hide_banner -encoders \
   | grep -q hevc_videotoolbox && sandbox-exec -f '$PROFILE' '$RELEASE/ffmpeg/ffmpeg' -hide_banner -filters | grep -q tonemapx && echo yes"

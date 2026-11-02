@@ -73,6 +73,7 @@ import { UserRepository } from 'src/repositories/user.repository.js';
 import { VersionHistoryRepository } from 'src/repositories/version-history.repository.js';
 import { VideoStreamRepository } from 'src/repositories/video-stream.repository.js';
 import { ViewRepository } from 'src/repositories/view-repository.js';
+import { VisionRepository } from 'src/repositories/vision.repository.js';
 import { WebsocketRepository } from 'src/repositories/websocket.repository.js';
 import { WorkflowRepository } from 'src/repositories/workflow.repository.js';
 import { DB } from 'src/schema/index.js';
@@ -290,6 +291,7 @@ export type ServiceOverrides = {
   versionHistory: VersionHistoryRepository;
   videoStream: VideoStreamRepository;
   view: ViewRepository;
+  vision: VisionRepository;
   websocket: WebsocketRepository;
   workflow: WorkflowRepository;
 };
@@ -381,6 +383,8 @@ export const getMocks = () => {
     videoStream: automock(VideoStreamRepository, { strict: false }),
     view: automock(ViewRepository),
     // eslint-disable-next-line no-sparse-arrays
+    vision: automock(VisionRepository, { args: [, , loggerMock], strict: false }),
+    // eslint-disable-next-line no-sparse-arrays
     websocket: automock(WebsocketRepository, { args: [, loggerMock], strict: false }),
     workflow: automock(WorkflowRepository, { strict: true }),
   };
@@ -452,6 +456,7 @@ export const newTestService = <T extends BaseService>(
     overrides.versionHistory || (mocks.versionHistory as As<VersionHistoryRepository>),
     overrides.videoStream || (mocks.videoStream as As<VideoStreamRepository>),
     overrides.view || (mocks.view as As<ViewRepository>),
+    overrides.vision || (mocks.vision as As<VisionRepository>),
     overrides.websocket || (mocks.websocket as As<WebsocketRepository>),
     overrides.workflow || (mocks.workflow as As<WorkflowRepository>),
   );

@@ -28,7 +28,7 @@
   } from '@immich/sdk';
   import { ActionButton, Button, Icon, IconButton, modalManager } from '@immich/ui';
   import { mdiAccountOff, mdiEyeOutline, mdiTune } from '@mdi/js';
-  import { onDestroy, onMount } from 'svelte';
+  import { onMount } from 'svelte';
   import { t } from 'svelte-i18n';
   import type { PageData } from './$types';
   import PeopleCard from './PeopleCard.svelte';
@@ -61,15 +61,14 @@
     }
   });
 
-  onDestroy(() => {
+  // a person's new thumbnail: its card loads it again (the url has its updatedAt)
+  onMount(() =>
     websocketEvents.on('on_person_thumbnail', (personId: string) => {
-      for (const person of people) {
-        if (person.id === personId) {
-          person.updatedAt = new Date().toISOString();
-        }
-      }
-    });
-  });
+      people = people.map((person) =>
+        person.id === personId ? { ...person, updatedAt: new Date().toISOString() } : person,
+      );
+    }),
+  );
 
   const loadInitialScroll = () =>
     new Promise<void>((resolve) => {
