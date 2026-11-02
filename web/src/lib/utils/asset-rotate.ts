@@ -1,4 +1,4 @@
-import { AssetEditAction, AssetTypeEnum, type AssetEditsCreateDto } from '@immich/sdk';
+import { AssetEditAction, type AssetEditsCreateDto } from '@immich/sdk';
 
 type EditActions = AssetEditsCreateDto['edits'];
 
@@ -24,11 +24,3 @@ export const rotateEdits = (edits: EditActions, degrees: number): EditActions =>
   }
   return edits.map((edit, i) => (i === index ? { action: AssetEditAction.Rotate, parameters: { angle } } : edit));
 };
-
-/**
- * How long applying edits may take. A video's stream is copied anew, longer than an image's thumbnails — but on a
- * network library every read and write of them pays the share's latency, which small images do not escape either,
- * so both wait the same generous while: the job completes however long the client waited (a false "failed" toast,
- * the edit applied all the same on refresh).
- */
-export const getEditTimeout = (_asset: { type: AssetTypeEnum }) => 300_000;

@@ -60,10 +60,10 @@ import ProfileImageCropperModal from '$lib/modals/ProfileImageCropperModal.svelt
 import SharedLinkCreateModal from '$lib/modals/SharedLinkCreateModal.svelte';
 import { Route } from '$lib/route';
 import { SlideshowState, slideshowStore } from '$lib/stores/slideshow.store';
-import { waitForWebsocketEvent } from '$lib/stores/websocket';
 import { getAssetMediaUrl, getSharedLink, sleep } from '$lib/utils';
 import { downloadUrl } from '$lib/utils';
-import { getEditTimeout, rotateEdits } from '$lib/utils/asset-rotate';
+import { listenForEditsApplied } from '$lib/utils/asset-edit-ready';
+import { rotateEdits } from '$lib/utils/asset-rotate';
 import { handleError } from '$lib/utils/handle-error';
 import { getFormatter } from '$lib/utils/i18n';
 
@@ -602,16 +602,22 @@ export const handleRotateAsset = async (asset: AssetResponseDto, degrees: number
         edits.map(({ action, parameters }) => ({ action, parameters }) as (typeof edits)[number]),
         turn,
       );
-      const ready = waitForWebsocketEvent(
-        'AssetEditReadyV2',
-        (event) => event.asset.id === asset.id,
-        getEditTimeout(asset),
-      );
-      await (rotated.length === 0
-        ? removeAssetEdits({ id: asset.id })
-        : editAsset({ id: asset.id, assetEditsCreateDto: { edits: rotated } }));
-      await ready;
-      eventManager.emit('AssetEditsApplied', asset.id);
+      // before the turn is sent, so as not to miss a quick job; it shows the asset turned once it is
+      const edit = listenForEditsApplied(asset.id);
+      try {
+        await (rotated.length === 0
+          ? removeAssetEdits({ id: asset.id })
+          : editAsset({ id: asset.id, assetEditsCreateDto: { edits: rotated } }));
+      } catch (error) {
+        edit.cancel();
+        throw error;
+      }
+      if (await edit.ready()) {
+        continue;
+      }
+      // saved, applied in the background: the turns asked for meanwhile after it, not alongside it
+      toastManager.info($t('editor_edits_applying'));
+      await edit.applied;
     }
   } catch (error) {
     handleError(error, $t('editor_edits_applied_error'));
