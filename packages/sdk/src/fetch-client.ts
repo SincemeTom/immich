@@ -192,6 +192,8 @@ export type AdminConfigLibraryWatchDto = {
     enabled: boolean;
 };
 export type AdminConfigLibraryDto = {
+    /** Whether the server statistics count the external libraries' files in the usage, not only the uploaded (quotas count the uploaded only) */
+    includeInStatistics: boolean;
     scan: AdminConfigLibraryScanDto;
     watch: AdminConfigLibraryWatchDto;
 };

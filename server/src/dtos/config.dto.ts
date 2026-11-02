@@ -403,6 +403,9 @@ const AdminConfigSchemaWithVisibility = z
           })
           .meta({ id: 'AdminConfigLibraryScanDto' }),
         watch: z.object({ enabled: configBool.describe('Enabled') }).meta({ id: 'AdminConfigLibraryWatchDto' }),
+        includeInStatistics: configBool.describe(
+          "Whether the server statistics count the external libraries' files in the usage, not only the uploaded (quotas count the uploaded only)",
+        ),
       })
       .meta({ id: 'AdminConfigLibraryDto' }),
     notifications: z.object({ smtp: AdminConfigSmtpSchema }).meta({ id: 'AdminConfigNotificationsDto' }),
@@ -769,6 +772,7 @@ export const defaults = Object.freeze<SystemConfig>({
     watch: {
       enabled: false,
     },
+    includeInStatistics: false,
   },
   server: {
     externalDomain: '',

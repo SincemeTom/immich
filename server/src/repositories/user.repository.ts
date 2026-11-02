@@ -228,8 +228,14 @@ export class UserRepository {
       : this.db.updateTable('user').set({ deletedAt: new Date() }).where('id', '=', user.id).execute();
   }
 
-  @GenerateSql()
-  getUserStats() {
+  /** what each user has; the usage of what they uploaded, or, with `includeExternal`, of their external libraries too */
+  @GenerateSql({ params: [{ includeExternal: false }] })
+  getUserStats({ includeExternal = false }: { includeExternal?: boolean } = {}) {
+    const counted = (eb: ExpressionBuilder<DB, 'asset'>, type?: AssetType) =>
+      eb.and([
+        ...(includeExternal ? [] : [eb('asset.libraryId', 'is', null)]),
+        ...(type ? [eb('asset.type', '=', sql.lit(type))] : []),
+      ]);
     return this.db
       .selectFrom('user')
       .leftJoin('asset', (join) => join.onRef('asset.ownerId', '=', 'user.id').on('asset.deletedAt', 'is', null))
@@ -256,27 +262,19 @@ export class UserRepository {
           .as('videos'),
         eb.fn
           .coalesce(
-            eb.fn.sum<number>('asset_exif.fileSizeInByte').filterWhere('asset.libraryId', 'is', null),
+            eb.fn.sum<number>('asset_exif.fileSizeInByte').filterWhere((eb) => counted(eb)),
             eb.lit(0),
           )
           .as('usage'),
         eb.fn
           .coalesce(
-            eb.fn
-              .sum<number>('asset_exif.fileSizeInByte')
-              .filterWhere((eb) =>
-                eb.and([eb('asset.libraryId', 'is', null), eb('asset.type', '=', sql.lit(AssetType.Image))]),
-              ),
+            eb.fn.sum<number>('asset_exif.fileSizeInByte').filterWhere((eb) => counted(eb, AssetType.Image)),
             eb.lit(0),
           )
           .as('usagePhotos'),
         eb.fn
           .coalesce(
-            eb.fn
-              .sum<number>('asset_exif.fileSizeInByte')
-              .filterWhere((eb) =>
-                eb.and([eb('asset.libraryId', 'is', null), eb('asset.type', '=', sql.lit(AssetType.Video))]),
-              ),
+            eb.fn.sum<number>('asset_exif.fileSizeInByte').filterWhere((eb) => counted(eb, AssetType.Video)),
             eb.lit(0),
           )
           .as('usageVideos'),
