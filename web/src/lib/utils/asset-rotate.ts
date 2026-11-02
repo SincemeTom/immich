@@ -25,6 +25,10 @@ export const rotateEdits = (edits: EditActions, degrees: number): EditActions =>
   return edits.map((edit, i) => (i === index ? { action: AssetEditAction.Rotate, parameters: { angle } } : edit));
 };
 
-/** How long applying edits may take: a video's stream is copied anew, longer than an image's thumbnails, on a NAS more */
-export const getEditTimeout = (asset: { type: AssetTypeEnum }) =>
-  asset.type === AssetTypeEnum.Video ? 300_000 : 30_000;
+/**
+ * How long applying edits may take. A video's stream is copied anew, longer than an image's thumbnails — but on a
+ * network library every read and write of them pays the share's latency, which small images do not escape either,
+ * so both wait the same generous while: the job completes however long the client waited (a false "failed" toast,
+ * the edit applied all the same on refresh).
+ */
+export const getEditTimeout = (_asset: { type: AssetTypeEnum }) => 300_000;

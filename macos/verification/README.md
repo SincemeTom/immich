@@ -93,6 +93,7 @@
 | 上游不允许编辑实况照片，iPhone 的 HEIC 大多是实况，`R` 对它们无效 | **已完成**：实况照片可旋转、镜像，动态部分一起转；端到端（真实 iPhone 实况照片）23/23，浏览器 6/6 | [m1-video-rotation.md](m1-video-rotation.md) |
 | 新（上游 bug）：读编辑列表时没按顺序，镜像和旋转同时存在时可能顺序颠倒 | **已修复** | [m1-video-rotation.md](m1-video-rotation.md) |
 | 新（上游）：PP-OCRv5_server 在 CoreML 上编译失败，选了它 OCR 全部报错 | **已修复**：该模型自动改用 CPU | [m1-ml-models.md](m1-ml-models.md) |
+| 新：NFS 照片库里编辑（旋转）图片，网页报"应用编辑失败"，实际已成功 | **已修复**：前端等编辑完成事件，图片只等 30 秒，NFS 上后台任务必然超时误报（视频等 300 秒从不报）；统一改为 300 秒 | [m1-edit-nfs-timeout.md](m1-edit-nfs-timeout.md) |
 | 新：v2 模型的 .pkg 在 Installer 里报"安装失败"：postinstall 同步预热超过 600 秒被系统终止（服务其实已升级并运行，但收尾步骤没做，全新安装时不开网页、没有 `immichctl`） | **已修复**（v3.3.5-mac.2）：预热移到用户会话里的一次性 LaunchAgent，postinstall 约 45 秒结束；预热期间服务器只开 API，网页和 App 可用，任务排队，预热完自动处理 | [m4-pkg-postinstall-timeout.md](m4-pkg-postinstall-timeout.md) |
 | 新：`v3.3.5-mac.2` 的 .pkg 安装几秒就失败、日志里没有任何输出：postinstall 用 `ps \| awk '… exit }'` 找安装用户，awk 提前退出让 `ps` 收到 SIGPIPE（141），`pipefail` + `set -e` 让脚本立刻退出。是否失败取决于 Installer 的 PID 在进程表中的位置，进程多时几乎必现；这次什么都没装，旧版本照常运行 | **已修复**（v3.3.5-mac.3）：所有在 `pipefail` 下提前停止读取的管道改为读完；postinstall 开头先记日志，失败时记下行号；新增回归测试 `macos/package/tests/postinstall-pipes.sh`（旧写法 20/20 失败，新写法 0/20） | [m4-pkg-postinstall-sigpipe.md](m4-pkg-postinstall-sigpipe.md) |
 
