@@ -2,7 +2,7 @@
 
 - 版本：`3.3.5-mac.5`（`releases/3.3.5-mac.5`），这台 MacBook Pro（M4 Pro，macOS 26.7）的本机测试环境
 - 日期：2026-11-02
-- 状态：**待修复**
+- 状态：**已修复（未发布）**，见文末"修复"一节
 - 结论：用户是在刚装完 `.pkg`、后台还在准备模型的那一分多钟里操作的。这段时间 server 只开 API、不跑任务（M4 为 600 秒超时加的设计，见 [m4-pkg-postinstall-timeout.md](m4-pkg-postinstall-timeout.md)），所以：
   1. 第一次设置封面**其实成功了**：数据库立刻改了，生成封面的任务也排上了队，只是要等预热结束才会执行。网页拿到的还是旧图。
   2. 预热结束时 server 要重启一次才能带上任务处理。任务在新 server 起来后约 1 秒完成，并发出"封面已更新"的 WebSocket 通知；但浏览器的连接这时还在重连，**通知丢了**，网页不会自己刷新。
@@ -104,3 +104,31 @@
 V="$HOME/Library/Application Support/Immich/current/valkey/bin/valkey-cli"
 "$V" -p 6379 --raw XREVRANGE immich_bull:thumbnailGeneration:events + - COUNT 40
 ```
+
+## 修复
+
+采用"建议修复"第 3 条的思路，并更进一步：**预热期间 server 照常完整运行，只暂停需要机器学习服务的队列，预热结束时不重启。**
+
+- 服务端（`server/src/utils/ml-warming.ts`、`queue.service.ts`、`job.repository.ts`）：
+  - `run-service` 给 server 传 `IMMICH_ML_WARMING_FLAG`（`$home/run/warming`）和 `IMMICH_ML_WARMING_AGENT`（后台预热的 LaunchAgent plist）。标志文件内容是 `immichctl` 的 pid（进程还在才算预热中），或 `agent`（plist 还在才算）。
+  - server 启动时如果正在预热，智能搜索、人脸检测、文字识别三个队列（`ML_QUEUES`）的 worker 先不启动；之后每 5 秒检查一次，预热结束就启动这三个 worker。预热中途又开始（如 `immichctl warm`）则暂停它们，正在跑的任务跑完为止。
+  - 其余队列不受影响：缩略图、人物封面、元数据、转码、人脸聚类等预热期间照常执行。
+- `immichctl`：`warm_begin` 不再把 server 重启成只开 API；`warm_end` 只删标志文件，不重启 server（只有旧版本以 `warm-up` 方式启动、还没重启过的 server 才重启一次）。`run/server-workers` 始终是 `all`。
+
+对照原因分析：
+
+| 原问题 | 修复后 |
+|---|---|
+| 1. 封面任务要等预热结束 | `PersonGenerateThumbnail` 在缩略图队列，预热期间照常执行，几秒内完成 |
+| 2. 预热结束重启 server，WebSocket 通知丢失 | 不再重启，连接不断，通知正常送达 |
+| 3. 重启空档内请求失败 | 没有空档 |
+
+没有做的：网页"模型准备中"横幅、WebSocket 重连后补刷新。修复后预热期间只有智能搜索、人脸检测、文字识别在等，这些本来就是后台慢慢做的，用户不会点了等结果；server 正常重启（升级、`immichctl restart`）时的通知丢失是上游就有的行为，暂不处理。
+
+### 测试
+
+- 单元测试：`utils/ml-warming.spec.ts`（5 项：没有标志；pid 存活；pid 已退出；`agent` 时看 plist 在不在；内容无法识别），`queue.service.spec.ts` 新增 3 项（没有配置预热（容器）则全部启动；预热中启动则暂缓 ML 队列；预热结束后启动它们、下次预热再暂停，全程不重启），`vitest` 63/63 通过。
+- 端到端（`m3_standalone.sh fresh`，发版前用 release 包跑）：
+  - `m4_warm_queue.py upload`：预热期间上传一张照片，60 秒内生成缩略图，且 smartSearch 队列里有它（waiting 或 active）。
+  - 检查 `run/server-workers` 为 `all`，预热前后 server 的 pid 不变（没有重启）。
+  - `m4_warm_queue.py check`：预热结束后这张照片能被智能搜索找到。

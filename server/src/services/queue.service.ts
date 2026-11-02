@@ -30,6 +30,10 @@ import {
 } from 'src/enum.js';
 import { BaseService } from 'src/services/base.service.js';
 import { handlePromiseError } from 'src/utils/misc.js';
+import { ML_QUEUES, isMlWarming } from 'src/utils/ml-warming.js';
+
+/** how often a native install's warm-up is looked for (immichctl warm) */
+const ML_WARMING_CHECK_MS = 5000;
 
 const asNightlyTasksCron = (config: SystemConfig) => {
   const [hours, minutes] = config.nightlyTasks.startTime.split(':').map(Number);
@@ -40,6 +44,7 @@ const asNightlyTasksCron = (config: SystemConfig) => {
 export class QueueService extends BaseService {
   private services: (new (...args: any[]) => unknown)[] = [];
   private nightlyJobsLock = false;
+  private mlWarmingTimer?: NodeJS.Timeout;
 
   @OnEvent({ name: 'ConfigInit' })
   async onConfigInit({ newConfig: config }: ArgOf<'ConfigInit'>) {
@@ -83,7 +88,12 @@ export class QueueService extends BaseService {
   onBootstrap() {
     this.jobRepository.setup(this.services);
     if (this.worker === ImmichWorker.Microservices) {
-      this.jobRepository.startWorkers();
+      const { mlWarming } = this.configRepository.getEnv();
+      const warming = !!mlWarming && isMlWarming(mlWarming);
+      this.jobRepository.startWorkers(warming ? ML_QUEUES : []);
+      if (mlWarming) {
+        this.watchMlWarming(mlWarming, warming);
+      }
     } else if (this.worker === ImmichWorker.Api) {
       this.jobRepository.watchWorkers();
     }
@@ -92,6 +102,34 @@ export class QueueService extends BaseService {
   @OnEvent({ name: 'AppShutdown' })
   onShutdown() {
     this.jobRepository.teardown();
+    clearInterval(this.mlWarmingTimer);
+  }
+
+  /**
+   * While a native install prepares its machine learning models (immichctl warm, minutes the first time), the jobs
+   * that call the service wait, and the rest run: thumbnails, a person's new featured photo, metadata. Nothing
+   * restarts, which kept the API down for seconds and lost the notices sent meanwhile
+   * (macos/verification/m4-person-cover-during-warmup.md).
+   */
+  private watchMlWarming(paths: { flag: string; agent?: string }, warming: boolean) {
+    if (warming) {
+      this.logger.log(`Machine learning models being prepared: ${ML_QUEUES.join(', ')} wait until they are ready`);
+    }
+    this.mlWarmingTimer = setInterval(() => {
+      const now = isMlWarming(paths);
+      if (now === warming) {
+        return;
+      }
+      warming = now;
+      if (now) {
+        this.logger.log(`Machine learning models being prepared: ${ML_QUEUES.join(', ')} wait until they are ready`);
+        handlePromiseError(this.jobRepository.holdWorkers(ML_QUEUES), this.logger);
+      } else {
+        this.logger.log(`Machine learning models ready: ${ML_QUEUES.join(', ')} go on`);
+        this.jobRepository.releaseWorkers(ML_QUEUES);
+      }
+    }, ML_WARMING_CHECK_MS);
+    this.mlWarmingTimer.unref();
   }
 
   private updateConcurrency(config: SystemConfig) {

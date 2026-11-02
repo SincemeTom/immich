@@ -87,15 +87,46 @@ export class JobRepository {
     }
   }
 
-  startWorkers() {
+  /** queues held from the start, whose workers have not run yet (startWorkers) */
+  private notRunYet = new Set<QueueName>();
+
+  /** held: queues whose workers take no jobs until released (releaseWorkers) */
+  startWorkers(held: QueueName[] = []) {
     const { bull } = this.configRepository.getEnv();
     for (const queueName of Object.values(QueueName)) {
       this.logger.debug(`Starting worker for queue: ${queueName}`);
+      const autorun = !held.includes(queueName);
       this.workers[queueName] = new Worker(
         queueName,
         (job) => this.eventRepository.emit('JobRun', queueName, job as JobItem),
-        { ...bull.config, concurrency: 1, name: ImmichWorker.Microservices },
+        { ...bull.config, concurrency: 1, name: ImmichWorker.Microservices, autorun },
       );
+      if (!autorun) {
+        this.notRunYet.add(queueName);
+      }
+    }
+  }
+
+  /**
+   * This process's workers of these queues take no new jobs; those they run finish. The queues are not paused (that
+   * is the admin's, kept in Valkey): this is undone by releaseWorkers, or a restart.
+   */
+  async holdWorkers(names: QueueName[]) {
+    const running = names.filter((name) => !this.notRunYet.has(name)).map((name) => this.workers[name]);
+    await Promise.all(running.filter((worker) => worker !== undefined).map((worker) => worker.pause(true)));
+  }
+
+  releaseWorkers(names: QueueName[]) {
+    for (const name of names) {
+      const worker = this.workers[name];
+      if (!worker) {
+        continue;
+      }
+      if (this.notRunYet.delete(name)) {
+        worker.run().catch((error) => this.logger.error(`Worker for queue ${name} stopped: ${error}`));
+      } else {
+        worker.resume();
+      }
     }
   }
 

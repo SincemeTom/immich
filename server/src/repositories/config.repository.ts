@@ -126,6 +126,13 @@ export interface EnvData {
 
   workers: ImmichWorker[];
 
+  /**
+   * A native macOS install's warm-up of the machine learning models (immichctl warm): the file it holds while it runs,
+   * with its pid, or `agent` while the LaunchAgent that runs it is set up (agent, that LaunchAgent's plist). Meanwhile
+   * the jobs that need the machine learning service wait; the others run.
+   */
+  mlWarming?: { flag: string; agent?: string };
+
   plugins: {
     external: {
       allow: boolean;
@@ -369,6 +376,10 @@ const getEnv = (): EnvData => {
       networkSharesLocation: dto.IMMICH_NETWORK_SHARES_LOCATION,
       networkSharesNfsPort: dto.IMMICH_NETWORK_SHARES_NFS_PORT,
     },
+
+    mlWarming: dto.IMMICH_ML_WARMING_FLAG
+      ? { flag: dto.IMMICH_ML_WARMING_FLAG, agent: dto.IMMICH_ML_WARMING_AGENT }
+      : undefined,
 
     telemetry: {
       apiPort: dto.IMMICH_API_METRICS_PORT || 8081,

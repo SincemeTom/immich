@@ -6,6 +6,8 @@ export const newJobRepositoryMock = (): Mocked<RepositoryInterface<JobRepository
   return {
     setup: vitest.fn(),
     startWorkers: vitest.fn(),
+    holdWorkers: vitest.fn().mockResolvedValue(undefined),
+    releaseWorkers: vitest.fn(),
     watchWorkers: vitest.fn(),
     teardown: vitest.fn(),
     run: vitest.fn(),

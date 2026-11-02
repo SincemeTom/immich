@@ -142,7 +142,7 @@ cmd_status() {
     printf '%-9s %-22s %s\n' "$service" "$state" "$health"
   done
   if warming; then
-    echo "models:   being prepared; until then thumbnails, smart search, faces and text wait in the queue (immichctl logs warm)"
+    echo "models:   being prepared; until then smart search, faces and text wait in the queue (immichctl logs warm)"
   elif [ -f "$(plist warm)" ]; then
     echo "models:   preparing them in the background failed: see immichctl logs warm; immichctl warm tries again"
   fi
@@ -335,32 +335,31 @@ warming() {
   esac
 }
 
-# how the running server was started: `warm-up` (its API alone) or `all` (run-service)
+# how the running server was started (run-service): `all`, or `warm-up` (its API alone), by a release before mac.6
 server_workers() {
   cat "$home/run/server-workers" 2>/dev/null || echo all
 }
 
-# The server keeps answering while the models are prepared, with its API alone (run-service): restarted into that
-# unless it runs so already. Its job worker would send the machine learning service, which the warm-up replaces,
-# requests that fail; the jobs wait in the queue instead.
+# The server keeps running while the models are prepared: it sees the flag, and holds the jobs that call the machine
+# learning service, which the warm-up replaces, until the flag is gone (QueueService); the rest go on. Nothing is
+# restarted (macos/verification/m4-person-cover-during-warmup.md).
 warm_begin() {
   mkdir -p "$home/run"
   echo $$ >"$warm_flag"
   warm_holding=1
-  if is_loaded server && [ "$(server_workers)" != warm-up ]; then
-    echo "  the server answers meanwhile; its jobs (thumbnails, smart search, faces, text) wait until the models are ready"
-    stop_one server >/dev/null
-    start_one server >/dev/null || true
+  if is_loaded server; then
+    echo "  the server runs meanwhile; smart search, faces and text wait until the models are ready"
   fi
 }
 
-# the server back with its job worker, which takes up what waited; a no-op once that is done
+# the jobs that waited go on, as the server finds the flag gone; a no-op once that is done
 warm_end() {
   [ -n "$warm_holding" ] || return 0
   warm_holding=""
-  # unless another warm-up is to follow, which set the flag (warm_schedule): it then holds the server
+  # unless another warm-up is to follow, which set the flag (warm_schedule): it then holds the jobs
   [ "$(cat "$warm_flag" 2>/dev/null)" = $$ ] || return 0
   rm -f "$warm_flag"
+  # a server a release before mac.6 started with its API alone gets its job worker back
   if is_loaded server && [ "$(server_workers)" = warm-up ]; then
     stop_one server >/dev/null
     start_one server >/dev/null || true
@@ -373,7 +372,7 @@ warm_end() {
 # LaunchAgent of the user's, which runs `immichctl warm` once and then removes itself: it goes on after Installer
 # closes, and starts over at the next login if the Mac restarts first or it fails.
 
-# sets it up: the LaunchAgent, not started, and the flag that has the server start with its API alone meanwhile
+# sets it up: the LaunchAgent, not started, and the flag that has the server hold the jobs that need the models
 warm_schedule() {
   local pid waited=0
   mkdir -p "$home/run" "$logs" "$(dirname "$(plist warm)")"
@@ -426,7 +425,7 @@ warm_background() {
   warm_schedule
   launchctl bootstrap "$domain" "$(plist warm)"
   echo "preparing the machine learning models in the background (the first time, 10-15 minutes):"
-  echo "  the web UI and the apps work meanwhile; thumbnails, smart search, faces and text wait in the queue"
+  echo "  the web UI, the apps and thumbnails work meanwhile; smart search, faces and text wait in the queue"
   echo "  progress: immichctl logs warm; immichctl status says when it is done"
 }
 
@@ -528,7 +527,7 @@ retire_old_exports() {
 
 warm_once() {
   local clip="$1" face="$2" ocr="$3" ocr_max="$4" started next elapsed size last
-  # the warm-up takes the service's port (the server, its API alone, sends it nothing: warm_begin)
+  # the warm-up takes the service's port (the server holds the jobs that would call it meanwhile: warm_begin)
   stop_one ml >/dev/null
   # in a process group of its own, so that stopping it reaches the downloader and the service's preparing children
   /usr/bin/perl -e 'setpgrp(0, 0); exec @ARGV or die "exec: $!\n"' \
