@@ -270,34 +270,54 @@ describe(ContentAnalysisService.name, () => {
       mocks.vision.getCapabilities.mockResolvedValue(MACOS_26);
       mocks.vision.analyze.mockResolvedValue({
         ...vision,
-        classify: [],
+        classify: [{ label: 'outdoor', confidence: 0.8 }],
         animals: [],
-        documents: { count: 1, confidence: 0.95, lines: 20, paragraphs: 3, tables: 1, lists: 0, title: '发票' },
-        smudge: { confidence: 0.93 },
+        documents: {
+          count: 1,
+          confidence: 0,
+          lines: 20,
+          paragraphs: 3,
+          tables: 1,
+          lists: 0,
+          characters: 300,
+          textArea: 0.2,
+          title: '发票',
+        },
+        smudge: { confidence: 0.995 },
       });
 
       await sut.handleContentAnalysis({ id: asset.id });
 
-      expect(mocks.vision.upsert).toHaveBeenCalledWith(expect.objectContaining({ isDocument: true, smudge: 0.93 }));
+      expect(mocks.vision.upsert).toHaveBeenCalledWith(expect.objectContaining({ isDocument: true, smudge: 0.995 }));
       expect(mocks.vision.replaceAutoTags).toHaveBeenCalledWith(asset.id, [
         'tag:自动/文档/表格',
         'tag:自动/质量/镜头脏污',
       ]);
     });
 
-    it('does not take a little text for a document, nor a slight smudge for one', async () => {
+    it('does not take a street sign for a document, nor a bare wall or a blurred background for a smudge', async () => {
       mocks.vision.getCapabilities.mockResolvedValue(MACOS_26);
       mocks.vision.analyze.mockResolvedValue({
         ...vision,
         classify: [],
         animals: [],
-        documents: { count: 1, confidence: 0.9, lines: 2, paragraphs: 1, tables: 0, lists: 0, title: '' },
-        smudge: { confidence: 0.6 },
+        documents: {
+          count: 1,
+          confidence: 0,
+          lines: 10,
+          paragraphs: 10,
+          tables: 0,
+          lists: 0,
+          characters: 84,
+          textArea: 0.011,
+          title: '',
+        },
+        smudge: { confidence: 0.996 },
       });
 
       await sut.handleContentAnalysis({ id: asset.id });
 
-      expect(mocks.vision.upsert).toHaveBeenCalledWith(expect.objectContaining({ isDocument: false, smudge: 0.6 }));
+      expect(mocks.vision.upsert).toHaveBeenCalledWith(expect.objectContaining({ isDocument: false, smudge: 0.996 }));
       expect(mocks.vision.replaceAutoTags).toHaveBeenCalledWith(asset.id, []);
     });
 

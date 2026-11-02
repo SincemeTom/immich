@@ -20,12 +20,24 @@ export const SPEECH_TASK = 'speech';
 export const SPEECH_LANGUAGES = ['zh-CN', 'zh-HK', 'zh-TW', 'en-US', 'ja-JP', 'ko-KR'] as const;
 
 /**
- * How sure Vision has to be of a document, and how much of one it has to find, for "自动/文档": a receipt, a page,
- * a sign with a paragraph or two. Set on the research's documents (m4-vision-research.md); to be checked on macOS 26.
+ * What "自动/文档" takes, measured on macOS 26-27 (m4-vision-content.md, section 2.4). Vision's own confidence in a
+ * document is always 0 there, and it finds one in any picture, so the text it finds decides: a table; or text that
+ * covers much of the picture (a page); or what the classifier sees as a document, with some text over some of it
+ * (handwritten notes, a bill). A street sign, a shop's menu board, a lit name on a wall stay out.
  */
-export const DOCUMENT_MIN_CONFIDENCE = 0.8;
-/** how likely a smudged lens has to be for "自动/质量/镜头脏污": high, since a false one would be a slight */
-export const SMUDGE_MIN_CONFIDENCE = 0.9;
+export const DOCUMENT_TABLE_MIN_CHARACTERS = 20;
+export const DOCUMENT_MIN_CHARACTERS = 100;
+export const DOCUMENT_PAGE_MIN_TEXT_AREA = 0.3;
+export const DOCUMENT_MIN_TEXT_AREA = 0.05;
+export const DOCUMENT_LABEL_MIN_CONFIDENCE = 0.3;
+const DOCUMENT_LABELS = new Set(['document', 'printed_page', 'handwriting', 'receipt']);
+/**
+ * How likely a smudged lens has to be for "自动/质量/镜头脏污", and how sure the classifier has to be of something in
+ * the picture. On macOS 26-27 a smudge gives 0.99 and more, and so does a bare wall, which the classifier sees nothing
+ * in; a shallow depth of field gives up to about 0.986 (m4-vision-content.md, section 2.4).
+ */
+export const SMUDGE_MIN_CONFIDENCE = 0.99;
+export const SMUDGE_MIN_SCENE_CONFIDENCE = 0.3;
 /** how much better a photo's aesthetics score has to be to become its automatic stack's cover instead */
 export const COVER_MIN_GAIN = 0.05;
 /**
@@ -46,6 +58,10 @@ export type VisionDocument = {
   paragraphs?: number;
   tables?: number;
   lists?: number;
+  /** how many characters of text it read */
+  characters?: number;
+  /** how much of the picture its lines of text cover, 0 to 1 */
+  textArea?: number;
   title?: string;
 };
 export type SpeechSegment = { start: number; end: number; text: string };
@@ -75,12 +91,27 @@ export const getContentTasks = (
   return { image, video };
 };
 
-/** whether Vision found a document worth the tag: sure of it, with a table, paragraphs or a few lines of text */
-export const isDocument = (document?: VisionDocument) =>
-  !!document &&
-  document.count > 0 &&
-  (document.confidence ?? 0) >= DOCUMENT_MIN_CONFIDENCE &&
-  ((document.tables ?? 0) > 0 || (document.paragraphs ?? 0) >= 2 || (document.lines ?? 0) >= 5);
+/** whether a picture is a document worth the tag (DOCUMENT_* above), by what Vision read in it and what it sees */
+export const isDocument = (document?: VisionDocument, labels: VisionLabel[] = []) => {
+  if (!document || document.count === 0) {
+    return false;
+  }
+  const characters = document.characters ?? 0;
+  const textArea = document.textArea ?? 0;
+  const classified = labels.some(
+    ({ label, confidence }) => DOCUMENT_LABELS.has(label) && confidence >= DOCUMENT_LABEL_MIN_CONFIDENCE,
+  );
+  return (
+    ((document.tables ?? 0) > 0 && characters >= DOCUMENT_TABLE_MIN_CHARACTERS) ||
+    (characters >= DOCUMENT_MIN_CHARACTERS && textArea >= DOCUMENT_PAGE_MIN_TEXT_AREA) ||
+    (characters >= DOCUMENT_MIN_CHARACTERS && textArea >= DOCUMENT_MIN_TEXT_AREA && classified)
+  );
+};
+
+/** whether the lens was smudged (SMUDGE_* above): Vision is all but sure, and the classifier sees a scene */
+export const isSmudged = (smudge: number | null | undefined, labels: VisionLabel[] = []) =>
+  (smudge ?? 0) >= SMUDGE_MIN_CONFIDENCE &&
+  labels.some(({ confidence }) => confidence >= SMUDGE_MIN_SCENE_CONFIDENCE);
 
 /** the words of a video, as one text to search: its segments in order */
 export const getTranscriptText = (segments: SpeechSegment[] = []) =>

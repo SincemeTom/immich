@@ -32,7 +32,7 @@ import Foundation
 import Speech
 import Vision
 
-let HELPER_VERSION = 2
+let HELPER_VERSION = 3
 
 struct Job: Decodable {
     let id: String
@@ -209,14 +209,19 @@ func analyze(_ job: Job) async -> [String: Any] {
             case "documents":
                 guard #available(macOS 26.0, *) else { throw Failure("needs macOS 26") }
                 let documents = try await handler.perform(RecognizeDocumentsRequest())
-                // the one Vision is surest of
+                // the one Vision is surest of. On macOS 26-27 its confidence is 0 and its region the whole picture,
+                // whatever the picture: how much of the picture its text covers tells a page from a street sign
                 if let best = documents.max(by: { $0.confidence < $1.confidence }) {
                     let document = best.document
                     let title = document.title.map { $0.lines.compactMap { $0.topCandidates(1).first?.string } } ?? []
+                    let textArea = document.text.lines.reduce(0.0) { sum, line in
+                        sum + Double(line.boundingBox.width * line.boundingBox.height)
+                    }
                     out[task] = [
                         "count": documents.count, "confidence": rounded(best.confidence),
                         "lines": document.text.lines.count, "paragraphs": document.paragraphs.count,
                         "tables": document.tables.count, "lists": document.lists.count,
+                        "characters": document.text.transcript.count, "textArea": rounded(Float(min(textArea, 1))),
                         "title": title.joined(separator: " "),
                     ]
                 } else {

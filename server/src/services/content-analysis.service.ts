@@ -20,7 +20,6 @@ import {
   DOCUMENT_TAG,
   QR_CODE_TAG,
   SCREENSHOT_TAG,
-  SMUDGE_MIN_CONFIDENCE,
   SMUDGE_TAG,
   SPEECH_TASK,
   TABLE_TAG,
@@ -33,6 +32,7 @@ import {
   hasQrCode,
   isDocument,
   isScreenshot,
+  isSmudged,
   succeeded,
 } from 'src/utils/content-analysis.js';
 import { tokenizeForSearch } from 'src/utils/database.js';
@@ -185,7 +185,7 @@ export class ContentAnalysisService extends BaseService {
       isScreenshot: screenshot,
       labels,
       barcodes: barcodes.map(({ payload }) => payload),
-      ...(documents && { isDocument: isDocument(documents) }),
+      ...(documents && { isDocument: isDocument(documents, labels) }),
       ...(smudge && { smudge: smudge.confidence }),
       ...(speech && {
         // as OCR keeps its text, for the same search: words, and Chinese in pairs of characters
@@ -203,11 +203,11 @@ export class ContentAnalysisService extends BaseService {
       if (hasQrCode(barcodes)) {
         values.push(QR_CODE_TAG);
       }
-      const document = documents ? isDocument(documents) : !!previous?.isDocument;
+      const document = documents ? isDocument(documents, labels) : !!previous?.isDocument;
       if (document) {
         values.push((documents?.tables ?? 0) > 0 ? TABLE_TAG : DOCUMENT_TAG);
       }
-      if ((smudge?.confidence ?? previous?.smudge ?? 0) >= SMUDGE_MIN_CONFIDENCE) {
+      if (isSmudged(smudge?.confidence ?? previous?.smudge, labels)) {
         values.push(SMUDGE_TAG);
       }
       const tags = await upsertTags(this.tagRepository, { userId: asset.ownerId, tags: [...new Set(values)] });
