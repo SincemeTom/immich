@@ -2,7 +2,9 @@
 
 Immich macOS 原生版（非官方）的各个版本。版本号是 `<上游 Immich 版本>-mac.<序号>`，每个版本对应一个 git 标签，发布流程见 [RELEASING.md](RELEASING.md)。这个版本基于上游 Immich 修改，改动的验证记录在 [verification/](verification/README.md)。
 
-## 未发布
+## v3.3.5-mac.5（2026-11-02）
+
+基于上游 v3.3.5。
 
 **新功能**
 
@@ -18,6 +20,11 @@ Immich macOS 原生版（非官方）的各个版本。版本号是 `<上游 Imm
 - "隐藏未命名的人物"隐藏全部未命名人物：原来只隐藏页面上已经加载的前 500 个
 - 照片在 NAS 上时，编辑（旋转）保存不再误报"应用编辑失败"：超过 30 秒提示"正在后台处理"，处理完照片自动更新（[m1-edit-nfs-timeout.md](verification/m1-edit-nfs-timeout.md)）
 - macOS 26 起的文档、镜头脏污识别按实测校准：Vision 给的文档把握度始终为 0，改为按识别到的文字判断；白墙、背景虚化不再被当成镜头脏污
+
+**升级注意**
+
+- 升级后服务端启动时自动开始内容分析，已有照片较多时要跑一阵（5 万张约 40 分钟），期间照常使用
+- 打包机升级到 macOS 27 后，包仍然支持 macOS 15 及以上（[RELEASING.md](RELEASING.md)，"Homebrew on a newer macOS"）
 
 ## v3.3.5-mac.4（2026-11-01）
 
