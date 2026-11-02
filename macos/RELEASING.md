@@ -100,6 +100,17 @@ gh release create v3.3.5-mac.3 --repo SincemeTom/immich --draft --title "v3.3.5-
 - [ ] 测试机、正式环境装上新版本，`immichctl status` 正常
 - [ ] `macos/verification/README.md` 里相关问题标为"已修复（v3.3.5-mac.3）"
 
+## Homebrew on a newer macOS（打包机升级系统以后）
+
+发布包要能在 macOS 15 上运行，带进去的 Homebrew 库也必须是给 15 编译的。打包机升级到更新的 macOS（例如 27）后，Homebrew 下载的新版本只提供给新系统编译的预编译包（`brew info --json=v2 <名字>` 里的 bottle 只有新系统的标签）。这样的库带进包里，整个包就只能在新系统上运行。
+
+`build-release.sh` 打包时会检查：只要有库要求高于 15，就列出这些库并报错停下。处理办法：
+
+1. 本机还留着给 15 编译的旧版本时（`brew list --versions <名字>` 能看到两个版本），先把新版本从 Cellar 挪到别处，再执行 `brew link --overwrite <名字>`，然后 `brew pin <名字>`。keg-only 的库（如 libarchive）要手动改 `opt` 链接：`ln -sfn ../Cellar/<名字>/<旧版本> /opt/homebrew/opt/<名字>`。许可证收集会按当前链接的版本，从配方地址推出对应版本的源码地址
+2. 本机没有旧版本时，只能用 `MACOSX_DEPLOYMENT_TARGET=15.0` 从源码编译这个库（需要能编译的命令行工具），或者在一台 macOS 15 的 Mac 上打包
+
+2026-11-02：打包机升级到 macOS 27.2 后，`brew upgrade` 了 aom、fribidi、imagemagick、libarchive、openexr，结果包变成"runs on macOS 27.2 or later"。按第 1 条处理：新版本挪到 `~/Library/Caches/immich-package/brew-kegs-macos27/`，这 5 个库已 pin，`brew upgrade` 不会再升级它们。
+
 ## 证书
 
 签名带 Apple 的安全时间戳，公证票据也已装订进安装包。证书（2027-11-29 到期）过期后，之前打的包照样能装、装好的程序照样能运行；只有证书被吊销才会失效。证书过期后只是不能再打**新**包，届时在开发者后台续一张 Developer ID 证书即可。钥匙串里的两张证书（Developer ID Application、Developer ID Installer）请导出 `.p12` 备份。

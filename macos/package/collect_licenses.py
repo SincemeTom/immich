@@ -191,12 +191,21 @@ class Collector:
                                          text=True, check=True).stdout)
         for formula in info["formulae"]:
             name = formula["name"]
-            installed = sorted((CELLAR / name).iterdir())[-1]
+            # the keg the release bundled: the linked one (opt), which may be older than the formula and other kegs,
+            # kept as built for the macOS the release is for (build-release.sh)
+            opt = CELLAR.parent / "opt" / name
+            installed = opt.resolve() if opt.exists() else sorted((CELLAR / name).iterdir())[-1]
             version = installed.name
             url = formula["urls"]["stable"]["url"]
-            if re.sub(r"_\d+$", "", version) != formula["versions"]["stable"]:
-                self.problems.append(f"{name}: {version} installed, the formula is now {formula['versions']['stable']}: "
-                                     "its source URL is not the installed one's")
+            current = formula["versions"]["stable"]
+            if re.sub(r"_\d+$", "", version) != current:
+                # the installed version's source: the formula's URL with its version (a git URL has none: the tag)
+                older = re.sub(r"_\d+$", "", version)
+                if current in url:
+                    url = url.replace(current, older)
+                elif copyleft(formula["license"]):
+                    self.problems.append(f"{name}: {version} installed, the formula is now {current}, and its source "
+                                         f"URL {url} does not say which version")
             folder = self.out / "homebrew" / name
             files = []
             for path in license_files(installed):

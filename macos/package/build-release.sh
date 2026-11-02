@@ -311,6 +311,19 @@ macos_min="$(find "$RELEASE" -type f \( -name '*.dylib' -o -name '*.so' -o -name
   | xargs -0 -n 50 otool -l 2>/dev/null | awk '/LC_BUILD_VERSION/ { b = 1 } b && $1 == "platform" { p = $2 }
       b && $1 == "minos" { if (p == 1) print $2; b = 0 }' | sort -V | tail -1)"
 info "runs on macOS $macos_min or later"
+# On a Mac newer than that, Homebrew's bottles of a formula updated since are built for this Mac's macOS only: the
+# release would not run on the Macs it is for. Keep the kegs built for $MACOSX_DEPLOYMENT_TARGET (brew pin them)
+newer() { [ "$(printf '%s\n' "$1" "$MACOSX_DEPLOYMENT_TARGET" | sort -V | tail -1)" != "$MACOSX_DEPLOYMENT_TARGET" ]; }
+if newer "$macos_min"; then
+  while IFS= read -r -d '' file; do
+    case "$file" in */coders/* | */filters/*) continue ;; esac # ImageMagick's modules: libMagickCore says it
+    minos="$(otool -l "$file" 2>/dev/null | awk '/LC_BUILD_VERSION/ { b = 1 } b && $1 == "minos" { print $2; exit }')"
+    if [ -n "$minos" ] && newer "$minos"; then
+      echo "      needs macOS $minos: ${file#"$RELEASE"/}" | tee -a "$LOG"
+    fi
+  done < <(find "$RELEASE" -type f \( -name '*.dylib' -o -name '*.so' -o -name '*.node' -o -perm -u+x \) -print0)
+  die "the release needs macOS $macos_min, not $MACOSX_DEPLOYMENT_TARGET: the libraries above are from Homebrew's bottles for a newer macOS (macos/RELEASING.md, \"Homebrew on a newer macOS\")"
+fi
 
 cat >"$RELEASE/RELEASE" <<EOF
 id=$RELEASE_ID
