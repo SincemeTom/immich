@@ -19631,6 +19631,10 @@
             "description": "Whether the task is enabled",
             "type": "boolean"
           },
+          "hideNewPeople": {
+            "description": "Whether the people facial recognition finds are hidden until shown, as when all unnamed are hidden",
+            "type": "boolean"
+          },
           "maxDistance": {
             "description": "Maximum distance threshold for face recognition",
             "format": "double",
@@ -19658,6 +19662,7 @@
         },
         "required": [
           "enabled",
+          "hideNewPeople",
           "maxDistance",
           "minFaces",
           "minScore",

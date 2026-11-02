@@ -3,9 +3,12 @@ import userEvent from '@testing-library/user-event';
 import type { ComponentProps } from 'svelte';
 import { vi } from 'vitest';
 import { getIntersectionObserverMock } from '$lib/__mocks__/intersection-observer.mock';
+import { sdkMock } from '$lib/__mocks__/sdk.mock';
 import { personFactory } from '@test-data/factories/person-factory';
 import ManagePeoplePage from './+page.svelte';
 import ManagePeoplePageTestWrapper from './ManagePeopleVisibility.test-wrapper.svelte';
+
+vi.mock('$app/navigation', () => ({ goto: vi.fn() }));
 
 vi.mock(import('$lib/managers/feature-flags-manager.svelte'), function () {
   return {
@@ -75,5 +78,34 @@ describe('People manage page', () => {
     const personButtons = container.querySelectorAll('button[aria-pressed]');
     expect(personButtons).toHaveLength(3);
     expect(personButtons[2].getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('hides all the unnamed, not only those loaded so far', async () => {
+    const named = personFactory.build({ id: 'a', name: 'Alice', isHidden: false });
+    const unnamed = personFactory.build({ id: 'b', name: '', isHidden: false });
+    const further = personFactory.build({ id: 'c', name: '', isHidden: false });
+    sdkMock.getAllPeople.mockResolvedValue({ people: [further], total: 3, hidden: 0, hasNextPage: false });
+    sdkMock.updatePeople.mockResolvedValue([
+      { id: 'b', success: true },
+      { id: 'c', success: true },
+    ]);
+
+    const { getByLabelText, getByText } = render(ManagePeoplePageTestWrapper, {
+      data: getData([named, unnamed], true),
+    });
+    const user = userEvent.setup();
+
+    await user.click(getByLabelText('hide_unnamed_people'));
+    expect(sdkMock.getAllPeople).toHaveBeenCalledWith({ withHidden: true, page: 2 });
+
+    await user.click(getByText('done'));
+    expect(sdkMock.updatePeople).toHaveBeenCalledWith({
+      peopleUpdateDto: {
+        people: [
+          { id: 'b', isHidden: true },
+          { id: 'c', isHidden: true },
+        ],
+      },
+    });
   });
 });

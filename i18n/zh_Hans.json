@@ -190,6 +190,8 @@
     "machine_learning_facial_recognition_model_description": "模型按文件体积降序排列。更大的模型运行速度更慢且占用更多内存，但效果更好。注意：更换模型后，必须对所有照片重新执行“人脸检测”任务。",
     "machine_learning_facial_recognition_setting": "启用人脸识别",
     "machine_learning_facial_recognition_setting_description": "禁用后将不会对照片进行人脸识别编码，且“探索”页面的“人物”部分将不会显示内容。",
+    "machine_learning_hide_new_people": "新识别的人物默认隐藏",
+    "machine_learning_hide_new_people_description": "人脸识别新发现的人物一开始就是隐藏的，效果和「隐藏未命名的人物」一样，重新识别全部照片后重建的人物也会隐藏。需要命名时，在「显示和隐藏人物」里把他们显示出来。",
     "machine_learning_max_detection_distance": "最大检测阈值",
     "machine_learning_max_detection_distance_description": "两张图片被视为重复项目的阈值，范围为0.001～0.1。更高的阈值能检测出更多重复项目，但误判的可能性也越高。",
     "machine_learning_max_recognition_distance": "最大识别阈值",

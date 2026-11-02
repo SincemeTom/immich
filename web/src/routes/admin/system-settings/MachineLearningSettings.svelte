@@ -252,6 +252,15 @@
             isEdited={configToEdit.machineLearning.facialRecognition.minFaces !==
               config.machineLearning.facialRecognition.minFaces}
           />
+
+          <SettingSwitch
+            title={$t('admin.machine_learning_hide_new_people')}
+            subtitle={$t('admin.machine_learning_hide_new_people_description')}
+            bind:checked={configToEdit.machineLearning.facialRecognition.hideNewPeople}
+            disabled={disabled ||
+              !configToEdit.machineLearning.enabled ||
+              !configToEdit.machineLearning.facialRecognition.enabled}
+          />
         </div>
       </SettingAccordion>
 

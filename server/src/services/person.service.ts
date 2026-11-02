@@ -618,7 +618,14 @@ export class PersonService extends BaseService {
       if (person) {
         this.logger.debug(`Face ${id} matched person ${person.personGroupId}`);
       } else {
-        await this.personRepository.create({ ownerId, faceAssetId: face.id, personGroupId });
+        // unnamed, as all found are: hidden if unnamed people are to stay hidden, as found while recognizing a library
+        // or after recognizing it all again, when "hide unnamed" has been done already
+        await this.personRepository.create({
+          ownerId,
+          faceAssetId: face.id,
+          personGroupId,
+          ...(machineLearning.facialRecognition.hideNewPeople && { isHidden: true }),
+        });
         this.logger.log(`Created person for face ${id} in group ${personGroupId}`);
         await this.jobRepository.queue({
           name: JobName.PersonGenerateThumbnail,
