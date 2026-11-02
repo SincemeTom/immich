@@ -8,6 +8,7 @@ import {
   hasQrCode,
   isDocument,
   isScreenshot,
+  isSmudged,
   succeeded,
 } from 'src/utils/content-analysis.js';
 import { VISION_LABELS } from 'src/utils/vision-labels.js';
@@ -144,16 +145,44 @@ describe('content analysis', () => {
   });
 
   describe('isDocument', () => {
-    it('takes a page, a receipt, a table, of which Vision is sure', () => {
-      expect(isDocument({ count: 1, confidence: 0.9, lines: 12, paragraphs: 3, tables: 0 })).toBe(true);
-      expect(isDocument({ count: 1, confidence: 0.85, lines: 4, paragraphs: 1, tables: 1 })).toBe(true);
+    // as measured on macOS 27 (m4-vision-content.md, section 2.4): Vision's confidence is always 0
+    const page = { count: 1, confidence: 0, lines: 19, paragraphs: 10, tables: 0, characters: 628, textArea: 0.94 };
+    const bill = { count: 1, confidence: 0, lines: 36, paragraphs: 32, tables: 1, characters: 502, textArea: 0.13 };
+    const notes = { count: 1, confidence: 0, lines: 22, paragraphs: 18, tables: 0, characters: 329, textArea: 0.15 };
+    const menuBoard = { count: 1, confidence: 0, lines: 36, paragraphs: 35, tables: 0, characters: 406, textArea: 0.13 };
+    const streetSign = { count: 1, confidence: 0, lines: 10, paragraphs: 10, tables: 0, characters: 84, textArea: 0.01 };
+    const litName = { count: 1, confidence: 0, lines: 1, paragraphs: 1, tables: 0, characters: 5, textArea: 0.27 };
+
+    it('takes a page, a table, handwritten notes the classifier sees as such', () => {
+      expect(isDocument(page)).toBe(true);
+      expect(isDocument(bill)).toBe(true);
+      expect(isDocument(notes, [{ label: 'handwriting', confidence: 0.49 }])).toBe(true);
     });
 
-    it('leaves a sign with a word or two, or what Vision is unsure of', () => {
-      expect(isDocument({ count: 1, confidence: 0.95, lines: 2, paragraphs: 1, tables: 0 })).toBe(false);
-      expect(isDocument({ count: 1, confidence: 0.5, lines: 30, paragraphs: 5, tables: 1 })).toBe(false);
+    it('leaves a menu board, a street sign, a lit name, a picture without text', () => {
+      expect(isDocument(menuBoard, [{ label: 'chalkboard', confidence: 0.31 }])).toBe(false);
+      expect(isDocument(notes)).toBe(false);
+      expect(isDocument(streetSign, [{ label: 'sign', confidence: 0.17 }])).toBe(false);
+      expect(isDocument(litName, [{ label: 'document', confidence: 0.6 }])).toBe(false);
+      expect(isDocument({ count: 1, confidence: 0, lines: 0, paragraphs: 0, tables: 0, characters: 0, textArea: 0 })).toBe(
+        false,
+      );
       expect(isDocument({ count: 0 })).toBe(false);
       expect(isDocument()).toBe(false);
+    });
+  });
+
+  describe('isSmudged', () => {
+    it('takes what Vision is all but sure of, in a scene', () => {
+      expect(isSmudged(0.999, [{ label: 'outdoor', confidence: 0.72 }])).toBe(true);
+    });
+
+    it('leaves a bare wall, a blurred background, a slight smudge', () => {
+      expect(isSmudged(0.996, [])).toBe(false);
+      expect(isSmudged(0.928, [{ label: 'textile', confidence: 0.11 }])).toBe(false);
+      expect(isSmudged(0.986, [{ label: 'toy', confidence: 0.55 }])).toBe(false);
+      expect(isSmudged(0.6, [{ label: 'outdoor', confidence: 0.9 }])).toBe(false);
+      expect(isSmudged(null, [{ label: 'outdoor', confidence: 0.9 }])).toBe(false);
     });
   });
 
