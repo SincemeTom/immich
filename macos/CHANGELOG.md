@@ -2,6 +2,13 @@
 
 Immich macOS 原生版（非官方）的各个版本。版本号是 `<上游 Immich 版本>-mac.<序号>`，每个版本对应一个 git 标签，发布流程见 [RELEASING.md](RELEASING.md)。这个版本基于上游 Immich 修改，改动的验证记录在 [verification/](verification/README.md)。
 
+## 未发布
+
+**修复**
+
+- 内容分析的并发调高后，视频语音识别不再卡住：原来同时识别的视频数一达到 CPU 核心数（如 Mac mini M4 的 10），识别程序就会卡死，任务一直显示"正在运行"，30 分钟后一起失败。现在同时最多识别 2 段视频，其余排队；照片不受影响，调高并发照样加快照片的分析（[m4-vision-speech-deadlock.md](verification/m4-vision-speech-deadlock.md)）
+- 视频语音识别的超时按视频时长计算（10 分钟加上视频时长，最多 2 小时），不再固定 30 分钟；一段视频超时也不会让同时在处理的其他照片和视频一起失败
+
 ## v3.3.5-mac.5（2026-11-02）
 
 基于上游 v3.3.5。

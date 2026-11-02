@@ -1,5 +1,5 @@
 import { AssetType, AssetVisibility, ImmichWorker, JobName, JobStatus, QueueName } from 'src/enum.js';
-import { ContentAnalysisService } from 'src/services/content-analysis.service.js';
+import { ContentAnalysisService, speechTimeout } from 'src/services/content-analysis.service.js';
 import { CONTENT_ANALYSIS_VERSION } from 'src/utils/content-analysis.js';
 import { AssetFactory } from 'test/factories/asset.factory.js';
 import { systemConfigStub } from 'test/fixtures/system-config.stub.js';
@@ -34,6 +34,7 @@ describe(ContentAnalysisService.name, () => {
     type: AssetType.Image,
     originalFileName: 'IMG_0001.HEIC',
     originalPath: '/library/IMG_0001.HEIC',
+    duration: null,
     width: 4032,
     height: 3024,
     stackId: null,
@@ -51,6 +52,7 @@ describe(ContentAnalysisService.name, () => {
     type: AssetType.Video,
     originalFileName: 'IMG_0002.MOV',
     originalPath: '/library/IMG_0002.MOV',
+    duration: 12_500,
   };
 
   const vision = {
@@ -218,7 +220,7 @@ describe(ContentAnalysisService.name, () => {
       expect(mocks.vision.analyze).toHaveBeenCalledWith('/thumbs/preview.jpeg', IMAGE_TASKS_26);
       expect(mocks.vision.analyze).toHaveBeenCalledWith('/library/IMG_0002.MOV', ['speech'], {
         language: 'zh-CN',
-        timeout: expect.any(Number),
+        timeout: 10 * 60_000 + 12_500,
       });
       expect(mocks.vision.upsert).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -446,5 +448,16 @@ describe(ContentAnalysisService.name, () => {
 
       expect(mocks.vision.upsert).toHaveBeenCalledWith(expect.objectContaining({ isScreenshot: false }));
     });
+  });
+});
+
+describe(speechTimeout.name, () => {
+  it('gives ten minutes, and as long again as the video', () => {
+    expect(speechTimeout(null)).toBe(10 * 60_000);
+    expect(speechTimeout(30 * 60_000)).toBe(40 * 60_000);
+  });
+
+  it('gives no more than two hours', () => {
+    expect(speechTimeout(5 * 60 * 60_000)).toBe(2 * 60 * 60_000);
   });
 });

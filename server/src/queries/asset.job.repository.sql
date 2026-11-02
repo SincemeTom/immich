@@ -545,6 +545,7 @@ select
   "asset"."type",
   "asset"."originalFileName",
   "asset"."originalPath",
+  "asset"."duration",
   "asset"."width",
   "asset"."height",
   "asset"."stackId",

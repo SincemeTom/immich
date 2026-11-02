@@ -4,7 +4,7 @@
 //
 // The server starts it once and keeps it: it reads one job per line on stdin, and writes each result as one line on
 // stdout when it is done. Jobs run at once, so a long video does not hold up the photos after it: results come in the
-// order they finish, each with its job's id.
+// order they finish, each with its job's id. Videos are listened to SPEECH_AT_ONCE at a time, the rest in turn.
 //
 //   {"id": "...", "path": "/…/preview.jpeg", "tasks": ["classify", "aesthetics", "animals", "barcodes"]}
 //   {"id": "...", "classify": [{"label": "cat", "confidence": 0.93}, …], "aesthetics": {"score": 0.41,
@@ -32,7 +32,7 @@ import Foundation
 import Speech
 import Vision
 
-let HELPER_VERSION = 3
+let HELPER_VERSION = 4
 
 struct Job: Decodable {
     let id: String
@@ -85,6 +85,56 @@ func macOSVersion() -> String {
 // --- a video's sound ------------------------------------------------------------------------------------------------
 
 /**
+ * Where a video's sound is read. AVAssetReader's copyNextSampleBuffer blocks its thread until the decoder has the next
+ * buffer, and Swift's tasks share one thread per core: as many videos at once as the Mac has cores blocked all of
+ * them, and the helper with them, for good (macos/verification/m4-vision-speech-deadlock.md). So the reading is done
+ * on threads of its own, which the tasks wait for without holding one.
+ */
+let audioQueue = DispatchQueue(label: "immich-vision.audio", qos: .utility, attributes: .concurrent)
+
+/**
+ * A number of slots, waited for without holding a thread: how many videos are listened to at once. Each takes a few
+ * hundred MB and the Neural Engine, which more at once only share; the rest wait their turn here.
+ */
+actor Slots {
+    private var free: Int
+    private var waiting: [CheckedContinuation<Void, Never>] = []
+
+    init(_ count: Int) { free = count }
+
+    func acquire() async {
+        if free > 0 {
+            free -= 1
+            return
+        }
+        await withCheckedContinuation { waiting.append($0) }
+    }
+
+    func release() {
+        if waiting.isEmpty {
+            free += 1
+        } else {
+            waiting.removeFirst().resume()
+        }
+    }
+
+    func with<T>(_ body: () async throws -> T) async rethrows -> T {
+        await acquire()
+        do {
+            let value = try await body()
+            release()
+            return value
+        } catch {
+            release()
+            throw error
+        }
+    }
+}
+
+let SPEECH_AT_ONCE = 2
+let speechSlots = Slots(SPEECH_AT_ONCE)
+
+/**
  * The first audio track of a video, as 16 kHz mono 16-bit PCM in a CAF file: what speech recognition reads, and
  * small (2 MB a minute). Its length in seconds; nil for a video without sound.
  */
@@ -93,6 +143,23 @@ func extractAudio(_ input: URL, to output: URL) async throws -> Double? {
     guard let track = try await asset.loadTracks(withMediaType: .audio).first else {
         return nil
     }
+    // the track goes to the reading thread and is used there only
+    let source = Unchecked((asset, track))
+    return try await withCheckedThrowingContinuation { continuation in
+        audioQueue.async {
+            continuation.resume(with: Result { try readAudio(source.value.0, track: source.value.1, to: output) })
+        }
+    }
+}
+
+/** a value handed to one other thread, which alone uses it from then on */
+struct Unchecked<T>: @unchecked Sendable {
+    let value: T
+    init(_ value: T) { self.value = value }
+}
+
+/** extractAudio's reading, which blocks: on audioQueue only */
+func readAudio(_ asset: AVURLAsset, track: AVAssetTrack, to output: URL) throws -> Double {
     let reader = try AVAssetReader(asset: asset)
     let readerOutput = AVAssetReaderTrackOutput(track: track, outputSettings: [
         AVFormatIDKey: kAudioFormatLinearPCM,
@@ -232,7 +299,7 @@ func analyze(_ job: Job) async -> [String: Any] {
                 out[task] = ["confidence": rounded(try await handler.perform(DetectLensSmudgeRequest()).confidence)]
             case "speech":
                 guard #available(macOS 26.0, *) else { throw Failure("needs macOS 26") }
-                out[task] = try await transcribe(url, language: job.language ?? "zh-CN")
+                out[task] = try await speechSlots.with { try await transcribe(url, language: job.language ?? "zh-CN") }
             default:
                 out[task] = ["error": "unknown task"]
             }
@@ -290,18 +357,24 @@ struct ImmichVision {
         }
         let output = Output()
         let decoder = JSONDecoder()
-        await withTaskGroup(of: Void.self) { group in
-            while let line = readLine() {
-                guard !line.isEmpty else { continue }
-                guard let job = try? decoder.decode(Job.self, from: Data(line.utf8)) else {
-                    let id = (try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any])?["id"]
-                    await output.write(["id": id ?? NSNull(), "error": "not a job"])
-                    continue
+        // stdin is read without blocking the main thread, which some of the frameworks call back on; and the jobs are
+        // let go as they finish (a task group keeps their results until it is asked for them)
+        await withDiscardingTaskGroup { group in
+            do {
+                for try await line in FileHandle.standardInput.bytes.lines {
+                    guard !line.isEmpty else { continue }
+                    guard let job = try? decoder.decode(Job.self, from: Data(line.utf8)) else {
+                        let id = (try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any])?["id"]
+                        await output.write(["id": id ?? NSNull(), "error": "not a job"])
+                        continue
+                    }
+                    group.addTask {
+                        let result = Line(object: await analyze(job))
+                        await output.write(result.object)
+                    }
                 }
-                group.addTask {
-                    let result = Line(object: await analyze(job))
-                    await output.write(result.object)
-                }
+            } catch {
+                FileHandle.standardError.write(Data("reading stdin: \(error)\n".utf8))
             }
         }
     }
