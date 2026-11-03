@@ -98,7 +98,10 @@
 
   const handleClose = async (assetId: string) => {
     invisible = true;
-    assetViewerManager.gridScrollTarget = { at: assetId };
+    // an asset removed from the album is no longer in the timeline to scroll to
+    if (timelineManager.getTimelineMonthByAssetId(assetId)) {
+      assetViewerManager.gridScrollTarget = { at: assetId };
+    }
     await navigate({
       targetRoute: 'current',
       assetId: null,
