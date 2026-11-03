@@ -2,7 +2,7 @@
 
 - 版本：`3.3.5-mac.5`，正式服 Mac mini（Apple M4，10 核，16 GB，macOS 26.6.2）
 - 日期：2026-11-02 发现，2026-11-03 在打包机（M4 Pro，12 核，macOS 27.2）复现并修复
-- 状态：**已修复**（`immich-vision` 4，服务端 `VisionRepository`），随 `v3.3.5-mac.6` 发布
+- 状态：**已修复**（`immich-vision` 4，服务端 `VisionRepository`），v3.3.5-mac.6
 - 结论：并发转写的视频数一到 CPU 核心数，`immich-vision` 就整个卡死，不是内存不足，也不是服务崩溃。提取视频声音时调用的是阻塞的 `AVAssetReaderTrackOutput.copyNextSampleBuffer()`，它占着 Swift 并发的工作线程等数据，而这个线程池每个核心只有一个线程。服务端每个转写请求的超时固定 30 分钟，所以网页上 10 个任务挂了半小时；超时时又把 helper 和其他请求一起停掉，10 个同时失败。
 
 ## 现象（用户描述）
