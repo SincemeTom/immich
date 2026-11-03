@@ -266,12 +266,19 @@ def main() -> None:
               exif.get("locationInferred") is True and "闵行区" in (exif.get("city") or "")
               and abs((exif.get("latitude") or 0) - GPS_POINT[0]) < 1e-4,
               f"{exif.get('city')}, inferred {exif.get('locationInferred')}")
-        source = client.get(f"/api/inferred-locations/{between}").json().get("source") or {}
-        check("the photo it was inferred from is told", source.get("assetId") == uploaded[TRIP[0][0].name], str(source))
-        exif = client.get(f"/api/assets/{uploaded[TRIP[4][0].name]}").json().get("exifInfo") or {}
-        check("inferred for one taken 25 minutes after one with a location, none after it",
-              exif.get("locationInferred") is True and abs((exif.get("latitude") or 0) - TRIP[2][1][0]) < 1e-4,
-              f"{exif.get('city')} {exif.get('latitude')}")
+        # the rules of mac.7 (a nearest photo within 30 minutes; what it was inferred from): not on a server before
+        # them, as m3's takeover runs this on the release installed before
+        rules = client.get("/api/system-config").json()["metadata"]["locationInference"]
+        if "nearbyMinutes" in rules:
+            source = client.get(f"/api/inferred-locations/{between}").json().get("source") or {}
+            check("the photo it was inferred from is told", source.get("assetId") == uploaded[TRIP[0][0].name],
+                  str(source))
+            exif = client.get(f"/api/assets/{uploaded[TRIP[4][0].name]}").json().get("exifInfo") or {}
+            check("inferred for one taken 25 minutes after one with a location, none after it",
+                  exif.get("locationInferred") is True and abs((exif.get("latitude") or 0) - TRIP[2][1][0]) < 1e-4,
+                  f"{exif.get('city')} {exif.get('latitude')}")
+        else:
+            print("  (location inference rules of mac.7: not on this server, not checked)")
         exif = client.get(f"/api/assets/{later}").json().get("exifInfo") or {}
         check("none for one taken an hour and a half from any", exif.get("latitude") is None, str(exif.get("city")))
         own = client.get(f"/api/assets/{uploaded[TRIP[0][0].name]}").json().get("exifInfo") or {}
