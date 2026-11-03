@@ -283,8 +283,14 @@ export type AdminConfigFacesDto = {
     "import": boolean;
 };
 export type AdminConfigLocationInferenceDto = {
-    /** Give a photo without a location the one of the photos taken just before and after it (within an hour, and a kilometer of each other): the own, and those in albums shared with the owner */
+    /** Between two photos with a location within maxDistanceMeters of each other: how far each may be, in minutes */
+    betweenMinutes: number;
+    /** Give a photo without a location the one of the photos taken around it: the own first, then those of others in an album shared with the photo */
     enabled: boolean;
+    /** How far apart in meters the photos before and after may be, for betweenMinutes */
+    maxDistanceMeters: number;
+    /** Otherwise, how near in minutes the photo with a location taken nearest to it must be */
+    nearbyMinutes: number;
 };
 export type AdminConfigMetadataDto = {
     faces: AdminConfigFacesDto;
@@ -1965,6 +1971,20 @@ export type AssetFaceDeleteDto = {
 export type FaceDto = {
     /** Face ID */
     id: string;
+};
+export type LocationInferenceSourceDto = {
+    /** The photo the location was taken from; null when the user cannot see it (not shared with them) */
+    assetId: string | null;
+    /** When that photo was taken, local time */
+    localDateTime: string;
+    /** Whose photo it is */
+    ownerId: string;
+    /** The name of whose photo it is */
+    ownerName: string;
+};
+export type LocationInferenceSourceResponseDto = {
+    /** What the inferred location was taken from; null when it is not inferred, or that photo is gone */
+    source: (LocationInferenceSourceDto) | null;
 };
 export type QueueStatisticsDto = {
     /** Number of active jobs */
@@ -5963,6 +5983,19 @@ export function clearInferredLocation({ id }: {
     return oazapfts.ok(oazapfts.fetchText(`/inferred-locations/${encodeURIComponent(id)}`, {
         ...opts,
         method: "DELETE"
+    }));
+}
+/**
+ * Get what the inferred location of an asset was taken from
+ */
+export function getInferredLocationSource({ id }: {
+    id: string;
+}, opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchJson<{
+        status: 200;
+        data: LocationInferenceSourceResponseDto;
+    }>(`/inferred-locations/${encodeURIComponent(id)}`, {
+        ...opts
     }));
 }
 /**

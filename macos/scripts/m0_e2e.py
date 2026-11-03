@@ -123,7 +123,8 @@ def gps_photo(path: Path = GPS_PHOTO, point: tuple[float, float] | None = GPS_PO
 
 
 # location inference: one without a location taken between two in Minhang, 20 minutes apart (the colors keep the three
-# from being one file); and one an hour and a half from any, which gets none
+# from being one file); one 25 minutes after the last of them, with none after it, which gets its location too; and one
+# an hour and a half from any, which gets none
 TRIP_START = datetime(2025, 5, 1, 10, 0, 0)
 TRIP = [
     (Path("/tmp/immich-m0/trip-1-gps.jpg"), GPS_POINT, TRIP_START, (200, 90, 90)),
@@ -131,6 +132,7 @@ TRIP = [
     (Path("/tmp/immich-m0/trip-3-gps.jpg"), (GPS_POINT[0] + 0.002, GPS_POINT[1]), TRIP_START + timedelta(minutes=20),
      (90, 90, 200)),
     (Path("/tmp/immich-m0/trip-4-no-gps-later.jpg"), None, TRIP_START + timedelta(minutes=110), (200, 200, 90)),
+    (Path("/tmp/immich-m0/trip-5-no-gps-soon.jpg"), None, TRIP_START + timedelta(minutes=45), (90, 200, 200)),
 ]
 
 
@@ -264,6 +266,19 @@ def main() -> None:
               exif.get("locationInferred") is True and "闵行区" in (exif.get("city") or "")
               and abs((exif.get("latitude") or 0) - GPS_POINT[0]) < 1e-4,
               f"{exif.get('city')}, inferred {exif.get('locationInferred')}")
+        # the rules of mac.7 (a nearest photo within 30 minutes; what it was inferred from): not on a server before
+        # them, as m3's takeover runs this on the release installed before
+        rules = client.get("/api/system-config").json()["metadata"]["locationInference"]
+        if "nearbyMinutes" in rules:
+            source = client.get(f"/api/inferred-locations/{between}").json().get("source") or {}
+            check("the photo it was inferred from is told", source.get("assetId") == uploaded[TRIP[0][0].name],
+                  str(source))
+            exif = client.get(f"/api/assets/{uploaded[TRIP[4][0].name]}").json().get("exifInfo") or {}
+            check("inferred for one taken 25 minutes after one with a location, none after it",
+                  exif.get("locationInferred") is True and abs((exif.get("latitude") or 0) - TRIP[2][1][0]) < 1e-4,
+                  f"{exif.get('city')} {exif.get('latitude')}")
+        else:
+            print("  (location inference rules of mac.7: not on this server, not checked)")
         exif = client.get(f"/api/assets/{later}").json().get("exifInfo") or {}
         check("none for one taken an hour and a half from any", exif.get("latitude") is None, str(exif.get("city")))
         own = client.get(f"/api/assets/{uploaded[TRIP[0][0].name]}").json().get("exifInfo") or {}

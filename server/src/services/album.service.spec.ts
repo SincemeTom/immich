@@ -18,6 +18,7 @@ describe(AlbumService.name, () => {
 
   beforeEach(() => {
     ({ sut, mocks } = newTestService(AlbumService));
+    mocks.assetJob.getInferredFrom.mockResolvedValue([]);
   });
 
   it('should work', () => {
@@ -1546,6 +1547,24 @@ describe(AlbumService.name, () => {
       ]);
 
       expect(mocks.album.removeAssetIds).toHaveBeenCalledWith(album.id, [asset.id]);
+    });
+
+    it('infers again the locations of the photos taken from those removed, and of those removed', async () => {
+      const asset = AssetFactory.create();
+      const album = AlbumFactory.create();
+      const { user: owner } = album.albumUsers.find(({ role }) => role === AlbumUserRole.Owner)!;
+      mocks.access.album.checkOwnerAccess.mockResolvedValue(new Set([album.id]));
+      mocks.access.asset.checkOwnerAccess.mockResolvedValue(new Set([asset.id]));
+      mocks.album.getById.mockResolvedValue(getForAlbum(album));
+      mocks.album.getAssetIds.mockResolvedValue(new Set([asset.id]));
+      mocks.assetJob.getInferredFrom.mockResolvedValue([{ id: 'inferred-1' }]);
+
+      await sut.removeAssets(AuthFactory.create(owner), album.id, { ids: [asset.id] });
+
+      expect(mocks.assetJob.getInferredFrom).toHaveBeenCalledWith([asset.id]);
+      expect(mocks.job.queueAll).toHaveBeenCalledWith(
+        [asset.id, 'inferred-1'].map((id) => ({ name: JobName.AssetInferLocation, data: { id } })),
+      );
     });
 
     it('should skip assets not in the album', async () => {

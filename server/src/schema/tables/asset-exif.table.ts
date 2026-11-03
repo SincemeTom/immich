@@ -125,4 +125,8 @@ export class AssetExifTable {
    */
   @Column({ type: 'boolean', nullable: true })
   locationInferred!: boolean | null;
+
+  /** The photo an inferred location was taken from */
+  @Column({ type: 'uuid', nullable: true })
+  locationInferredFromId!: string | null;
 }

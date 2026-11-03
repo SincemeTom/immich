@@ -123,6 +123,12 @@
       return;
     }
 
+    // only the stack's owner may read it; another user's asset (a shared album, a partner's) has no stack to navigate
+    if (asset.ownerId !== authManager.user.id) {
+      stack = undefined;
+      return;
+    }
+
     if (asset.stack) {
       stack = await getStack({ id: asset.stack.id });
     }

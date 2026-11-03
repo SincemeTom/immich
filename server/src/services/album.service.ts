@@ -302,6 +302,10 @@ export class AlbumService extends BaseService {
         userIds: album.albumUsers.map(({ user }) => user.id),
         recipientIds: [],
       });
+
+      // the photos whose locations were taken from them, of others in the album, may no longer have them
+      const inferredFrom = await this.assetJobRepository.getInferredFrom(removedIds);
+      await this.inferLocationsFrom([...new Set([...removedIds, ...inferredFrom.map(({ id }) => id)])]);
     }
 
     return results;

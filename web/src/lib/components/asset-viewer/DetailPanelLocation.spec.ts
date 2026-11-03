@@ -1,7 +1,7 @@
-import { clearInferredLocation, getAssetInfo } from '@immich/sdk';
+import { clearInferredLocation, getAssetInfo, getInferredLocationSource } from '@immich/sdk';
 import { modalManager } from '@immich/ui';
 import '@testing-library/jest-dom';
-import { screen } from '@testing-library/svelte';
+import { screen, waitFor } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import { renderWithTooltips } from '$tests/helpers';
 import { assetFactory } from '@test-data/factories/asset-factory';
@@ -11,6 +11,7 @@ vi.mock('@immich/sdk', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@immich/sdk')>()),
   clearInferredLocation: vi.fn(),
   getAssetInfo: vi.fn(),
+  getInferredLocationSource: vi.fn(),
 }));
 
 const minhang = {
@@ -22,6 +23,10 @@ const minhang = {
 };
 
 describe('DetailPanelLocation', () => {
+  beforeEach(() => {
+    vi.mocked(getInferredLocationSource).mockResolvedValue({ source: null });
+  });
+
   afterEach(() => {
     vi.restoreAllMocks();
     vi.clearAllMocks();
@@ -64,6 +69,42 @@ describe('DetailPanelLocation', () => {
     expect(screen.queryByRole('button', { name: 'location_inferred_clear' })).not.toBeInTheDocument();
   });
 
+  it('tells the photo it was inferred from, taken the same day', async () => {
+    const asset = assetFactory.build({
+      id: 'asset-1',
+      ownerId: 'owner-1',
+      localDateTime: '2026-10-29T06:05:00.000Z',
+      exifInfo: { ...minhang, locationInferred: true },
+    });
+    vi.mocked(getInferredLocationSource).mockResolvedValue({
+      source: { assetId: 'source-1', localDateTime: '2026-10-29T05:50:00.000Z', ownerId: 'owner-1', ownerName: 'Me' },
+    });
+
+    renderWithTooltips(DetailPanelLocation, { asset, isOwner: true });
+
+    expect(getInferredLocationSource).toHaveBeenCalledWith({ id: 'asset-1' });
+    await waitFor(() =>
+      expect(screen.getByTestId('location-inferred-source')).toHaveTextContent(/^location_inferred_from$/),
+    );
+  });
+
+  it("names whose photo it was, someone else's", async () => {
+    const asset = assetFactory.build({
+      ownerId: 'owner-1',
+      localDateTime: '2026-10-29T06:05:00.000Z',
+      exifInfo: { ...minhang, locationInferred: true },
+    });
+    vi.mocked(getInferredLocationSource).mockResolvedValue({
+      source: { assetId: null, localDateTime: '2026-10-29T05:50:00.000Z', ownerId: 'owner-2', ownerName: 'Friend' },
+    });
+
+    renderWithTooltips(DetailPanelLocation, { asset, isOwner: true });
+
+    await waitFor(() =>
+      expect(screen.getByTestId('location-inferred-source')).toHaveTextContent('location_inferred_from_user'),
+    );
+  });
+
   it('does not mark a location of its own', () => {
     const asset = assetFactory.build({ exifInfo: minhang });
 
@@ -72,5 +113,6 @@ describe('DetailPanelLocation', () => {
     expect(screen.getByText('上海市 闵行区 江川路街道')).toBeInTheDocument();
     expect(screen.queryByText('location_inferred')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'location_inferred_clear' })).not.toBeInTheDocument();
+    expect(getInferredLocationSource).not.toHaveBeenCalled();
   });
 });

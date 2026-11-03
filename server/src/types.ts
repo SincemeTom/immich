@@ -585,7 +585,11 @@ export interface SystemMetadata extends Record<SystemMetadataKey, Record<string,
   /** how the previews of raw photos were made: from the JPEG the camera embedded, or decoding the raw file */
   [SystemMetadataKey.RawPreviews]: { extractEmbedded: boolean };
   /** whether location inference was on: turned on (the upgrade that added it, too), it runs over the photos there are */
-  [SystemMetadataKey.LocationInference]: { enabled: boolean };
+  /** The rules the locations were inferred by: as they change, all are inferred again */
+  [SystemMetadataKey.LocationInference]: {
+    enabled: boolean;
+    rules?: { betweenMinutes: number; nearbyMinutes: number; maxDistanceMeters: number };
+  };
   [SystemMetadataKey.NetworkShareErrors]: {
     errors: Record<string, { reason: NetworkShareErrorReason; message: string }>;
   };

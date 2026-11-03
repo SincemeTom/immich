@@ -109,6 +109,9 @@ const updatedConfig = Object.freeze<SystemConfig>({
     },
     locationInference: {
       enabled: true,
+      betweenMinutes: 180,
+      nearbyMinutes: 30,
+      maxDistanceMeters: 1000,
     },
   },
   machineLearning: {

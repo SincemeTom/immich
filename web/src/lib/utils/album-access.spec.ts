@@ -50,15 +50,28 @@ describe('album access', () => {
     { access: AlbumAccess.Downloader, download: true, edit: false, manage: false },
     { access: AlbumAccess.Editor, download: true, edit: true, manage: false },
     { access: AlbumAccess.Manager, download: true, edit: true, manage: true },
-  ])('should tell what a $access can do', ({ access, download, edit, manage }) => {
-    authManager.setUser(member);
-    const album = albumWith(access);
+  ])(
+    'should tell what a $access can do',
+    ({
+      access,
+      download,
+      edit,
+      manage,
+    }: {
+      access: AlbumAccess;
+      download: boolean;
+      edit: boolean;
+      manage: boolean;
+    }) => {
+      authManager.setUser(member);
+      const album = albumWith(access as Exclude<AlbumAccess, AlbumAccess.Owner>);
 
-    expect(isAlbumOwner(album)).toBe(false);
-    expect(canDownloadFromAlbum(album)).toBe(download);
-    expect(isAlbumEditor(album)).toBe(edit);
-    expect(isAlbumManager(album)).toBe(manage);
-  });
+      expect(isAlbumOwner(album)).toBe(false);
+      expect(canDownloadFromAlbum(album)).toBe(download);
+      expect(isAlbumEditor(album)).toBe(edit);
+      expect(isAlbumManager(album)).toBe(manage);
+    },
+  );
 
   it('should let the owner do everything', () => {
     authManager.setUser(owner);

@@ -1,8 +1,11 @@
-import { Controller, Delete, HttpCode, HttpStatus, Param } from '@nestjs/common';
+import { Controller, Delete, Get, HttpCode, HttpStatus, Param } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import type { AuthDto } from 'src/dtos/auth.dto.js';
 import { Endpoint, HistoryBuilder } from 'src/decorators.js';
-import { LocationInferenceClearResponseDto } from 'src/dtos/location-inference.dto.js';
+import {
+  LocationInferenceClearResponseDto,
+  LocationInferenceSourceResponseDto,
+} from 'src/dtos/location-inference.dto.js';
 import { ApiTag, Permission } from 'src/enum.js';
 import { Auth, Authenticated } from 'src/middleware/auth.guard.js';
 import { LocationInferenceService } from 'src/services/location-inference.service.js';
@@ -14,6 +17,20 @@ const history = () => new HistoryBuilder().added('v3.3.5').alpha('v3.3.5');
 @Controller('inferred-locations')
 export class LocationInferenceController {
   constructor(private service: LocationInferenceService) {}
+
+  @Get(':id')
+  @Authenticated({ permission: Permission.AssetRead })
+  @Endpoint({
+    summary: 'Get what the inferred location of an asset was taken from',
+    description: 'The photo, taken around the asset, that location inference took its location from.',
+    history: history(),
+  })
+  getInferredLocationSource(
+    @Auth() auth: AuthDto,
+    @Param() { id }: UUIDParamDto,
+  ): Promise<LocationInferenceSourceResponseDto> {
+    return this.service.getSource(auth, id);
+  }
 
   @Delete(':id')
   @Authenticated({ permission: Permission.AssetUpdate })

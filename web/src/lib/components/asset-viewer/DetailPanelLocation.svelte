@@ -1,7 +1,17 @@
 <script lang="ts">
   import GeolocationPointPickerModal from '$lib/modals/GeolocationPointPickerModal.svelte';
+  import { authManager } from '$lib/managers/auth-manager.svelte';
+  import { locale } from '$lib/stores/preferences.store';
   import { handleError } from '$lib/utils/handle-error';
-  import { clearInferredLocation, getAssetInfo, updateAsset, type AssetResponseDto } from '@immich/sdk';
+  import { fromISODateTimeUTC } from '$lib/utils/timeline-util';
+  import {
+    clearInferredLocation,
+    getAssetInfo,
+    getInferredLocationSource,
+    updateAsset,
+    type AssetResponseDto,
+    type LocationInferenceSourceDto,
+  } from '@immich/sdk';
   import { Badge, Icon, IconButton, modalManager } from '@immich/ui';
   import { mdiClose, mdiMapMarkerOutline, mdiPencil } from '@mdi/js';
   import { t } from 'svelte-i18n';
@@ -14,6 +24,51 @@
   let { isOwner, asset = $bindable() }: Props = $props();
 
   const isInferred = $derived(asset.exifInfo?.locationInferred === true);
+
+  // the photo the inferred location was taken from: when it was taken, and whose it is
+  let source = $state<LocationInferenceSourceDto | null>(null);
+
+  const loadSource = async (id: string, isCurrent: () => boolean) => {
+    try {
+      const response = await getInferredLocationSource({ id });
+      if (isCurrent()) {
+        source = response.source;
+      }
+    } catch {
+      // the badge says it is inferred all the same
+    }
+  };
+
+  $effect(() => {
+    const id = asset.id;
+    source = null;
+    // not for those viewing by a shared link: it is for the users of the server
+    if (!isInferred || authManager.isSharedLink) {
+      return;
+    }
+    let current = true;
+    void loadSource(id, () => current);
+    return () => {
+      current = false;
+    };
+  });
+
+  const sourceText = $derived.by(() => {
+    if (!source) {
+      return '';
+    }
+    const taken = fromISODateTimeUTC(source.localDateTime);
+    const sameDay = taken.toISODate() === fromISODateTimeUTC(asset.localDateTime).toISODate();
+    const time = taken.toLocaleString(
+      sameDay
+        ? { hour: 'numeric', minute: '2-digit' }
+        : { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' },
+      { locale: $locale },
+    );
+    return source.ownerId === asset.ownerId
+      ? $t('location_inferred_from', { values: { time } })
+      : $t('location_inferred_from_user', { values: { time, name: source.ownerName } });
+  });
 
   const onAction = async () => {
     const point = await modalManager.show(GeolocationPointPickerModal, { asset });
@@ -76,6 +131,11 @@
             <div class="mt-1" title={$t('location_inferred_description')}>
               <Badge size="tiny" color="secondary">{$t('location_inferred')}</Badge>
             </div>
+            {#if sourceText}
+              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400" data-testid="location-inferred-source">
+                {sourceText}
+              </p>
+            {/if}
           {/if}
         </div>
       </div>
