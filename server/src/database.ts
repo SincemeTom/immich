@@ -576,6 +576,7 @@ export const columns = {
     'asset_exif.lensModel',
     'asset_exif.livePhotoCID',
     'asset_exif.locationInferred',
+    'asset_exif.locationInferredFromId',
     'asset_exif.longitude',
     'asset_exif.make',
     'asset_exif.model',

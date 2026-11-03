@@ -267,7 +267,7 @@ export class MetadataService extends BaseService {
           country: geo.country,
           state: geo.state,
           city: geo.city,
-          ...(hasGeo && { locationInferred: null }),
+          ...(hasGeo && { locationInferred: null, locationInferredFromId: null }),
         };
 
     const tags = this.getTagList(exifTags);

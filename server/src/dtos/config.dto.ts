@@ -296,8 +296,25 @@ const AdminConfigSchemaWithVisibility = z
         locationInference: z
           .object({
             enabled: configBool.describe(
-              'Give a photo without a location the one of the photos taken just before and after it (within an hour, and a kilometer of each other): the own, and those in albums shared with the owner',
+              'Give a photo without a location the one of the photos taken around it: the own first, then those of others in an album shared with the photo',
             ),
+            betweenMinutes: z
+              .int()
+              .min(0)
+              .max(1440)
+              .describe(
+                'Between two photos with a location within maxDistanceMeters of each other: how far each may be, in minutes',
+              ),
+            nearbyMinutes: z
+              .int()
+              .min(0)
+              .max(1440)
+              .describe('Otherwise, how near in minutes the photo with a location taken nearest to it must be'),
+            maxDistanceMeters: z
+              .int()
+              .min(0)
+              .max(100_000)
+              .describe('How far apart in meters the photos before and after may be, for betweenMinutes'),
           })
           .meta({ id: 'AdminConfigLocationInferenceDto' }),
       })
@@ -701,6 +718,9 @@ export const defaults = Object.freeze<SystemConfig>({
     },
     locationInference: {
       enabled: true,
+      betweenMinutes: 180,
+      nearbyMinutes: 30,
+      maxDistanceMeters: 1000,
     },
   },
   oauth: {

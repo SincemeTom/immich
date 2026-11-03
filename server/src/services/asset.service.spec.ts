@@ -440,6 +440,7 @@ describe(AssetService.name, () => {
         latitude: 0,
         longitude: 0,
         locationInferred: null,
+        locationInferredFromId: null,
       });
       expect(mocks.job.queueAll).toHaveBeenCalledWith([{ name: JobName.SidecarWrite, data: { id: 'asset-1' } }]);
     });
@@ -462,6 +463,7 @@ describe(AssetService.name, () => {
         latitude: 30,
         longitude: 50,
         locationInferred: null,
+        locationInferredFromId: null,
       });
       expect(mocks.job.queueAll).toHaveBeenCalledWith([{ name: JobName.SidecarWrite, data: { id: 'asset-1' } }]);
     });

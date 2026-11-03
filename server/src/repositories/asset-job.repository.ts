@@ -348,6 +348,7 @@ export class AssetJobRepository {
         'asset_exif.latitude',
         'asset_exif.longitude',
         'asset_exif.locationInferred',
+        'asset_exif.locationInferredFromId',
       ])
       .where('asset.id', '=', id)
       .executeTakeFirst();
@@ -355,12 +356,12 @@ export class AssetJobRepository {
 
   /**
    * The photo with a location of its own (not an inferred one) taken nearest to `time`, before or after it, within
-   * `windowMs`, that the user can see: theirs, or in an album they are in. The times are local ones (the clock the photo
-   * was taken by): a photo without a location often has no time zone either, and its time taken as UTC would be hours
-   * off from those around it with one.
+   * `windowMs`: the user's; with `sharedWith`, also those of others in an album that photo (the user's) is in too. The
+   * times are local ones (the clock the photo was taken by): a photo without a location often has no time zone either,
+   * and its time taken as UTC would be hours off from those around it with one.
    */
-  @GenerateSql({ params: [DummyValue.UUID, DummyValue.DATE, 'before', 3_600_000] })
-  getLocationSource(userId: string, time: Date, direction: 'before' | 'after', windowMs: number) {
+  @GenerateSql({ params: [DummyValue.UUID, DummyValue.DATE, 'before', 3_600_000, DummyValue.UUID] })
+  getLocationSource(userId: string, time: Date, direction: 'before' | 'after', windowMs: number, sharedWith?: string) {
     const before = direction === 'before';
     return this.db
       .selectFrom('asset_exif')
@@ -373,19 +374,24 @@ export class AssetJobRepository {
       .where(sql<boolean>`asset_exif."locationInferred" is not true`)
       .where('asset.deletedAt', 'is', null)
       .where((eb) =>
-        eb.or([
-          eb('asset.ownerId', '=', asUuid(userId)),
-          eb.exists(
-            eb
-              .selectFrom('album_asset')
-              .innerJoin('album_user', 'album_user.albumId', 'album_asset.albumId')
-              .innerJoin('album', 'album.id', 'album_asset.albumId')
-              .select(sql`1`.as('found'))
-              .whereRef('album_asset.assetId', '=', 'asset.id')
-              .where('album_user.userId', '=', asUuid(userId))
-              .where('album.deletedAt', 'is', null),
-          ),
-        ]),
+        sharedWith
+          ? eb.or([
+              eb('asset.ownerId', '=', asUuid(userId)),
+              eb.exists(
+                eb
+                  .selectFrom('album_asset as source_album')
+                  .innerJoin('album_asset as photo_album', 'photo_album.albumId', 'source_album.albumId')
+                  .innerJoin('album', 'album.id', 'source_album.albumId')
+                  .innerJoin('album_user', (join) =>
+                    join.onRef('album_user.albumId', '=', 'album.id').on('album_user.userId', '=', asUuid(userId)),
+                  )
+                  .select(sql`1`.as('found'))
+                  .whereRef('source_album.assetId', '=', 'asset.id')
+                  .where('photo_album.assetId', '=', asUuid(sharedWith))
+                  .where('album.deletedAt', 'is', null),
+              ),
+            ])
+          : eb('asset.ownerId', '=', asUuid(userId)),
       )
       .orderBy('asset.localDateTime', before ? 'desc' : 'asc')
       .limit(1)
@@ -394,7 +400,7 @@ export class AssetJobRepository {
 
   /**
    * The photos taken within `windowMs` of `time` (local) without a location of their own, that a photo with one (`id`,
-   * of `ownerId`) can give one to: its owner's, and those of the users in the albums it is in
+   * of `ownerId`) can give one to: its owner's, and those of others in an album it is in too
    */
   @GenerateSql({ params: [DummyValue.UUID, DummyValue.UUID, DummyValue.DATE, 3_600_000] })
   getLocationInferenceTargets(id: string, ownerId: string, time: Date, windowMs: number) {
@@ -416,20 +422,43 @@ export class AssetJobRepository {
       .where((eb) =>
         eb.or([
           eb('asset.ownerId', '=', asUuid(ownerId)),
-          eb(
-            'asset.ownerId',
-            'in',
+          eb.exists(
             eb
-              .selectFrom('album_asset')
-              .innerJoin('album_user', 'album_user.albumId', 'album_asset.albumId')
-              .innerJoin('album', 'album.id', 'album_asset.albumId')
-              .select('album_user.userId')
-              .where('album_asset.assetId', '=', asUuid(id))
+              .selectFrom('album_asset as photo_album')
+              .innerJoin('album_asset as source_album', 'source_album.albumId', 'photo_album.albumId')
+              .innerJoin('album', 'album.id', 'photo_album.albumId')
+              .select(sql`1`.as('found'))
+              .whereRef('photo_album.assetId', '=', 'asset.id')
+              .where('source_album.assetId', '=', asUuid(id))
               .where('album.deletedAt', 'is', null),
           ),
         ]),
       )
       .execute();
+  }
+
+  /** The photos whose locations were inferred from these */
+  @GenerateSql({ params: [[DummyValue.UUID]] })
+  getInferredFrom(sourceIds: string[]) {
+    return this.db
+      .selectFrom('asset_exif')
+      .select(['asset_exif.assetId as id'])
+      .where('asset_exif.locationInferred', '=', true)
+      .where('asset_exif.locationInferredFromId', '=', anyUuid(sourceIds))
+      .execute();
+  }
+
+  /** What the inferred location of a photo was taken from: when the photo was taken, and whose it is */
+  @GenerateSql({ params: [DummyValue.UUID] })
+  getLocationInferenceSource(id: string) {
+    return this.db
+      .selectFrom('asset_exif')
+      .innerJoin('asset as source', 'source.id', 'asset_exif.locationInferredFromId')
+      .innerJoin('user', 'user.id', 'source.ownerId')
+      .select(['source.id', 'source.localDateTime', 'source.ownerId', 'user.name as ownerName'])
+      .where('asset_exif.assetId', '=', asUuid(id))
+      .where('asset_exif.locationInferred', '=', true)
+      .executeTakeFirst();
   }
 
   /** Those without a location (and not one cleared by their owner); with force, also those with an inferred one */
@@ -451,21 +480,28 @@ export class AssetJobRepository {
 
   /** Unless the photo has a location of its own by now, or its owner cleared the one inferred */
   @GenerateSql({
-    params: [DummyValue.UUID, { latitude: 31.2, longitude: 121.5, city: null, state: null, country: null }],
+    params: [
+      DummyValue.UUID,
+      { latitude: 31.2, longitude: 121.5, city: null, state: null, country: null, sourceId: DummyValue.UUID },
+    ],
   })
   async setInferredLocation(
     id: string,
-    location: {
+    {
+      sourceId,
+      ...location
+    }: {
       latitude: number;
       longitude: number;
       city: string | null;
       state: string | null;
       country: string | null;
+      sourceId: string;
     },
   ) {
     const result = await this.db
       .updateTable('asset_exif')
-      .set({ ...location, locationInferred: true })
+      .set({ ...location, locationInferred: true, locationInferredFromId: sourceId })
       .where('assetId', '=', id)
       .where((eb) =>
         eb.or([
@@ -492,6 +528,7 @@ export class AssetJobRepository {
         state: null,
         country: null,
         locationInferred: rejected ? false : null,
+        locationInferredFromId: null,
       })
       .where('locationInferred', '=', true)
       .$if(id !== undefined, (qb) => qb.where('assetId', '=', id!))

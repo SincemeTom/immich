@@ -8048,6 +8048,61 @@
         ],
         "x-immich-permission": "asset.update",
         "x-immich-state": "Alpha"
+      },
+      "get": {
+        "description": "The photo, taken around the asset, that location inference took its location from.",
+        "operationId": "getInferredLocationSource",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocationInferenceSourceResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "cookie": []
+          },
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "Get what the inferred location of an asset was taken from",
+        "tags": [
+          "Assets"
+        ],
+        "x-immich-history": [
+          {
+            "version": "v3.3.5",
+            "state": "Added"
+          },
+          {
+            "version": "v3.3.5",
+            "state": "Alpha"
+          }
+        ],
+        "x-immich-permission": "asset.read",
+        "x-immich-state": "Alpha"
       }
     },
     "/jobs": {
@@ -20062,13 +20117,34 @@
       },
       "AdminConfigLocationInferenceDto": {
         "properties": {
+          "betweenMinutes": {
+            "description": "Between two photos with a location within maxDistanceMeters of each other: how far each may be, in minutes",
+            "maximum": 1440,
+            "minimum": 0,
+            "type": "integer"
+          },
           "enabled": {
-            "description": "Give a photo without a location the one of the photos taken just before and after it (within an hour, and a kilometer of each other): the own, and those in albums shared with the owner",
+            "description": "Give a photo without a location the one of the photos taken around it: the own first, then those of others in an album shared with the photo",
             "type": "boolean"
+          },
+          "maxDistanceMeters": {
+            "description": "How far apart in meters the photos before and after may be, for betweenMinutes",
+            "maximum": 100000,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "nearbyMinutes": {
+            "description": "Otherwise, how near in minutes the photo with a location taken nearest to it must be",
+            "maximum": 1440,
+            "minimum": 0,
+            "type": "integer"
           }
         },
         "required": [
-          "enabled"
+          "betweenMinutes",
+          "enabled",
+          "maxDistanceMeters",
+          "nearbyMinutes"
         ],
         "type": "object"
       },
@@ -24063,6 +24139,55 @@
         },
         "required": [
           "count"
+        ],
+        "type": "object"
+      },
+      "LocationInferenceSourceDto": {
+        "properties": {
+          "assetId": {
+            "description": "The photo the location was taken from; null when the user cannot see it (not shared with them)",
+            "format": "uuid",
+            "nullable": true,
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
+            "type": "string"
+          },
+          "localDateTime": {
+            "description": "When that photo was taken, local time",
+            "type": "string"
+          },
+          "ownerId": {
+            "description": "Whose photo it is",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
+            "type": "string"
+          },
+          "ownerName": {
+            "description": "The name of whose photo it is",
+            "type": "string"
+          }
+        },
+        "required": [
+          "assetId",
+          "localDateTime",
+          "ownerId",
+          "ownerName"
+        ],
+        "type": "object"
+      },
+      "LocationInferenceSourceResponseDto": {
+        "properties": {
+          "source": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/LocationInferenceSourceDto"
+              }
+            ],
+            "description": "What the inferred location was taken from; null when it is not inferred, or that photo is gone",
+            "nullable": true
+          }
+        },
+        "required": [
+          "source"
         ],
         "type": "object"
       },
