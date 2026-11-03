@@ -24,7 +24,10 @@ MODELS="$(cd "${2:?}" && pwd -P)"
 WHAT="${3:-both}"
 WORK=/tmp/m3
 LIVE="$HOME/Library/Application Support/Immich"
-PYTHON="$LIVE/current/ml/venv/bin/python"
+# the live install's Python, for httpx and Pillow: a .pkg install's (ml/python), or an install.sh one's (ml/venv)
+PYTHON="$LIVE/current/ml/python/bin/python3"
+[ -x "$PYTHON" ] || PYTHON="$LIVE/current/ml/venv/bin/python"
+[ -x "$PYTHON" ] || { echo "no Python with httpx and Pillow in $LIVE/current/ml" >&2; exit 1; }
 mkdir -p "$WORK"
 failures=0
 
