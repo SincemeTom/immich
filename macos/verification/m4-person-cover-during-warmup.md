@@ -132,3 +132,4 @@ V="$HOME/Library/Application Support/Immich/current/valkey/bin/valkey-cli"
   - `m4_warm_queue.py upload`：预热期间上传一张照片，60 秒内生成缩略图，且 smartSearch 队列里有它（waiting 或 active）。
   - 检查 `run/server-workers` 为 `all`，预热前后 server 的 pid 不变（没有重启）。
   - `m4_warm_queue.py check`：预热结束后这张照片能被智能搜索找到。
+  - 结果（`3.3.5-5441b653c`，即 mac.6）：新装、接管都通过；预热期间上传的照片马上有缩略图，智能搜索排队，预热完（新装 7 分 9 秒、接管 3 分 51 秒）server pid 不变，照片能被搜到。
