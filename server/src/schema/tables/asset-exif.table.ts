@@ -118,4 +118,11 @@ export class AssetExifTable {
 
   @Column({ type: 'character varying', array: true, nullable: true })
   lockedProperties!: Array<LockableProperty> | null;
+
+  /**
+   * true: the location (latitude to country) was inferred from the photos taken around it, not in the file; false: its
+   * owner cleared one inferred, and it is not inferred again; null: neither
+   */
+  @Column({ type: 'boolean', nullable: true })
+  locationInferred!: boolean | null;
 }

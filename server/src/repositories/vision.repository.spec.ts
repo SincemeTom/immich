@@ -22,7 +22,7 @@ createInterface({ input: process.stdin }).on('line', (line) => {
   if (job.tasks.includes('speech')) {
     speech++;
     const atOnce = speech;
-    setTimeout(() => { speech--; if (!stuck) answer({ atOnce }); }, 50);
+    setTimeout(() => { speech--; if (!stuck) answer({ atOnce }); }, 100);
   } else {
     answer({});
   }
@@ -76,8 +76,11 @@ describe(VisionRepository.name, () => {
   });
 
   it('listens to no more than two videos at once, and starts the time of the others when they are sent', async () => {
+    // the helper started first: under load (the whole suite at once) starting it can take longer than the timeout
+    await sut.analyze('/warm.jpeg', ['classify']);
+    // three rounds of 100 ms: timed from when they are queued, the last two would time out at 250 ms
     const results = await Promise.all(
-      Array.from({ length: 6 }, (_, i) => sut.analyze(`/video-${i}.mov`, ['speech'], { timeout: 120 })),
+      Array.from({ length: 6 }, (_, i) => sut.analyze(`/video-${i}.mov`, ['speech'], { timeout: 250 })),
     );
     for (const result of results) {
       expect((result as unknown as { atOnce: number }).atOnce).toBeLessThanOrEqual(2);

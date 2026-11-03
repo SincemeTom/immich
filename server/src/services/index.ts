@@ -19,6 +19,7 @@ import { HlsService } from 'src/services/hls.service.js';
 import { IntegrityService } from 'src/services/integrity.service.js';
 import { JobService } from 'src/services/job.service.js';
 import { LibraryService } from 'src/services/library.service.js';
+import { LocationInferenceService } from 'src/services/location-inference.service.js';
 import { MaintenanceService } from 'src/services/maintenance.service.js';
 import { MapService } from 'src/services/map.service.js';
 import { MediaService } from 'src/services/media.service.js';
@@ -76,6 +77,7 @@ export const services = [
   HlsService,
   JobService,
   LibraryService,
+  LocationInferenceService,
   MaintenanceService,
   MapService,
   MediaService,

@@ -27,6 +27,10 @@ export const ExifResponseSchema = z
     city: z.string().nullish().default(null).describe('City name'),
     state: z.string().nullish().default(null).describe('State/province name'),
     country: z.string().nullish().default(null).describe('Country name'),
+    locationInferred: z
+      .boolean()
+      .optional()
+      .describe('The location was inferred from the photos taken around it, not read from the file'),
     description: z.string().nullish().default(null).describe('Image description'),
     projectionType: z.string().nullish().default(null).describe('Projection type'),
     rating: z.int().min(1).max(5).nullish().default(null).describe('Rating'),
@@ -57,6 +61,7 @@ export function mapExif(entity: MaybeDehydrated<Exif>): ExifResponseDto {
     city: entity.city,
     state: entity.state,
     country: entity.country,
+    locationInferred: entity.locationInferred === true ? true : undefined,
     description: entity.description,
     projectionType: entity.projectionType,
     rating: entity.rating,

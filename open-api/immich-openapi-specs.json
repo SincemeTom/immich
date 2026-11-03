@@ -713,6 +713,53 @@
         "x-immich-state": "Alpha"
       }
     },
+    "/admin/inferred-locations": {
+      "delete": {
+        "description": "Clear the locations that location inference gave to the assets of all users. With location inference on, they can be inferred again.",
+        "operationId": "clearInferredLocations",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocationInferenceClearResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "cookie": []
+          },
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "Clear all inferred locations",
+        "tags": [
+          "Assets"
+        ],
+        "x-immich-admin-only": true,
+        "x-immich-history": [
+          {
+            "version": "v3.3.5",
+            "state": "Added"
+          },
+          {
+            "version": "v3.3.5",
+            "state": "Alpha"
+          }
+        ],
+        "x-immich-permission": "adminConfig.update",
+        "x-immich-state": "Alpha"
+      }
+    },
     "/admin/integrity/report": {
       "get": {
         "description": "Get all flagged items by integrity report type",
@@ -7951,6 +7998,56 @@
         ],
         "x-immich-permission": "face.update",
         "x-immich-state": "Stable"
+      }
+    },
+    "/inferred-locations/{id}": {
+      "delete": {
+        "description": "Clear the location that location inference gave to the asset. It is not inferred again; a location set by hand still can be.",
+        "operationId": "clearInferredLocation",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "cookie": []
+          },
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "Clear the inferred location of an asset",
+        "tags": [
+          "Assets"
+        ],
+        "x-immich-history": [
+          {
+            "version": "v3.3.5",
+            "state": "Added"
+          },
+          {
+            "version": "v3.3.5",
+            "state": "Alpha"
+          }
+        ],
+        "x-immich-permission": "asset.update",
+        "x-immich-state": "Alpha"
       }
     },
     "/jobs": {
@@ -19845,6 +19942,9 @@
           "library": {
             "$ref": "#/components/schemas/AdminConfigJobSettingsDto"
           },
+          "locationInference": {
+            "$ref": "#/components/schemas/AdminConfigJobSettingsDto"
+          },
           "metadataExtraction": {
             "$ref": "#/components/schemas/AdminConfigJobSettingsDto"
           },
@@ -19883,6 +19983,7 @@
           "faceDetection",
           "integrityCheck",
           "library",
+          "locationInference",
           "metadataExtraction",
           "migration",
           "notifications",
@@ -19951,6 +20052,18 @@
         "properties": {
           "enabled": {
             "description": "Enabled",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "enabled"
+        ],
+        "type": "object"
+      },
+      "AdminConfigLocationInferenceDto": {
+        "properties": {
+          "enabled": {
+            "description": "Give a photo without a location the one of the photos taken just before and after it (within an hour, and a kilometer of each other): the own, and those in albums shared with the owner",
             "type": "boolean"
           }
         },
@@ -20072,10 +20185,14 @@
         "properties": {
           "faces": {
             "$ref": "#/components/schemas/AdminConfigFacesDto"
+          },
+          "locationInference": {
+            "$ref": "#/components/schemas/AdminConfigLocationInferenceDto"
           }
         },
         "required": [
-          "faces"
+          "faces",
+          "locationInference"
         ],
         "type": "object"
       },
@@ -23425,6 +23542,10 @@
             "nullable": true,
             "type": "string"
           },
+          "locationInferred": {
+            "description": "The location was inferred from the photos taken around it, not read from the file",
+            "type": "boolean"
+          },
           "longitude": {
             "default": null,
             "description": "GPS longitude",
@@ -23759,6 +23880,8 @@
           "Ocr",
           "ContentAnalysisQueueAll",
           "ContentAnalysis",
+          "AssetInferLocationQueueAll",
+          "AssetInferLocation",
           "WorkflowAssetTrigger",
           "IntegrityUntrackedFilesQueueAll",
           "IntegrityUntrackedFiles",
@@ -23902,6 +24025,20 @@
       },
       "LicenseResponseDto": {
         "$ref": "#/components/schemas/UserLicense"
+      },
+      "LocationInferenceClearResponseDto": {
+        "properties": {
+          "count": {
+            "description": "Number of inferred locations cleared",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "count"
+        ],
+        "type": "object"
       },
       "LogLevel": {
         "description": "Log level",
@@ -27347,7 +27484,8 @@
           "integrityCheck",
           "editor",
           "autoStack",
-          "contentAnalysis"
+          "contentAnalysis",
+          "locationInference"
         ],
         "type": "string"
       },
@@ -27493,6 +27631,9 @@
           "library": {
             "$ref": "#/components/schemas/QueueResponseLegacyDto"
           },
+          "locationInference": {
+            "$ref": "#/components/schemas/QueueResponseLegacyDto"
+          },
           "metadataExtraction": {
             "$ref": "#/components/schemas/QueueResponseLegacyDto"
           },
@@ -27538,6 +27679,7 @@
           "facialRecognition",
           "integrityCheck",
           "library",
+          "locationInference",
           "metadataExtraction",
           "migration",
           "notifications",

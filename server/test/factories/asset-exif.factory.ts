@@ -34,6 +34,7 @@ export class AssetExifFactory {
       longitude: -97.78983353428207,
       lensModel: null,
       livePhotoCID: null,
+      locationInferred: null,
       make: 'Google',
       model: 'Pixel 7',
       modifyDate: factory.date(),

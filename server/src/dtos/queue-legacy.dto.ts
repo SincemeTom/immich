@@ -40,6 +40,7 @@ const QueuesResponseLegacySchema = z
     [QueueName.IntegrityCheck]: QueueResponseLegacySchema,
     [QueueName.AutoStack]: QueueResponseLegacySchema,
     [QueueName.ContentAnalysis]: QueueResponseLegacySchema,
+    [QueueName.LocationInference]: QueueResponseLegacySchema,
   })
   .meta({ id: 'QueuesResponseLegacyDto' });
 

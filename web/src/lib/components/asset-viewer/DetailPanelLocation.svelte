@@ -1,9 +1,9 @@
 <script lang="ts">
   import GeolocationPointPickerModal from '$lib/modals/GeolocationPointPickerModal.svelte';
   import { handleError } from '$lib/utils/handle-error';
-  import { updateAsset, type AssetResponseDto } from '@immich/sdk';
-  import { Icon, modalManager } from '@immich/ui';
-  import { mdiMapMarkerOutline, mdiPencil } from '@mdi/js';
+  import { clearInferredLocation, getAssetInfo, updateAsset, type AssetResponseDto } from '@immich/sdk';
+  import { Badge, Icon, IconButton, modalManager } from '@immich/ui';
+  import { mdiClose, mdiMapMarkerOutline, mdiPencil } from '@mdi/js';
   import { t } from 'svelte-i18n';
 
   type Props = {
@@ -12,6 +12,8 @@
   };
 
   let { isOwner, asset = $bindable() }: Props = $props();
+
+  const isInferred = $derived(asset.exifInfo?.locationInferred === true);
 
   const onAction = async () => {
     const point = await modalManager.show(GeolocationPointPickerModal, { asset });
@@ -28,42 +30,78 @@
       handleError(error, $t('errors.unable_to_change_location'));
     }
   };
+
+  const onClearInferred = async () => {
+    const confirmed = await modalManager.showDialog({ prompt: $t('location_inferred_clear_prompt') });
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      await clearInferredLocation({ id: asset.id });
+      asset = await getAssetInfo({ id: asset.id });
+    } catch (error) {
+      handleError(error, $t('errors.unable_to_change_location'));
+    }
+  };
 </script>
 
 {#if asset.exifInfo?.country}
-  <button
-    type="button"
-    class="flex w-full place-items-start justify-between gap-4 py-4 text-start"
-    onclick={isOwner ? onAction : undefined}
-    title={isOwner ? $t('edit_location') : ''}
-    class:hover:text-primary={isOwner}
-  >
-    <div class="flex gap-4">
-      <div><Icon icon={mdiMapMarkerOutline} size="24" /></div>
+  <div class="flex w-full place-items-start gap-2">
+    <button
+      type="button"
+      class="flex w-full place-items-start justify-between gap-4 py-4 text-start"
+      onclick={isOwner ? onAction : undefined}
+      title={isOwner ? $t('edit_location') : ''}
+      class:hover:text-primary={isOwner}
+    >
+      <div class="flex gap-4">
+        <div><Icon icon={mdiMapMarkerOutline} size="24" /></div>
 
-      <div>
-        {#if asset.exifInfo?.city}
-          <p>{asset.exifInfo.city}</p>
-        {/if}
-        {#if asset.exifInfo?.state}
-          <div class="flex gap-2 text-sm">
-            <p>{asset.exifInfo.state}</p>
-          </div>
-        {/if}
-        {#if asset.exifInfo?.country}
-          <div class="flex gap-2 text-sm">
-            <p>{asset.exifInfo.country}</p>
-          </div>
-        {/if}
+        <div>
+          {#if asset.exifInfo?.city}
+            <p>{asset.exifInfo.city}</p>
+          {/if}
+          {#if asset.exifInfo?.state}
+            <div class="flex gap-2 text-sm">
+              <p>{asset.exifInfo.state}</p>
+            </div>
+          {/if}
+          {#if asset.exifInfo?.country}
+            <div class="flex gap-2 text-sm">
+              <p>{asset.exifInfo.country}</p>
+            </div>
+          {/if}
+          {#if isInferred}
+            <div class="mt-1" title={$t('location_inferred_description')}>
+              <Badge size="tiny" color="secondary">{$t('location_inferred')}</Badge>
+            </div>
+          {/if}
+        </div>
       </div>
-    </div>
 
-    {#if isOwner}
-      <div>
-        <Icon icon={mdiPencil} size="20" />
+      {#if isOwner}
+        <div>
+          <Icon icon={mdiPencil} size="20" />
+        </div>
+      {/if}
+    </button>
+
+    {#if isOwner && isInferred}
+      <div class="py-3">
+        <IconButton
+          aria-label={$t('location_inferred_clear')}
+          title={$t('location_inferred_clear')}
+          icon={mdiClose}
+          size="small"
+          shape="round"
+          color="secondary"
+          variant="ghost"
+          onclick={onClearInferred}
+        />
       </div>
     {/if}
-  </button>
+  </div>
 {:else if !asset.exifInfo?.city && isOwner}
   <button
     type="button"

@@ -296,6 +296,10 @@ export class JobRepository {
       case JobName.StorageTemplateMigrationSingle: {
         return { jobId: item.data.id };
       }
+      case JobName.AssetInferLocation: {
+        // each photo with a location of its own, as it arrives, queues the ones taken around it: once is enough
+        return { deduplication: { id: `${JobName.AssetInferLocation}/${item.data.id}` } };
+      }
       case JobName.PersonGenerateThumbnail: {
         // ahead of the queue's other jobs, so that a featured photo shows in seconds. Not a priority: BullMQ takes a
         // prioritized job only once no other waits, which behind an import or a library scan was minutes, or hours

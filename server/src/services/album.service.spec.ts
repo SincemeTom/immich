@@ -1,6 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
 import { BulkIdErrorReason } from 'src/dtos/asset-ids.response.dto.js';
-import { AlbumUserRole, AssetOrder, UserMetadataKey } from 'src/enum.js';
+import { AlbumUserRole, AssetOrder, JobName, UserMetadataKey } from 'src/enum.js';
 import { AlbumService } from 'src/services/album.service.js';
 import { AlbumUserFactory } from 'test/factories/album-user.factory.js';
 import { AlbumFactory } from 'test/factories/album.factory.js';
@@ -784,6 +784,10 @@ describe(AlbumService.name, () => {
         owner.id,
       );
       expect(mocks.album.addAssetIds).toHaveBeenCalledWith(album.id, [asset1.id, asset2.id, asset3.id]);
+      // they may give a location to the album's users' photos taken around them
+      expect(mocks.job.queueAll).toHaveBeenCalledWith(
+        [asset1, asset2, asset3].map(({ id }) => ({ name: JobName.AssetInferLocation, data: { id } })),
+      );
     });
 
     it('should not set the thumbnail if the album has one already', async () => {

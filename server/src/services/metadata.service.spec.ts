@@ -88,6 +88,7 @@ describe(MetadataService.name, () => {
     mockReadTags();
 
     mocks.config.getWorker.mockReturnValue(ImmichWorker.Microservices);
+    mocks.assetJob.isLocationInferred.mockResolvedValue(false);
 
     delete process.env.TZ;
   });
@@ -421,6 +422,36 @@ describe(MetadataService.name, () => {
         expect.objectContaining({
           exif: expect.objectContaining({ latitude: null, longitude: null }),
           lockedPropertiesBehavior: 'skip',
+        }),
+      );
+    });
+
+    it('should keep an inferred location while the file has none', async () => {
+      const asset = AssetFactory.create();
+      mocks.assetJob.getForMetadataExtraction.mockResolvedValue(getForMetadataExtraction(asset));
+      mocks.assetJob.isLocationInferred.mockResolvedValue(true);
+      mockReadTags({});
+
+      await sut.handleMetadataExtraction({ id: asset.id });
+
+      const { exif } = mocks.asset.upsertExif.mock.calls[0][0];
+      for (const key of ['latitude', 'longitude', 'city', 'state', 'country', 'locationInferred']) {
+        expect(exif).not.toHaveProperty(key);
+      }
+    });
+
+    it('should replace an inferred location with the one in the file', async () => {
+      const asset = AssetFactory.create();
+      mocks.assetJob.getForMetadataExtraction.mockResolvedValue(getForMetadataExtraction(asset));
+      mocks.assetJob.isLocationInferred.mockResolvedValue(true);
+      mocks.map.reverseGeocode.mockResolvedValue({ city: 'City', state: 'State', country: 'Country' });
+      mockReadTags({ GPSLatitude: 31.24, GPSLongitude: 121.49 });
+
+      await sut.handleMetadataExtraction({ id: asset.id });
+
+      expect(mocks.asset.upsertExif).toHaveBeenCalledWith(
+        expect.objectContaining({
+          exif: expect.objectContaining({ latitude: 31.24, longitude: 121.49, city: 'City', locationInferred: null }),
         }),
       );
     });

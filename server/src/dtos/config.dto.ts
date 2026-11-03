@@ -198,6 +198,7 @@ const AdminConfigSchemaWithVisibility = z
         editor: AdminConfigJobSettingsSchema,
         integrityCheck: AdminConfigJobSettingsSchema,
         contentAnalysis: AdminConfigJobSettingsSchema,
+        locationInference: AdminConfigJobSettingsSchema,
       })
       .meta({ id: 'AdminConfigJobDto' }),
     logging: z
@@ -292,6 +293,13 @@ const AdminConfigSchemaWithVisibility = z
     metadata: z
       .object({
         faces: z.object({ import: configBool.describe('Import') }).meta({ id: 'AdminConfigFacesDto' }),
+        locationInference: z
+          .object({
+            enabled: configBool.describe(
+              'Give a photo without a location the one of the photos taken just before and after it (within an hour, and a kilometer of each other): the own, and those in albums shared with the owner',
+            ),
+          })
+          .meta({ id: 'AdminConfigLocationInferenceDto' }),
       })
       .meta({ id: 'AdminConfigMetadataDto' }),
     oauth: z
@@ -634,6 +642,7 @@ export const defaults = Object.freeze<SystemConfig>({
     editor: { concurrency: 2 },
     integrityCheck: { concurrency: 1 },
     contentAnalysis: { concurrency: 2 },
+    locationInference: { concurrency: 2 },
   },
   logging: {
     enabled: true,
@@ -689,6 +698,9 @@ export const defaults = Object.freeze<SystemConfig>({
   metadata: {
     faces: {
       import: false,
+    },
+    locationInference: {
+      enabled: true,
     },
   },
   oauth: {

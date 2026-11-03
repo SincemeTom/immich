@@ -246,16 +246,29 @@ export class MetadataService extends BaseService {
     const dates = this.getDates(asset, exifTags, stats);
 
     const { width, height } = this.getImageDimensions(exifTags);
+    const hasGeo = this.hasGeo(exifTags);
     let geo: ReverseGeocodeResult = { country: null, state: null, city: null },
       latitude: number | null = null,
       longitude: number | null = null;
-    if (this.hasGeo(exifTags)) {
+    if (hasGeo) {
       latitude = Number(exifTags.GPSLatitude);
       longitude = Number(exifTags.GPSLongitude);
       if (reverseGeocoding.enabled) {
         geo = await this.mapRepository.reverseGeocode({ latitude, longitude });
       }
     }
+    // a location inferred from the photos around it stays, as long as the file has none of its own
+    const keepInferred = !hasGeo && (await this.assetJobRepository.isLocationInferred(asset.id));
+    const location = keepInferred
+      ? {}
+      : {
+          latitude,
+          longitude,
+          country: geo.country,
+          state: geo.state,
+          city: geo.city,
+          ...(hasGeo && { locationInferred: null }),
+        };
 
     const tags = this.getTagList(exifTags);
 
@@ -268,11 +281,7 @@ export class MetadataService extends BaseService {
       timeZone: dates.timeZone,
 
       // gps
-      latitude,
-      longitude,
-      country: geo.country,
-      state: geo.state,
-      city: geo.city,
+      ...location,
 
       // image/file
       fileSizeInByte: stats.size,

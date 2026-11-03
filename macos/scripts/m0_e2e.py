@@ -16,7 +16,7 @@ import os
 import subprocess
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -100,7 +100,8 @@ def configure(client: httpx.Client, ml_url: str) -> None:
     client.put("/api/system-config", json=config).raise_for_status()
 
 
-def gps_photo() -> Path:
+def gps_photo(path: Path = GPS_PHOTO, point: tuple[float, float] | None = GPS_POINT,
+              taken: datetime | None = None, color: tuple[int, int, int] = (90, 140, 200)) -> Path:
     from PIL import Image
 
     def dms(value: float) -> tuple[float, float, float]:
@@ -108,14 +109,33 @@ def gps_photo() -> Path:
         degrees, minutes = divmod(minutes, 60)
         return (degrees, minutes, round(seconds, 2))
 
-    GPS_PHOTO.parent.mkdir(parents=True, exist_ok=True)
-    image = Image.new("RGB", (640, 480), (90, 140, 200))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    image = Image.new("RGB", (640, 480), color)
     exif = image.getexif()
     exif[0x010F], exif[0x0110] = "Apple", "iPhone 16"  # Make, Model
-    gps = exif.get_ifd(0x8825)
-    gps.update({1: "N", 2: dms(GPS_POINT[0]), 3: "E", 4: dms(GPS_POINT[1])})
-    image.save(GPS_PHOTO, exif=exif, quality=90)
-    return GPS_PHOTO
+    if point:
+        gps = exif.get_ifd(0x8825)
+        gps.update({1: "N", 2: dms(point[0]), 3: "E", 4: dms(point[1])})
+    if taken:
+        exif.get_ifd(0x8769)[0x9003] = taken.strftime("%Y:%m:%d %H:%M:%S")  # DateTimeOriginal
+    image.save(path, exif=exif, quality=90)
+    return path
+
+
+# location inference: one without a location taken between two in Minhang, 20 minutes apart (the colors keep the three
+# from being one file); and one an hour and a half from any, which gets none
+TRIP_START = datetime(2025, 5, 1, 10, 0, 0)
+TRIP = [
+    (Path("/tmp/immich-m0/trip-1-gps.jpg"), GPS_POINT, TRIP_START, (200, 90, 90)),
+    (Path("/tmp/immich-m0/trip-2-no-gps.jpg"), None, TRIP_START + timedelta(minutes=5), (90, 200, 90)),
+    (Path("/tmp/immich-m0/trip-3-gps.jpg"), (GPS_POINT[0] + 0.002, GPS_POINT[1]), TRIP_START + timedelta(minutes=20),
+     (90, 90, 200)),
+    (Path("/tmp/immich-m0/trip-4-no-gps-later.jpg"), None, TRIP_START + timedelta(minutes=110), (200, 200, 90)),
+]
+
+
+def trip_photos() -> list[Path]:
+    return [gps_photo(path, point, taken, color) for path, point, taken, color in TRIP]
 
 
 def screenshot() -> Path:
@@ -178,6 +198,7 @@ def main() -> None:
     images = sorted(p for p in FORMATS.rglob("*") if p.is_file() and p.suffix.lower() not in SKIP) + EXTRA
     images.append(gps_photo())
     images.append(screenshot())
+    images.extend(trip_photos())
     videos = sorted(VIDEOS.glob("*")) if VIDEOS.exists() else []
     spoken = speech_video()
     extra_videos = [spoken] if spoken else []
@@ -234,6 +255,30 @@ def main() -> None:
     place = f"{exif.get('city')} / {exif.get('state')} / {exif.get('country')}"
     check("place in Chinese for a photo taken in Minhang, Shanghai",
           "闵行区" in (exif.get("city") or "") and exif.get("state") == "上海市" and exif.get("country") == "中国", place)
+
+    # location inference: a server that has it
+    if "locationInference" in queues:
+        between, later = (uploaded[TRIP[1][0].name], uploaded[TRIP[3][0].name])
+        exif = client.get(f"/api/assets/{between}").json().get("exifInfo") or {}
+        check("location inferred for a photo without one, taken between two in Minhang",
+              exif.get("locationInferred") is True and "闵行区" in (exif.get("city") or "")
+              and abs((exif.get("latitude") or 0) - GPS_POINT[0]) < 1e-4,
+              f"{exif.get('city')}, inferred {exif.get('locationInferred')}")
+        exif = client.get(f"/api/assets/{later}").json().get("exifInfo") or {}
+        check("none for one taken an hour and a half from any", exif.get("latitude") is None, str(exif.get("city")))
+        own = client.get(f"/api/assets/{uploaded[TRIP[0][0].name]}").json().get("exifInfo") or {}
+        check("a photo's own location is not marked inferred", not own.get("locationInferred"), str(own.get("city")))
+
+        client.delete(f"/api/inferred-locations/{between}").raise_for_status()
+        client.put("/api/jobs/locationInference", json={"command": "start", "force": True}).raise_for_status()
+        wait_for_queues(client, 120)
+        exif = client.get(f"/api/assets/{between}").json().get("exifInfo") or {}
+        check("cleared by its owner, and not inferred again", exif.get("latitude") is None and not exif.get("locationInferred"),
+              str(exif.get("city")))
+        # gone, so that a run again on this instance uploads them anew rather than finding them as left
+        trip = [uploaded[path.name] for path, *_ in TRIP]
+        client.request("DELETE", "/api/assets", json={"ids": trip, "force": True}).raise_for_status()
+        wait_for_queues(client, 120)
 
     # content analysis (Apple Vision): a server that has it, on a Mac whose release carries immich-vision
     if "contentAnalysis" in queues:

@@ -21,6 +21,7 @@ import {
   mdiFolderMove,
   mdiImageSearch,
   mdiLibraryShelves,
+  mdiMapMarkerQuestionOutline,
   mdiOcr,
   mdiPause,
   mdiPencil,
@@ -261,6 +262,11 @@ export const asQueueItem = ($t: MessageFormatter, queue: { name: QueueName }): Q
       icon: mdiTagMultiple,
       title: $t('admin.content_analysis_job'),
       subtitle: $t('admin.content_analysis_job_description'),
+    },
+    [QueueName.LocationInference]: {
+      icon: mdiMapMarkerQuestionOutline,
+      title: $t('admin.location_inference_job'),
+      subtitle: $t('admin.location_inference_job_description'),
     },
   };
 

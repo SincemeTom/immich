@@ -14,7 +14,7 @@ import {
 import { BulkIdErrorReason, BulkIdResponseDto, BulkIdsDto } from 'src/dtos/asset-ids.response.dto.js';
 import { AuthDto } from 'src/dtos/auth.dto.js';
 import { MapMarkerResponseDto } from 'src/dtos/map.dto.js';
-import { AlbumUserRole, Permission } from 'src/enum.js';
+import { AlbumUserRole, JobName, Permission } from 'src/enum.js';
 import { AlbumAssetCount, AlbumInfoOptions } from 'src/repositories/album.repository.js';
 import { BaseService } from 'src/services/base.service.js';
 import { addAssets, removeAssets } from 'src/utils/asset.util.js';
@@ -196,6 +196,8 @@ export class AlbumService extends BaseService {
       await this.eventRepository.emit('AlbumUpdate', { id, userIds, recipientIds });
     }
 
+    await this.inferLocationsFrom(results.filter(({ success }) => success).map(({ id }) => id));
+
     return results;
   }
 
@@ -254,8 +256,20 @@ export class AlbumService extends BaseService {
     for (const event of events) {
       await this.eventRepository.emit('AlbumUpdate', event);
     }
+    await this.inferLocationsFrom([...new Set(albumAssetValues.map(({ assetId }) => assetId))]);
 
     return results;
+  }
+
+  /** Photos added to an album may give a location to its users' photos taken around them (LocationInferenceService) */
+  private async inferLocationsFrom(assetIds: string[]) {
+    if (assetIds.length === 0) {
+      return;
+    }
+    const { metadata } = await this.getConfig({ withCache: true });
+    if (metadata.locationInference.enabled) {
+      await this.jobRepository.queueAll(assetIds.map((id) => ({ name: JobName.AssetInferLocation, data: { id } })));
+    }
   }
 
   async removeAssets(auth: AuthDto, id: string, dto: BulkIdsDto): Promise<BulkIdResponseDto[]> {

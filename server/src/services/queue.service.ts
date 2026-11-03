@@ -303,6 +303,10 @@ export class QueueService extends BaseService {
         return this.jobRepository.queue({ name: JobName.ContentAnalysisQueueAll, data: { force } });
       }
 
+      case QueueName.LocationInference: {
+        return this.jobRepository.queue({ name: JobName.AssetInferLocationQueueAll, data: { force } });
+      }
+
       default: {
         throw new BadRequestException(`Invalid job name: ${name}`);
       }

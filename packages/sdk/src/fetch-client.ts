@@ -170,6 +170,7 @@ export type AdminConfigJobDto = {
     faceDetection: AdminConfigJobSettingsDto;
     integrityCheck: AdminConfigJobSettingsDto;
     library: AdminConfigJobSettingsDto;
+    locationInference: AdminConfigJobSettingsDto;
     metadataExtraction: AdminConfigJobSettingsDto;
     migration: AdminConfigJobSettingsDto;
     notifications: AdminConfigJobSettingsDto;
@@ -281,8 +282,13 @@ export type AdminConfigFacesDto = {
     /** Import */
     "import": boolean;
 };
+export type AdminConfigLocationInferenceDto = {
+    /** Give a photo without a location the one of the photos taken just before and after it (within an hour, and a kilometer of each other): the own, and those in albums shared with the owner */
+    enabled: boolean;
+};
 export type AdminConfigMetadataDto = {
     faces: AdminConfigFacesDto;
+    locationInference: AdminConfigLocationInferenceDto;
 };
 export type AdminConfigNewVersionCheckDto = {
     channel: ReleaseChannel;
@@ -466,6 +472,10 @@ export type DatabaseBackupListResponseDto = {
 export type DatabaseBackupUploadDto = {
     /** Database backup file */
     file?: Blob;
+};
+export type LocationInferenceClearResponseDto = {
+    /** Number of inferred locations cleared */
+    count: number;
 };
 export type IntegrityReportResponseDto = {
     items: {
@@ -1384,6 +1394,8 @@ export type ExifResponseDto = {
     latitude?: number | null;
     /** Lens model */
     lensModel?: string | null;
+    /** The location was inferred from the photos taken around it, not read from the file */
+    locationInferred?: boolean;
     /** GPS longitude */
     longitude?: number | null;
     /** Camera make */
@@ -1973,6 +1985,7 @@ export type QueuesResponseLegacyDto = {
     facialRecognition: QueueResponseLegacyDto;
     integrityCheck: QueueResponseLegacyDto;
     library: QueueResponseLegacyDto;
+    locationInference: QueueResponseLegacyDto;
     metadataExtraction: QueueResponseLegacyDto;
     migration: QueueResponseLegacyDto;
     notifications: QueueResponseLegacyDto;
@@ -4228,6 +4241,18 @@ export function downloadDatabaseBackup({ filename }: {
     }));
 }
 /**
+ * Clear all inferred locations
+ */
+export function clearInferredLocations(opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchJson<{
+        status: 200;
+        data: LocationInferenceClearResponseDto;
+    }>("/admin/inferred-locations", {
+        ...opts,
+        method: "DELETE"
+    }));
+}
+/**
  * Get integrity report by type
  */
 export function getIntegrityReport({ cursor, limit, $type }: {
@@ -5912,6 +5937,17 @@ export function reassignFacesById({ id, faceDto }: {
         method: "PUT",
         body: faceDto
     })));
+}
+/**
+ * Clear the inferred location of an asset
+ */
+export function clearInferredLocation({ id }: {
+    id: string;
+}, opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchText(`/inferred-locations/${encodeURIComponent(id)}`, {
+        ...opts,
+        method: "DELETE"
+    }));
 }
 /**
  * Retrieve queue counts and status
@@ -8508,7 +8544,8 @@ export enum QueueName {
     IntegrityCheck = "integrityCheck",
     Editor = "editor",
     AutoStack = "autoStack",
-    ContentAnalysis = "contentAnalysis"
+    ContentAnalysis = "contentAnalysis",
+    LocationInference = "locationInference"
 }
 export enum UserStatus {
     Active = "active",
@@ -8893,6 +8930,8 @@ export enum JobName {
     Ocr = "Ocr",
     ContentAnalysisQueueAll = "ContentAnalysisQueueAll",
     ContentAnalysis = "ContentAnalysis",
+    AssetInferLocationQueueAll = "AssetInferLocationQueueAll",
+    AssetInferLocation = "AssetInferLocation",
     WorkflowAssetTrigger = "WorkflowAssetTrigger",
     IntegrityUntrackedFilesQueueAll = "IntegrityUntrackedFilesQueueAll",
     IntegrityUntrackedFiles = "IntegrityUntrackedFiles",

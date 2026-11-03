@@ -460,6 +460,10 @@ export type JobItem =
   | { name: JobName.ContentAnalysisQueueAll; data: IBaseJob }
   | { name: JobName.ContentAnalysis; data: IEntityJob }
 
+  // Location inference
+  | { name: JobName.AssetInferLocationQueueAll; data: IBaseJob }
+  | { name: JobName.AssetInferLocation; data: IEntityJob }
+
   // Workflow
   | { name: JobName.WorkflowAssetTrigger; data: { workflowId: string; assetId: string } }
 
@@ -580,6 +584,8 @@ export interface SystemMetadata extends Record<SystemMetadataKey, Record<string,
   [SystemMetadataKey.NetworkShares]: { shares: NetworkShare[] };
   /** how the previews of raw photos were made: from the JPEG the camera embedded, or decoding the raw file */
   [SystemMetadataKey.RawPreviews]: { extractEmbedded: boolean };
+  /** whether location inference was on: turned on (the upgrade that added it, too), it runs over the photos there are */
+  [SystemMetadataKey.LocationInference]: { enabled: boolean };
   [SystemMetadataKey.NetworkShareErrors]: {
     errors: Record<string, { reason: NetworkShareErrorReason; message: string }>;
   };

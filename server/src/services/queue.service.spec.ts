@@ -76,13 +76,14 @@ describe(QueueService.name, () => {
     it('should update concurrency', () => {
       sut.onConfigUpdate({ newConfig: defaults, oldConfig: {} as SystemConfig });
 
-      expect(mocks.job.setConcurrency).toHaveBeenCalledTimes(21);
+      expect(mocks.job.setConcurrency).toHaveBeenCalledTimes(22);
       expect(mocks.job.setConcurrency).toHaveBeenNthCalledWith(5, QueueName.FacialRecognition, 1);
       expect(mocks.job.setConcurrency).toHaveBeenNthCalledWith(7, QueueName.DuplicateDetection, 1);
       expect(mocks.job.setConcurrency).toHaveBeenNthCalledWith(8, QueueName.BackgroundTask, 5);
       expect(mocks.job.setConcurrency).toHaveBeenNthCalledWith(9, QueueName.StorageTemplateMigration, 1);
       expect(mocks.job.setConcurrency).toHaveBeenNthCalledWith(20, QueueName.AutoStack, 1);
       expect(mocks.job.setConcurrency).toHaveBeenNthCalledWith(21, QueueName.ContentAnalysis, 2);
+      expect(mocks.job.setConcurrency).toHaveBeenNthCalledWith(22, QueueName.LocationInference, 2);
     });
   });
 
@@ -136,6 +137,7 @@ describe(QueueService.name, () => {
         [QueueName.Editor]: expected,
         [QueueName.AutoStack]: expected,
         [QueueName.ContentAnalysis]: expected,
+        [QueueName.LocationInference]: expected,
       });
     });
   });

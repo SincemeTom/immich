@@ -436,7 +436,11 @@ describe(AssetService.name, () => {
         rating: undefined,
       });
       expect(mocks.asset.updateAll).toHaveBeenCalled();
-      expect(mocks.asset.updateAllExif).toHaveBeenCalledWith(['asset-1'], { latitude: 0, longitude: 0 });
+      expect(mocks.asset.updateAllExif).toHaveBeenCalledWith(['asset-1'], {
+        latitude: 0,
+        longitude: 0,
+        locationInferred: null,
+      });
       expect(mocks.job.queueAll).toHaveBeenCalledWith([{ name: JobName.SidecarWrite, data: { id: 'asset-1' } }]);
     });
 
@@ -457,6 +461,7 @@ describe(AssetService.name, () => {
         dateTimeOriginal,
         latitude: 30,
         longitude: 50,
+        locationInferred: null,
       });
       expect(mocks.job.queueAll).toHaveBeenCalledWith([{ name: JobName.SidecarWrite, data: { id: 'asset-1' } }]);
     });

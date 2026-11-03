@@ -592,6 +592,148 @@ where
   and "asset"."deletedAt" is null
   and "asset"."visibility" != $3
 
+-- AssetJobRepository.isLocationInferred
+select
+  "asset_exif"."locationInferred"
+from
+  "asset_exif"
+where
+  "asset_exif"."assetId" = $1
+
+-- AssetJobRepository.getForLocationInference
+select
+  "asset"."id",
+  "asset"."ownerId",
+  "asset"."deletedAt",
+  "asset"."visibility",
+  "asset"."localDateTime",
+  "asset_exif"."dateTimeOriginal",
+  "asset_exif"."latitude",
+  "asset_exif"."longitude",
+  "asset_exif"."locationInferred"
+from
+  "asset"
+  left join "asset_exif" on "asset_exif"."assetId" = "asset"."id"
+where
+  "asset"."id" = $1
+
+-- AssetJobRepository.getLocationSource
+select
+  "asset"."id",
+  "asset_exif"."latitude",
+  "asset_exif"."longitude",
+  "asset"."localDateTime"
+from
+  "asset_exif"
+  inner join "asset" on "asset"."id" = "asset_exif"."assetId"
+where
+  "asset"."localDateTime" >= $1
+  and "asset"."localDateTime" <= $2
+  and "asset_exif"."latitude" is not null
+  and "asset_exif"."longitude" is not null
+  and asset_exif."locationInferred" is not true
+  and "asset"."deletedAt" is null
+  and (
+    "asset"."ownerId" = $3::uuid
+    or exists (
+      select
+        1 as "found"
+      from
+        "album_asset"
+        inner join "album_user" on "album_user"."albumId" = "album_asset"."albumId"
+        inner join "album" on "album"."id" = "album_asset"."albumId"
+      where
+        "album_asset"."assetId" = "asset"."id"
+        and "album_user"."userId" = $4::uuid
+        and "album"."deletedAt" is null
+    )
+  )
+order by
+  "asset"."localDateTime" desc
+limit
+  $5
+
+-- AssetJobRepository.getLocationInferenceTargets
+select
+  "asset"."id"
+from
+  "asset_exif"
+  inner join "asset" on "asset"."id" = "asset_exif"."assetId"
+where
+  "asset"."localDateTime" >= $1
+  and "asset"."localDateTime" <= $2
+  and "asset_exif"."dateTimeOriginal" is not null
+  and (
+    (
+      "asset_exif"."latitude" is null
+      and "asset_exif"."locationInferred" is null
+    )
+    or "asset_exif"."locationInferred" = $3
+  )
+  and "asset"."deletedAt" is null
+  and "asset"."visibility" != $4
+  and (
+    "asset"."ownerId" = $5::uuid
+    or "asset"."ownerId" in (
+      select
+        "album_user"."userId"
+      from
+        "album_asset"
+        inner join "album_user" on "album_user"."albumId" = "album_asset"."albumId"
+        inner join "album" on "album"."id" = "album_asset"."albumId"
+      where
+        "album_asset"."assetId" = $6::uuid
+        and "album"."deletedAt" is null
+    )
+  )
+
+-- AssetJobRepository.streamForLocationInference
+select
+  "asset"."id"
+from
+  "asset_exif"
+  inner join "asset" on "asset"."id" = "asset_exif"."assetId"
+where
+  "asset_exif"."dateTimeOriginal" is not null
+  and (
+    "asset_exif"."latitude" is null
+    and "asset_exif"."locationInferred" is null
+  )
+  and "asset"."deletedAt" is null
+  and "asset"."visibility" != $1
+
+-- AssetJobRepository.setInferredLocation
+update "asset_exif"
+set
+  "latitude" = $1,
+  "longitude" = $2,
+  "city" = $3,
+  "state" = $4,
+  "country" = $5,
+  "locationInferred" = $6
+where
+  "assetId" = $7
+  and (
+    (
+      "latitude" is null
+      and "locationInferred" is null
+    )
+    or "locationInferred" = $8
+  )
+
+-- AssetJobRepository.clearInferredLocations
+update "asset_exif"
+set
+  "latitude" = $1,
+  "longitude" = $2,
+  "city" = $3,
+  "state" = $4,
+  "country" = $5,
+  "locationInferred" = $6
+where
+  "locationInferred" = $7
+  and "assetId" = $8
+
 -- AssetJobRepository.getForOcr
 select
   "asset"."visibility",

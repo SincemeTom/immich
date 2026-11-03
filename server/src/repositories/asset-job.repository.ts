@@ -324,6 +324,182 @@ export class AssetJobRepository {
   }
 
   @GenerateSql({ params: [DummyValue.UUID] })
+  isLocationInferred(id: string) {
+    return this.db
+      .selectFrom('asset_exif')
+      .select('asset_exif.locationInferred')
+      .where('asset_exif.assetId', '=', id)
+      .executeTakeFirst()
+      .then((row) => row?.locationInferred === true);
+  }
+
+  @GenerateSql({ params: [DummyValue.UUID] })
+  getForLocationInference(id: string) {
+    return this.db
+      .selectFrom('asset')
+      .leftJoin('asset_exif', 'asset_exif.assetId', 'asset.id')
+      .select([
+        'asset.id',
+        'asset.ownerId',
+        'asset.deletedAt',
+        'asset.visibility',
+        'asset.localDateTime',
+        'asset_exif.dateTimeOriginal',
+        'asset_exif.latitude',
+        'asset_exif.longitude',
+        'asset_exif.locationInferred',
+      ])
+      .where('asset.id', '=', id)
+      .executeTakeFirst();
+  }
+
+  /**
+   * The photo with a location of its own (not an inferred one) taken nearest to `time`, before or after it, within
+   * `windowMs`, that the user can see: theirs, or in an album they are in. The times are local ones (the clock the photo
+   * was taken by): a photo without a location often has no time zone either, and its time taken as UTC would be hours
+   * off from those around it with one.
+   */
+  @GenerateSql({ params: [DummyValue.UUID, DummyValue.DATE, 'before', 3_600_000] })
+  getLocationSource(userId: string, time: Date, direction: 'before' | 'after', windowMs: number) {
+    const before = direction === 'before';
+    return this.db
+      .selectFrom('asset_exif')
+      .innerJoin('asset', 'asset.id', 'asset_exif.assetId')
+      .select(['asset.id', 'asset_exif.latitude', 'asset_exif.longitude', 'asset.localDateTime'])
+      .where('asset.localDateTime', '>=', before ? new Date(time.getTime() - windowMs) : time)
+      .where('asset.localDateTime', '<=', before ? time : new Date(time.getTime() + windowMs))
+      .where('asset_exif.latitude', 'is not', null)
+      .where('asset_exif.longitude', 'is not', null)
+      .where(sql<boolean>`asset_exif."locationInferred" is not true`)
+      .where('asset.deletedAt', 'is', null)
+      .where((eb) =>
+        eb.or([
+          eb('asset.ownerId', '=', asUuid(userId)),
+          eb.exists(
+            eb
+              .selectFrom('album_asset')
+              .innerJoin('album_user', 'album_user.albumId', 'album_asset.albumId')
+              .innerJoin('album', 'album.id', 'album_asset.albumId')
+              .select(sql`1`.as('found'))
+              .whereRef('album_asset.assetId', '=', 'asset.id')
+              .where('album_user.userId', '=', asUuid(userId))
+              .where('album.deletedAt', 'is', null),
+          ),
+        ]),
+      )
+      .orderBy('asset.localDateTime', before ? 'desc' : 'asc')
+      .limit(1)
+      .executeTakeFirst();
+  }
+
+  /**
+   * The photos taken within `windowMs` of `time` (local) without a location of their own, that a photo with one (`id`,
+   * of `ownerId`) can give one to: its owner's, and those of the users in the albums it is in
+   */
+  @GenerateSql({ params: [DummyValue.UUID, DummyValue.UUID, DummyValue.DATE, 3_600_000] })
+  getLocationInferenceTargets(id: string, ownerId: string, time: Date, windowMs: number) {
+    return this.db
+      .selectFrom('asset_exif')
+      .innerJoin('asset', 'asset.id', 'asset_exif.assetId')
+      .select(['asset.id'])
+      .where('asset.localDateTime', '>=', new Date(time.getTime() - windowMs))
+      .where('asset.localDateTime', '<=', new Date(time.getTime() + windowMs))
+      .where('asset_exif.dateTimeOriginal', 'is not', null)
+      .where((eb) =>
+        eb.or([
+          eb.and([eb('asset_exif.latitude', 'is', null), eb('asset_exif.locationInferred', 'is', null)]),
+          eb('asset_exif.locationInferred', '=', true),
+        ]),
+      )
+      .where('asset.deletedAt', 'is', null)
+      .where('asset.visibility', '!=', AssetVisibility.Hidden)
+      .where((eb) =>
+        eb.or([
+          eb('asset.ownerId', '=', asUuid(ownerId)),
+          eb(
+            'asset.ownerId',
+            'in',
+            eb
+              .selectFrom('album_asset')
+              .innerJoin('album_user', 'album_user.albumId', 'album_asset.albumId')
+              .innerJoin('album', 'album.id', 'album_asset.albumId')
+              .select('album_user.userId')
+              .where('album_asset.assetId', '=', asUuid(id))
+              .where('album.deletedAt', 'is', null),
+          ),
+        ]),
+      )
+      .execute();
+  }
+
+  /** Those without a location (and not one cleared by their owner); with force, also those with an inferred one */
+  @GenerateSql({ params: [false], stream: true })
+  streamForLocationInference(force?: boolean) {
+    return this.db
+      .selectFrom('asset_exif')
+      .innerJoin('asset', 'asset.id', 'asset_exif.assetId')
+      .select(['asset.id'])
+      .where('asset_exif.dateTimeOriginal', 'is not', null)
+      .where((eb) => {
+        const missing = eb.and([eb('asset_exif.latitude', 'is', null), eb('asset_exif.locationInferred', 'is', null)]);
+        return force ? eb.or([missing, eb('asset_exif.locationInferred', '=', true)]) : missing;
+      })
+      .where('asset.deletedAt', 'is', null)
+      .where('asset.visibility', '!=', AssetVisibility.Hidden)
+      .stream();
+  }
+
+  /** Unless the photo has a location of its own by now, or its owner cleared the one inferred */
+  @GenerateSql({
+    params: [DummyValue.UUID, { latitude: 31.2, longitude: 121.5, city: null, state: null, country: null }],
+  })
+  async setInferredLocation(
+    id: string,
+    location: {
+      latitude: number;
+      longitude: number;
+      city: string | null;
+      state: string | null;
+      country: string | null;
+    },
+  ) {
+    const result = await this.db
+      .updateTable('asset_exif')
+      .set({ ...location, locationInferred: true })
+      .where('assetId', '=', id)
+      .where((eb) =>
+        eb.or([
+          eb.and([eb('latitude', 'is', null), eb('locationInferred', 'is', null)]),
+          eb('locationInferred', '=', true),
+        ]),
+      )
+      .executeTakeFirst();
+    return Number(result.numUpdatedRows) > 0;
+  }
+
+  /**
+   * Takes away inferred locations: of one photo, or all of them. As its owner clears one (`rejected`), it is not
+   * inferred again; otherwise it can be.
+   */
+  @GenerateSql({ params: [DummyValue.UUID, true] })
+  async clearInferredLocations(id: string | undefined, rejected: boolean) {
+    const result = await this.db
+      .updateTable('asset_exif')
+      .set({
+        latitude: null,
+        longitude: null,
+        city: null,
+        state: null,
+        country: null,
+        locationInferred: rejected ? false : null,
+      })
+      .where('locationInferred', '=', true)
+      .$if(id !== undefined, (qb) => qb.where('assetId', '=', id!))
+      .executeTakeFirst();
+    return Number(result.numUpdatedRows);
+  }
+
+  @GenerateSql({ params: [DummyValue.UUID] })
   getForOcr(id: string) {
     return this.db
       .selectFrom('asset')

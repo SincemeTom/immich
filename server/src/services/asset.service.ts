@@ -168,7 +168,10 @@ export class AssetService extends BaseService {
 
     let shouldWriteSidecar = false;
     if (Object.keys(exifDto).length > 0) {
-      await this.assetRepository.updateAllExif(ids, exifDto);
+      await this.assetRepository.updateAllExif(ids, {
+        ...exifDto,
+        ...((latitude !== undefined || longitude !== undefined) && { locationInferred: null }),
+      });
       shouldWriteSidecar = true;
     }
 
@@ -566,6 +569,8 @@ export class AssetService extends BaseService {
       exif: updateLockedColumns({
         assetId: id,
         ...writes,
+        // a location set by hand is not an inferred one, nor one cleared
+        ...((latitude !== undefined || longitude !== undefined) && { locationInferred: null }),
       }),
       lockedPropertiesBehavior: 'append',
     });
