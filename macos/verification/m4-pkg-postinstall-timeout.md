@@ -113,7 +113,7 @@ sudo rm -rf "/Library/Application Support/Immich"
 | `postinstall` | 调用 `configure.sh --warm-in-background`，只做配置和启动；之后建 `immichctl` 链接、打开网页，**不再依赖前面成功**（失败时也建链接，按实际结果退出） |
 | `configure.sh --warm-in-background` | 启动服务前先登记一次性 LaunchAgent `<label>.warm`（还不启动），服务器因此以"只开 API"方式启动；不启动 ml（预热会接管它的端口，之后由预热启动）；最后启动这个 LaunchAgent。发布目录清理、链接等收尾步骤照常执行 |
 | `immichctl warm --background` / `--agent` | LaunchAgent 在用户会话里运行 `immichctl warm`，成功后删除自己；关掉 Installer、注销都不影响；中途重启 Mac 或失败，下次登录重来 |
-| 预热期间的服务器 | `run-service` 看到预热标记，以 `IMMICH_WORKERS_EXCLUDE=microservices` 启动服务器：网页、App、上传、建管理员都正常，缩略图、智能搜索、人脸、OCR 等任务**排队等待**（不会因为连不上机器学习服务而失败）；预热完成后重启一次服务器（约半分钟），任务自动开始。`install.sh` 的前台预热也改成这样，升级时网页不再中断 |
+| 预热期间的服务器 | `run-service` 看到预热标记，以 `IMMICH_WORKERS_EXCLUDE=microservices` 启动服务器：网页、App、上传、建管理员都正常，缩略图、智能搜索、人脸、OCR 等任务**排队等待**（不会因为连不上机器学习服务而失败）；预热完成后重启一次服务器（约半分钟），任务自动开始。`install.sh` 的前台预热也改成这样，升级时网页不再中断。（之后改为：服务器照常完整运行、预热结束不重启，只暂停智能搜索、人脸检测、文字识别队列，见 [m4-person-cover-during-warmup.md](m4-person-cover-during-warmup.md)） |
 | `immichctl status` | 预热进行中显示"models: being prepared"，失败显示怎么重试；`immichctl logs warm` 看进度 |
 | 安装器完成页 | 说明模型在后台准备、大约多久、期间哪些功能要等 |
 

@@ -241,7 +241,7 @@ export class MediumTestContext<S extends ClassConstructor<typeof BaseService> = 
     const result = await this.get(AlbumRepository).create(
       album,
       assetIds ?? [],
-      [{ userId: ownerId, role: AlbumUserRole.Owner }],
+      [{ userId: ownerId, role: AlbumUserRole.Owner, allowDownload: true, isManager: false }],
       ownerId,
     );
     return { album, result };

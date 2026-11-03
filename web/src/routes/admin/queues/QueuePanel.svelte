@@ -83,6 +83,10 @@
       allText: $t('all'),
       missingText: $t('missing'),
     },
+    [QueueName.LocationInference]: {
+      allText: $t('all'),
+      missingText: $t('missing'),
+    },
     [QueueName.VideoConversion]: {
       allText: $t('all'),
       missingText: $t('missing'),

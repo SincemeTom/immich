@@ -1,10 +1,12 @@
 """M4: what the server does while the models are prepared in the background (immichctl warm --background), as after a
-.pkg install: it answers, with its API alone, and the jobs of a photo uploaded meanwhile wait in the queue rather than
-fail; once the warm-up has restarted it with its job worker, they run.
+.pkg install: it answers, and runs the jobs that need no model, so a photo uploaded meanwhile gets its thumbnail at once
+(and a person's featured photo, set meanwhile, its new face: macos/verification/m4-person-cover-during-warmup.md); those
+that call the machine learning service (smart search, faces, text) wait in the queue rather than fail, and run once the
+models are ready, without the server restarting.
 
 Usage (with the machine-learning venv's python, which has httpx and Pillow):
   m4_warm_queue.py upload URL      during the warm-up: signs up (as m0_e2e.py), uploads a photo, prints its id
-  m4_warm_queue.py check URL ID    after it: the photo has its thumbnail and smart search; then it is deleted
+  m4_warm_queue.py check URL ID    after it: the photo is found by smart search; then it is deleted
 """
 
 import io
@@ -36,8 +38,14 @@ def photo() -> bytes:
     return buffer.getvalue()
 
 
-def waiting(client: httpx.Client) -> int:
-    return sum(queue["statistics"]["waiting"] for queue in client.get("/api/queues").json())
+def smart_search_waiting(client: httpx.Client) -> int:
+    queues = {queue["name"]: queue["statistics"] for queue in client.get("/api/queues").json()}
+    return queues["smartSearch"]["waiting"] + queues["smartSearch"]["active"]
+
+
+def found(client: httpx.Client, asset: str) -> bool:
+    response = client.post("/api/search/smart", json={"query": "a red circle", "size": 5})
+    return response.status_code == 200 and asset in [a["id"] for a in response.json()["assets"]["items"]]
 
 
 def upload(url: str) -> None:
@@ -50,12 +58,15 @@ def upload(url: str) -> None:
     )
     response.raise_for_status()
     asset = response.json()["id"]
-    time.sleep(15)  # what a job worker would have done by now: the metadata, the thumbnail
-    details = client.get(f"/api/assets/{asset}").json()
-    queued = waiting(client)
-    ok = details.get("thumbhash") is None and queued > 0
-    print(f"{'PASS' if ok else 'FAIL'} uploaded {asset}; after 15 s no thumbnail: {details.get('thumbhash') is None}, "
-          f"jobs waiting: {queued}")
+    deadline = time.time() + 60
+    thumbnail = False
+    while time.time() < deadline and not thumbnail:
+        time.sleep(2)
+        thumbnail = client.get(f"/api/assets/{asset}").json().get("thumbhash") is not None
+    waiting = smart_search_waiting(client)
+    ok = thumbnail and waiting > 0
+    print(f"{'PASS' if ok else 'FAIL'} uploaded {asset}; its thumbnail made meanwhile: {thumbnail}, "
+          f"smart search waiting: {waiting}")
     print(asset)
     sys.exit(0 if ok else 1)
 
@@ -63,16 +74,13 @@ def upload(url: str) -> None:
 def check(url: str, asset: str) -> None:
     client = client_for(url)
     deadline = time.time() + 300
-    thumbnail = searchable = False
-    while time.time() < deadline and not (thumbnail and searchable):
-        thumbnail = client.get(f"/api/assets/{asset}").json().get("thumbhash") is not None
-        found = client.post("/api/search/smart", json={"query": "a red circle", "size": 5})
-        searchable = found.status_code == 200 and asset in [a["id"] for a in found.json()["assets"]["items"]]
+    searchable = False
+    while time.time() < deadline and not searchable:
+        searchable = found(client, asset)
         time.sleep(3)
-    ok = thumbnail and searchable
-    print(f"{'PASS' if ok else 'FAIL'} after the warm-up: thumbnail {thumbnail}, found by smart search {searchable}")
+    print(f"{'PASS' if searchable else 'FAIL'} after the warm-up: found by smart search {searchable}")
     client.request("DELETE", "/api/assets", json={"ids": [asset], "force": True}).raise_for_status()
-    sys.exit(0 if ok else 1)
+    sys.exit(0 if searchable else 1)
 
 
 if __name__ == "__main__":

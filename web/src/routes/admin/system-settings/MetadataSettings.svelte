@@ -3,11 +3,32 @@
   import SettingSwitch from '$lib/components/shared-components/settings/SettingSwitch.svelte';
   import { featureFlagsManager } from '$lib/managers/feature-flags-manager.svelte';
   import { systemConfigManager } from '$lib/managers/system-config-manager.svelte';
+  import { handleError } from '$lib/utils/handle-error';
+  import { clearInferredLocations } from '@immich/sdk';
+  import { Button, modalManager, Text, toastManager } from '@immich/ui';
   import { t } from 'svelte-i18n';
   import { fade } from 'svelte/transition';
 
   const disabled = $derived(featureFlagsManager.value.configFile);
   let configToEdit = $state(systemConfigManager.cloneValue());
+  let clearing = $state(false);
+
+  const handleClearInferred = async () => {
+    const confirmed = await modalManager.showDialog({ prompt: $t('admin.location_inference_clear_prompt') });
+    if (!confirmed) {
+      return;
+    }
+
+    clearing = true;
+    try {
+      const { count } = await clearInferredLocations();
+      toastManager.primary($t('admin.location_inference_cleared', { values: { count } }));
+    } catch (error) {
+      handleError(error, $t('errors.unable_to_change_location'));
+    } finally {
+      clearing = false;
+    }
+  };
 </script>
 
 <div class="mt-2">
@@ -20,6 +41,30 @@
           bind:checked={configToEdit.metadata.faces.import}
           {disabled}
         />
+
+        <SettingSwitch
+          title={$t('admin.location_inference_setting')}
+          subtitle={$t('admin.location_inference_setting_description')}
+          bind:checked={configToEdit.metadata.locationInference.enabled}
+          {disabled}
+        />
+
+        <div class="flex flex-col gap-2">
+          <Text size="small" color="muted">{$t('admin.location_inference_clear_description')}</Text>
+          <div>
+            <Button
+              shape="round"
+              size="small"
+              variant="outline"
+              color="danger"
+              loading={clearing}
+              disabled={clearing}
+              onclick={handleClearInferred}
+            >
+              {$t('admin.location_inference_clear')}
+            </Button>
+          </div>
+        </div>
       </div>
 
       <SettingButtonsRow bind:configToEdit keys={['metadata']} {disabled} />

@@ -387,6 +387,7 @@ export enum SystemMetadataKey {
   StorageLocations = 'storage-locations',
   StorageLocationState = 'storage-location-state',
   RawPreviews = 'raw-previews',
+  LocationInference = 'location-inference',
 }
 
 export enum UserMetadataKey {
@@ -872,6 +873,7 @@ export enum QueueName {
   Editor = 'editor',
   AutoStack = 'autoStack',
   ContentAnalysis = 'contentAnalysis',
+  LocationInference = 'locationInference',
 }
 
 export const QueueNameSchema = z.enum(QueueName).describe('Queue name').meta({ id: 'QueueName' });
@@ -972,6 +974,10 @@ export enum JobName {
   ContentAnalysisQueueAll = 'ContentAnalysisQueueAll',
   ContentAnalysis = 'ContentAnalysis',
 
+  // Location inference: a location for photos without one, from those taken around them
+  AssetInferLocationQueueAll = 'AssetInferLocationQueueAll',
+  AssetInferLocation = 'AssetInferLocation',
+
   // Workflow
   WorkflowAssetTrigger = 'WorkflowAssetTrigger',
 
@@ -1041,6 +1047,7 @@ export enum DatabaseLock {
   VersionCheck = 800,
   HlsSessionCleanup = 850,
   RawPreviews = 860,
+  LocationInference = 870,
 }
 
 export enum MaintenanceAction {

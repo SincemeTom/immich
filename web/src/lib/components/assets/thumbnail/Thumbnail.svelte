@@ -5,6 +5,7 @@
   import { mediaQueryManager } from '$lib/stores/media-query-manager.svelte';
   import { locale, playVideoThumbnailOnHover } from '$lib/stores/preferences.store';
   import { getAssetMediaUrl, getAssetPlaybackUrl } from '$lib/utils';
+  import { canLoadOriginal } from '$lib/utils/album-access';
   import { moveFocus } from '$lib/utils/focus-util';
   import { currentUrlReplaceAssetId } from '$lib/utils/navigation';
   import { getAltText } from '$lib/utils/thumbnail-util';
@@ -276,7 +277,7 @@
             playbackOnIconHover={!$playVideoThumbnailOnHover}
           />
         </div>
-      {:else if asset.isImage && asset.duration && mouseOver}
+      {:else if asset.isImage && asset.duration && mouseOver && canLoadOriginal(asset)}
         <!-- GIF -->
         <div class="pointer-events-none absolute size-full">
           <ImageThumbnail

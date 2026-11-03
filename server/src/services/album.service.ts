@@ -14,9 +14,10 @@ import {
 import { BulkIdErrorReason, BulkIdResponseDto, BulkIdsDto } from 'src/dtos/asset-ids.response.dto.js';
 import { AuthDto } from 'src/dtos/auth.dto.js';
 import { MapMarkerResponseDto } from 'src/dtos/map.dto.js';
-import { AlbumUserRole, Permission } from 'src/enum.js';
+import { AlbumUserRole, JobName, Permission } from 'src/enum.js';
 import { AlbumAssetCount, AlbumInfoOptions } from 'src/repositories/album.repository.js';
 import { BaseService } from 'src/services/base.service.js';
+import { toAlbumUserAccess } from 'src/utils/album-access.js';
 import { addAssets, removeAssets } from 'src/utils/asset.util.js';
 import { asDateTimeString } from 'src/utils/date.js';
 import { findOrFail } from 'src/utils/misc.js';
@@ -126,7 +127,15 @@ export class AlbumService extends BaseService {
         order: getPreferences(userMetadata).albums.defaultAssetOrder,
       },
       assetIds,
-      [{ userId: auth.user.id, role: AlbumUserRole.Owner }, ...albumUsers],
+      [
+        { userId: auth.user.id, ...toAlbumUserAccess(AlbumUserRole.Owner, {}) },
+        ...albumUsers.map(({ userId, role, ...requested }) => {
+          if (role === AlbumUserRole.Owner) {
+            throw new BadRequestException('Cannot add another owner');
+          }
+          return { userId, ...toAlbumUserAccess(role, requested) };
+        }),
+      ],
       auth.user.id,
     );
 
@@ -196,6 +205,8 @@ export class AlbumService extends BaseService {
       await this.eventRepository.emit('AlbumUpdate', { id, userIds, recipientIds });
     }
 
+    await this.inferLocationsFrom(results.filter(({ success }) => success).map(({ id }) => id));
+
     return results;
   }
 
@@ -254,8 +265,20 @@ export class AlbumService extends BaseService {
     for (const event of events) {
       await this.eventRepository.emit('AlbumUpdate', event);
     }
+    await this.inferLocationsFrom([...new Set(albumAssetValues.map(({ assetId }) => assetId))]);
 
     return results;
+  }
+
+  /** Photos added to an album may give a location to its users' photos taken around them (LocationInferenceService) */
+  private async inferLocationsFrom(assetIds: string[]) {
+    if (assetIds.length === 0) {
+      return;
+    }
+    const { metadata } = await this.getConfig({ withCache: true });
+    if (metadata.locationInference.enabled) {
+      await this.jobRepository.queueAll(assetIds.map((id) => ({ name: JobName.AssetInferLocation, data: { id } })));
+    }
   }
 
   async removeAssets(auth: AuthDto, id: string, dto: BulkIdsDto): Promise<BulkIdResponseDto[]> {
@@ -265,7 +288,7 @@ export class AlbumService extends BaseService {
     const results = await removeAssets(
       auth,
       { access: this.accessRepository, bulk: this.albumRepository },
-      { parentId: id, assetIds: dto.ids, canAlwaysRemove: Permission.AlbumDelete },
+      { parentId: id, assetIds: dto.ids, canAlwaysRemove: Permission.AlbumUpdate },
     );
 
     const removedIds = results.filter(({ success }) => success).map(({ id }) => id);
@@ -289,7 +312,7 @@ export class AlbumService extends BaseService {
 
     const album = await this.findOrFail(id, auth.user.id, { withAssets: false });
 
-    for (const { userId, role } of albumUsers) {
+    for (const { userId, role = AlbumUserRole.Editor, ...requested } of albumUsers) {
       if (role === AlbumUserRole.Owner) {
         throw new BadRequestException('Cannot add another owner');
       }
@@ -305,7 +328,7 @@ export class AlbumService extends BaseService {
         throw new BadRequestException('Invalid user');
       }
 
-      await this.albumUserRepository.create({ userId, albumId: id, role });
+      await this.albumUserRepository.create({ userId, albumId: id, ...toAlbumUserAccess(role, requested) });
       await this.eventRepository.emit('AlbumInvite', { id, userId, senderName: auth.user.name });
     }
 
@@ -334,6 +357,11 @@ export class AlbumService extends BaseService {
     // non-admin can remove themselves
     if (auth.user.id !== userId) {
       await this.requireAccess({ auth, permission: Permission.AlbumShare, ids: [id] });
+
+      // managers can remove anyone but an owner
+      if (exists.role === AlbumUserRole.Owner) {
+        await this.requireAccess({ auth, permission: Permission.AlbumDelete, ids: [id] });
+      }
     }
 
     await this.albumUserRepository.delete({ albumId: id, userId });
@@ -349,7 +377,17 @@ export class AlbumService extends BaseService {
       throw new BadRequestException('User is owner');
     }
 
-    await this.albumUserRepository.update({ albumId: id, userId }, { role: dto.role });
+    if (dto.role === AlbumUserRole.Owner) {
+      throw new BadRequestException('Cannot add another owner');
+    }
+
+    const current = album.albumUsers.find(({ user }) => user.id === userId);
+    if (!current) {
+      throw new BadRequestException('Album not shared with user');
+    }
+
+    const { role, ...requested } = dto;
+    await this.albumUserRepository.update({ albumId: id, userId }, toAlbumUserAccess(role, requested, current));
   }
 
   private findOrFail(id: string, authUserId: string, options: AlbumInfoOptions) {

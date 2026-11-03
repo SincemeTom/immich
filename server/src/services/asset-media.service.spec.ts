@@ -502,7 +502,11 @@ describe(AssetMediaService.name, () => {
         new Set(['asset-1']),
         undefined,
       );
-      expect(mocks.access.asset.checkAlbumAccess).toHaveBeenCalledWith(authStub.admin.user.id, new Set(['asset-1']));
+      expect(mocks.access.asset.checkAlbumAccess).toHaveBeenCalledWith(
+        authStub.admin.user.id,
+        new Set(['asset-1']),
+        true,
+      );
       expect(mocks.access.asset.checkPartnerAccess).toHaveBeenCalledWith(authStub.admin.user.id, new Set(['asset-1']));
     });
 
@@ -637,6 +641,29 @@ describe(AssetMediaService.name, () => {
           fileName: `IMG_${asset.id}_preview.jpg`,
         }),
       );
+    });
+
+    it('should redirect the full size of a web image to the original for who can download it', async () => {
+      const asset = AssetFactory.from({ originalPath: '/uploads/user-id/IMG.jpg' }).build();
+      mocks.access.asset.checkOwnerAccess.mockResolvedValue(new Set([asset.id]));
+      mocks.asset.getForThumbnail.mockResolvedValue({ ...asset, path: null });
+
+      await expect(sut.viewThumbnail(authStub.admin, asset.id, { size: AssetMediaSize.FULLSIZE })).resolves.toEqual({
+        targetSize: 'original',
+      });
+    });
+
+    it('should not redirect the full size to the original for a viewer of an album that cannot download', async () => {
+      const asset = AssetFactory.from({ originalPath: '/uploads/user-id/IMG.jpg' }).build();
+      mocks.access.asset.checkAlbumAccess.mockImplementation((_, ids, download) =>
+        Promise.resolve(download ? new Set() : ids),
+      );
+      mocks.asset.getForThumbnail.mockResolvedValue({ ...asset, path: null });
+
+      await expect(sut.viewThumbnail(authStub.admin, asset.id, { size: AssetMediaSize.FULLSIZE })).resolves.toEqual({
+        targetSize: AssetMediaSize.PREVIEW,
+      });
+      expect(mocks.access.asset.checkAlbumAccess).toHaveBeenCalledWith(userStub.admin.id, new Set([asset.id]), true);
     });
 
     it('should get thumbnail file', async () => {

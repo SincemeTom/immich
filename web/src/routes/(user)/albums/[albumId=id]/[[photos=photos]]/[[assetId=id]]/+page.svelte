@@ -34,10 +34,12 @@
   import type { TimelineAsset } from '$lib/managers/timeline-manager/types';
   import { Route } from '$lib/route';
   import {
+    canDownloadFromAlbum,
     getAlbumActions,
     getAlbumAssetsActions,
     handleDeleteAlbum,
     isAlbumEditor,
+    isAlbumManager,
     isAlbumOwner,
   } from '$lib/services/album.service';
   import { getGlobalActions } from '$lib/services/app.service';
@@ -45,6 +47,7 @@
   import { SlideshowNavigation, SlideshowState, slideshowStore } from '$lib/stores/slideshow.store';
   import { handlePromiseError } from '$lib/utils';
   import { handleError } from '$lib/utils/handle-error';
+  import { setAlbumOriginalsRestricted, type AlbumUserUpdate } from '$lib/utils/album-access';
   import { isAlbumsRoute, navigate, type AssetGridRouteSearchParams } from '$lib/utils/navigation';
   import { AlbumUserRole, AssetVisibility, updateAlbumInfo, type AlbumResponseDto } from '@immich/sdk';
   import { ActionButton, CommandPaletteDefaultProvider, Icon, IconButton, toastManager } from '@immich/ui';
@@ -258,6 +261,13 @@
       (album.isActivityEnabled || activityManager.commentCount > 0),
   );
   const isEditor = $derived(isAlbumEditor(album));
+  const isManager = $derived(isAlbumManager(album));
+  const canDownload = $derived(canDownloadFromAlbum(album));
+
+  $effect(() => {
+    setAlbumOriginalsRestricted(!canDownload);
+    return () => setAlbumOriginalsRestricted(false);
+  });
 
   const isSelectionMode = $derived(
     viewMode === AlbumPageViewMode.SELECT_ASSETS ? true : viewMode === AlbumPageViewMode.SELECT_THUMBNAIL,
@@ -300,13 +310,13 @@
     await setModeToView();
   };
 
-  const onAlbumUserUpdate = ({ albumId, userId, role }: { albumId: string; userId: string; role: AlbumUserRole }) => {
+  const onAlbumUserUpdate = ({ albumId, userId, ...access }: AlbumUserUpdate) => {
     if (albumId !== album.id) {
       return;
     }
 
     const albumUsers = album.albumUsers.map((albumUser) =>
-      albumUser.user.id === userId ? { ...albumUser, role } : albumUser,
+      albumUser.user.id === userId ? { ...albumUser, ...access } : albumUser,
     );
     album = { ...album, albumUsers };
   };
@@ -363,7 +373,7 @@
               <AlbumTitle
                 id={album.id}
                 albumName={album.albumName}
-                {isEditor}
+                isEditor={isManager}
                 onUpdate={(albumName) => (album = { ...album, albumName })}
               />
 
@@ -372,7 +382,7 @@
               {/if}
 
               <!-- ALBUM SHARING -->
-              {#if album.albumUsers.length > 1 || (album.hasSharedLink && isOwned)}
+              {#if album.albumUsers.length > 1 || (album.hasSharedLink && isManager)}
                 <div class="my-3 flex gap-x-1">
                   <button
                     class="flex gap-x-1"
@@ -395,7 +405,7 @@
                       />
                     {/if}
 
-                    {#if album.hasSharedLink && isOwned}
+                    {#if album.hasSharedLink && isManager}
                       <IconButton
                         aria-label={$t('shared_link_manage_links')}
                         color="secondary"
@@ -411,7 +421,7 @@
               {/if}
               <AlbumDescription
                 id={album.id}
-                {isEditor}
+                isEditor={isManager}
                 bind:description={() => album.description, (description) => (album = { ...album, description })}
               />
             </section>
@@ -464,7 +474,9 @@
           ></FavoriteAction>
         {/if}
         <ButtonContextMenu icon={mdiDotsVertical} title={$t('menu')} offset={{ x: 175, y: 25 }}>
-          <DownloadAction menuItem filename={album.albumName} />
+          {#if canDownload || assetMultiSelectManager.isAllUserOwned}
+            <DownloadAction menuItem filename={album.albumName} />
+          {/if}
           {#if assetMultiSelectManager.isAllUserOwned}
             <ChangeDate menuItem />
             <ChangeDescription menuItem />
@@ -476,7 +488,7 @@
             />
             <SetVisibilityAction menuItem onVisibilitySet={handleSetVisibility} />
           {/if}
-          {#if assetMultiSelectManager.assets.length === 1}
+          {#if isManager && assetMultiSelectManager.assets.length === 1}
             <MenuOption
               text={$t('set_as_album_cover')}
               icon={mdiImageOutline}
@@ -549,7 +561,7 @@
                   />
                 {/if}
                 <ActionMenuItem action={Actions.Options} />
-                {#if isOwned && album.assetCount > 0}
+                {#if isManager && album.assetCount > 0}
                   <MenuOption
                     icon={mdiImageOutline}
                     text={$t('select_album_cover')}

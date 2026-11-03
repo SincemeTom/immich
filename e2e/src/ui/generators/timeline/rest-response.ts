@@ -417,7 +417,7 @@ export function getAlbum(
     albumThumbnailAssetId: album.thumbnailAssetId,
     createdAt: album.createdAt,
     updatedAt: album.updatedAt,
-    albumUsers: [{ user: albumOwner, role: AlbumUserRole.Owner }],
+    albumUsers: [{ user: albumOwner, role: AlbumUserRole.Owner, allowDownload: true, isManager: false }],
     shared: false,
     hasSharedLink: false,
     isActivityEnabled: true,

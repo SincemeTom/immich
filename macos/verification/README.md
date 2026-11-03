@@ -52,6 +52,8 @@
 | M4-2 | Apple Vision 调研（方案 A3） | [m4-vision-research.md](m4-vision-research.md) | 调研：自动标签、美学评分（挑堆叠封面）、截图识别（元数据规则，两个库误报 0）、二维码（6/6）、猫狗可以做；Vision 的"工具类"判断主库误报 16/78，不能直接自动归档；OCR（真实照片 49/58 对 PP-OCRv6 58/58）和人脸（合影 0/45）都不换。macOS 26 的文档识别、镜头脏污待测试机验证 |
 | M4-3 | 照片地点显示中文（分支 `mac/feat/geodata-cn`） | [m4-geodata-cn.md](m4-geodata-cn.md) | 通过（v3.3.5-mac.4）：换成 immich-geodata-cn 的三级数据，不改服务端代码；"Jiangchuanlu / Shanghai / China" → "上海市 闵行区 江川路街道 / 上海市 / 中国"，国外国家名为中文；已有照片需重新提取元数据 |
 | M4-4 | 内容分析：Apple Vision 自动标签、截图、二维码、美学分（分支 `mac/feat/vision-content`） | [m4-vision-content.md](m4-vision-content.md) | 通过：缩略图之后自动分析，中文标签放在"自动/"下（1303 个标签译成 14 类，宽泛的 84 个不用），截图、二维码打标签，截图归档默认关闭且只归档一次；这台 Mac 85 张真实照片每张 38 ms；新装端到端 49/49，单元测试 2604/2604。第二步（分支 `mac/feat/vision-macos26`）：美学分选自动堆叠封面；macOS 26 的视频语音识别（可按文字搜索）、文档、镜头脏污，低于 26 自动不运行、升级后启动时自动补做，在 15.6 上验证了关闭和补做查询，26 上的效果待升级后测；人物头像暂不做（分不清自动和手动选的头像） |
+| M4-5 | 没有位置的照片按前后拍的照片推断位置 | [m4-location-inference.md](m4-location-inference.md) | 通过（v3.3.5-mac.6）：前后 1 小时内各有一张有位置、相距 ≤ 1 公里时取更近的一张；来源含共享相册里别人的照片；按当地时间比较（没 GPS 的照片多半没时区）；只写数据库并标记"推断"，可单张清除、一键清除；查询 21/21，端到端连续 3 次通过 |
+| M4-6 | 共享相册权限：下载、管理者 | [m4-album-permissions.md](m4-album-permissions.md) | 通过（v3.3.5-mac.6）：成员分仅查看、可下载、可编辑、可管理、所有者五档；新查看者默认不能下载原图，编辑者只能加移照片，成员和相册设置归管理者，删除相册只有所有者；接口角色不变（兼容官方 App），用 `allowDownload`、`isManager` 两个字段；已有成员升级后能做的事不变；查询 34/34，端到端 40/40 连续 3 次 |
 
 ## M2 视频转码用 Apple 硬件
 
@@ -97,6 +99,8 @@
 | 新：NFS 照片库里编辑（旋转）图片，网页报"应用编辑失败"，实际已成功 | **已修复**：前端等编辑完成事件，图片只等 30 秒，NFS 上后台任务必然超时误报（视频等 300 秒从不报）；统一改为 300 秒 | [m1-edit-nfs-timeout.md](m1-edit-nfs-timeout.md) |
 | 新：v2 模型的 .pkg 在 Installer 里报"安装失败"：postinstall 同步预热超过 600 秒被系统终止（服务其实已升级并运行，但收尾步骤没做，全新安装时不开网页、没有 `immichctl`） | **已修复**（v3.3.5-mac.2）：预热移到用户会话里的一次性 LaunchAgent，postinstall 约 45 秒结束；预热期间服务器只开 API，网页和 App 可用，任务排队，预热完自动处理 | [m4-pkg-postinstall-timeout.md](m4-pkg-postinstall-timeout.md) |
 | 新：`v3.3.5-mac.2` 的 .pkg 安装几秒就失败、日志里没有任何输出：postinstall 用 `ps \| awk '… exit }'` 找安装用户，awk 提前退出让 `ps` 收到 SIGPIPE（141），`pipefail` + `set -e` 让脚本立刻退出。是否失败取决于 Installer 的 PID 在进程表中的位置，进程多时几乎必现；这次什么都没装，旧版本照常运行 | **已修复**（v3.3.5-mac.3）：所有在 `pipefail` 下提前停止读取的管道改为读完；postinstall 开头先记日志，失败时记下行号；新增回归测试 `macos/package/tests/postinstall-pipes.sh`（旧写法 20/20 失败，新写法 0/20） | [m4-pkg-postinstall-sigpipe.md](m4-pkg-postinstall-sigpipe.md) |
+| 新：模型预热期间设置人物封面，网页一直不变、再点报错，过一会儿才发现已经成功：预热时 server 只开 API，封面任务排队等待；预热结束重启 server 的约 8 秒内 API 不可用，任务完成的 WebSocket 通知在浏览器重连时丢失，网页重连后也不刷新。上传、编辑等靠任务更新界面的操作同样受影响 | **已修复**（v3.3.5-mac.6）：预热期间 server 照常运行、不重启，只暂停智能搜索、人脸检测、文字识别三个队列，封面等任务照常执行 | [m4-person-cover-during-warmup.md](m4-person-cover-during-warmup.md) |
+| 新：正式服把内容分析并发调到 10 后，10 个任务一直"正在运行"，半小时后一起失败：同时转写的视频数达到 CPU 核心数时 `immich-vision` 死锁（读取声音的阻塞调用占满了 Swift 的工作线程）；服务端转写超时固定 30 分钟，一个超时又连带其他请求一起失败 | **已修复**（mac.6）：读取声音改在独立线程上；同时最多转写 2 个；超时 = 10 分钟 + 视频时长；超时只换 helper、其他请求重发一次。12 核上修复前 12 个并发即卡死，修复后 48 个 28 秒完成 | [m4-vision-speech-deadlock.md](m4-vision-speech-deadlock.md) |
 
 ## 后续事项
 
@@ -115,8 +119,13 @@
 | 以后 | 网页上挂载 SMB 共享（密码存钥匙串） |
 | M1-8 | 在真实群晖上验证网络共享，并确认群晖重启后句柄是否不变 |
 | M1-9 | 在真实群晖上验证存储位置：NFS 写入文件的属主（Squash 为 admin）下各用户能否在 File Station 看到自己的 `Photos/Immich`；缩略图目录在机械硬盘 / SSD 缓存上的速度 |
-| M3 | 打包 libvips 及其约 30 个依赖库，改写动态库引用路径；统一 `MACOSX_DEPLOYMENT_TARGET`；PostgreSQL 客户端工具与 GNU gzip 一并打包 |
-| M3 | 模型随包提供（4.8 GB 下载内容即可；CoreML 编译产物和路径绑定，安装时在本机编译，约 2 分钟） |
+| ~~M3~~ | ~~打包 libvips 及其约 30 个依赖库，改写动态库引用路径；统一 `MACOSX_DEPLOYMENT_TARGET`；PostgreSQL 客户端工具与 GNU gzip 一并打包~~（已完成，见 M3-1） |
+| ~~M3~~ | ~~模型随包提供（4.8 GB 下载内容即可；CoreML 编译产物和路径绑定，安装时在本机编译，约 2 分钟）~~（已完成，见 M3-1） |
 | M3 | 系统级服务（LaunchDaemon），开机即运行，不依赖登录（FileVault 机器需要） |
 | 跟进上游 | 上游 `main` 开始设置 `MACHINE_LEARNING_MODEL_REVISION: v2`，跟进到这个版本时 `run-service` 要同步设置 |
 | ~~可选~~ | ~~OCR 单独走 CPU~~（不需要：v6_medium 用 CoreML 比 CPU 快 3.6 倍，见模型选型） |
+| M4 | 智能化方案剩下的：B1 + B3 视频多帧索引和关键帧文字、A2 评估 FG-CLIP 2、D2 旅行和事件、C1 夜间视觉语言模型、D1 / D3 / D4（见 [m4-intelligence-plan.md](m4-intelligence-plan.md)；A1、A3、B2 已完成） |
+| M4-4 | 在 macOS 26 的正式机上看视频语音、文档、镜头脏污的效果；正式服把内容分析并发设为 10 跑一批视频，确认不再卡住 |
+| 待决定 | 外部库目录里的 `.xmp`：保持上游会写入，还是改为不写（见 [m1-external-dedupe.md](m1-external-dedupe.md)） |
+
+全部改动的汇总见 [../FEATURES.md](../FEATURES.md)。

@@ -1,7 +1,12 @@
 import { BadRequestException } from '@nestjs/common';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { SystemConfig, defaults } from 'src/dtos/config.dto.js';
 import { ImmichWorker, JobName, QueueCommand, QueueName } from 'src/enum.js';
 import { QueueService } from 'src/services/queue.service.js';
+import { ML_QUEUES } from 'src/utils/ml-warming.js';
+import { mockEnvData } from 'test/repositories/config.repository.mock.js';
 import { factory } from 'test/small.factory.js';
 import { ServiceMocks, newTestService } from 'test/utils.js';
 
@@ -19,17 +24,66 @@ describe(QueueService.name, () => {
     expect(sut).toBeDefined();
   });
 
+  describe('onBootstrap', () => {
+    let dir: string;
+    let flag: string;
+
+    beforeEach(() => {
+      dir = mkdtempSync(join(tmpdir(), 'immich-warm-'));
+      flag = join(dir, 'warming');
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      sut.onShutdown();
+      vi.useRealTimers();
+      rmSync(dir, { recursive: true, force: true });
+    });
+
+    it('starts every worker when no warm-up is set up (a container)', () => {
+      sut.onBootstrap();
+
+      expect(mocks.job.startWorkers).toHaveBeenCalledWith([]);
+    });
+
+    it('starts the workers of the jobs that need the models held while the models are prepared', () => {
+      writeFileSync(flag, `${process.pid}\n`);
+      mocks.config.getEnv.mockReturnValue(mockEnvData({ mlWarming: { flag } }));
+
+      sut.onBootstrap();
+
+      expect(mocks.job.startWorkers).toHaveBeenCalledWith(ML_QUEUES);
+    });
+
+    it('releases them once the models are ready, and holds them again for the next warm-up, without a restart', () => {
+      writeFileSync(flag, `${process.pid}\n`);
+      mocks.config.getEnv.mockReturnValue(mockEnvData({ mlWarming: { flag } }));
+      sut.onBootstrap();
+
+      rmSync(flag);
+      vi.advanceTimersByTime(5000);
+      expect(mocks.job.releaseWorkers).toHaveBeenCalledWith(ML_QUEUES);
+      expect(mocks.job.holdWorkers).not.toHaveBeenCalled();
+
+      writeFileSync(flag, 'agent\n');
+      vi.advanceTimersByTime(5000);
+      expect(mocks.job.holdWorkers).toHaveBeenCalledWith(ML_QUEUES);
+      expect(mocks.job.startWorkers).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe('onConfigUpdate', () => {
     it('should update concurrency', () => {
       sut.onConfigUpdate({ newConfig: defaults, oldConfig: {} as SystemConfig });
 
-      expect(mocks.job.setConcurrency).toHaveBeenCalledTimes(21);
+      expect(mocks.job.setConcurrency).toHaveBeenCalledTimes(22);
       expect(mocks.job.setConcurrency).toHaveBeenNthCalledWith(5, QueueName.FacialRecognition, 1);
       expect(mocks.job.setConcurrency).toHaveBeenNthCalledWith(7, QueueName.DuplicateDetection, 1);
       expect(mocks.job.setConcurrency).toHaveBeenNthCalledWith(8, QueueName.BackgroundTask, 5);
       expect(mocks.job.setConcurrency).toHaveBeenNthCalledWith(9, QueueName.StorageTemplateMigration, 1);
       expect(mocks.job.setConcurrency).toHaveBeenNthCalledWith(20, QueueName.AutoStack, 1);
       expect(mocks.job.setConcurrency).toHaveBeenNthCalledWith(21, QueueName.ContentAnalysis, 2);
+      expect(mocks.job.setConcurrency).toHaveBeenNthCalledWith(22, QueueName.LocationInference, 2);
     });
   });
 
@@ -83,6 +137,7 @@ describe(QueueService.name, () => {
         [QueueName.Editor]: expected,
         [QueueName.AutoStack]: expected,
         [QueueName.ContentAnalysis]: expected,
+        [QueueName.LocationInference]: expected,
       });
     });
   });

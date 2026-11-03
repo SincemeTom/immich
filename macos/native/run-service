@@ -24,18 +24,6 @@ current_release() {
   cd "$home/current" && pwd -P
 }
 
-# Whether `immichctl warm` is preparing the models. Its flag holds its pid, or `agent` from when the one-off
-# LaunchAgent that runs it in the background (`immichctl warm --schedule`) is set up until it starts.
-warming() {
-  local holder
-  holder="$(cat "$home/run/warming" 2>/dev/null)" || return 1
-  case "$holder" in
-    agent) [ -f "$HOME/Library/LaunchAgents/$IMMICH_NATIVE_LABEL_PREFIX.warm.plist" ] ;;
-    '' | *[!0-9]*) return 1 ;;
-    *) kill -0 "$holder" 2>/dev/null ;;
-  esac
-}
-
 # launchd starts jobs with LANG unset. Postgres then asks macOS for the locale, which starts a thread in the
 # postmaster, and it refuses to run ("postmaster became multithreaded during startup").
 export LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8
@@ -133,17 +121,16 @@ PY
     [ -f "$home/config/server.env" ] && . "$home/config/server.env"
     set +a
     # While the models are prepared (minutes, the first time: macos/verification/m4-pkg-postinstall-timeout.md), the
-    # server runs its API alone: the web UI and the apps work, uploads too, and the jobs they queue wait for the job
-    # worker, which would fail every one that needs the machine learning service. The warm-up restarts the server
-    # with it once the models are ready. Not for the admin CLI (arguments), which starts no workers.
+    # jobs that call the machine learning service (smart search, faces, text) wait, which would fail meanwhile; the
+    # server finds the warm-up's flag itself (QueueService), and runs the rest: thumbnails, a person's featured photo,
+    # metadata. It is not restarted when the models are ready, which kept the API down for seconds and lost the
+    # notices sent meanwhile (macos/verification/m4-person-cover-during-warmup.md). Not for the admin CLI (arguments).
     if [ $# -eq 0 ]; then
       mkdir -p "$home/run"
-      if warming; then
-        export IMMICH_WORKERS_EXCLUDE=microservices
-        echo warm-up >"$home/run/server-workers"
-      else
-        echo all >"$home/run/server-workers"
-      fi
+      export IMMICH_ML_WARMING_FLAG="$home/run/warming"
+      export IMMICH_ML_WARMING_AGENT="$HOME/Library/LaunchAgents/$IMMICH_NATIVE_LABEL_PREFIX.warm.plist"
+      # how it runs, for immichctl: a release before mac.6 ran its API alone while warming (`warm-up`)
+      echo all >"$home/run/server-workers"
     fi
 
     # What the web UI shows under Help and About: this build's own source, at the commit that runs, as the AGPL asks

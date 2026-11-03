@@ -46,6 +46,7 @@ const updatedConfig = Object.freeze<SystemConfig>({
     [QueueName.IntegrityCheck]: { concurrency: 1 },
     [QueueName.Editor]: { concurrency: 2 },
     [QueueName.ContentAnalysis]: { concurrency: 2 },
+    [QueueName.LocationInference]: { concurrency: 2 },
   },
   backup: {
     database: {
@@ -105,6 +106,9 @@ const updatedConfig = Object.freeze<SystemConfig>({
   metadata: {
     faces: {
       import: false,
+    },
+    locationInference: {
+      enabled: true,
     },
   },
   machineLearning: {

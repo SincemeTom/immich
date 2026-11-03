@@ -157,28 +157,40 @@ describe('/albums', () => {
           expect.objectContaining({
             albumName: user1SharedLink,
             albumUsers: expect.arrayContaining([
-              { role: AlbumUserRole.Owner, user: expect.objectContaining({ id: user1.userId }) },
+              expect.objectContaining({
+                role: AlbumUserRole.Owner,
+                user: expect.objectContaining({ id: user1.userId }),
+              }),
             ]),
             shared: true,
           }),
           expect.objectContaining({
             albumName: user1SharedEditorUser,
             albumUsers: expect.arrayContaining([
-              { role: AlbumUserRole.Owner, user: expect.objectContaining({ id: user1.userId }) },
+              expect.objectContaining({
+                role: AlbumUserRole.Owner,
+                user: expect.objectContaining({ id: user1.userId }),
+              }),
             ]),
             shared: true,
           }),
           expect.objectContaining({
             albumName: user1SharedViewerUser,
             albumUsers: expect.arrayContaining([
-              { role: AlbumUserRole.Owner, user: expect.objectContaining({ id: user1.userId }) },
+              expect.objectContaining({
+                role: AlbumUserRole.Owner,
+                user: expect.objectContaining({ id: user1.userId }),
+              }),
             ]),
             shared: true,
           }),
           expect.objectContaining({
             albumName: user2SharedUser,
             albumUsers: expect.arrayContaining([
-              { role: AlbumUserRole.Owner, user: expect.objectContaining({ id: user2.userId }) },
+              expect.objectContaining({
+                role: AlbumUserRole.Owner,
+                user: expect.objectContaining({ id: user2.userId }),
+              }),
             ]),
             shared: true,
           }),
@@ -195,35 +207,50 @@ describe('/albums', () => {
           expect.objectContaining({
             albumName: user1SharedEditorUser,
             albumUsers: expect.arrayContaining([
-              { role: AlbumUserRole.Owner, user: expect.objectContaining({ id: user1.userId }) },
+              expect.objectContaining({
+                role: AlbumUserRole.Owner,
+                user: expect.objectContaining({ id: user1.userId }),
+              }),
             ]),
             shared: true,
           }),
           expect.objectContaining({
             albumName: user1SharedViewerUser,
             albumUsers: expect.arrayContaining([
-              { role: AlbumUserRole.Owner, user: expect.objectContaining({ id: user1.userId }) },
+              expect.objectContaining({
+                role: AlbumUserRole.Owner,
+                user: expect.objectContaining({ id: user1.userId }),
+              }),
             ]),
             shared: true,
           }),
           expect.objectContaining({
             albumName: user1SharedLink,
             albumUsers: expect.arrayContaining([
-              { role: AlbumUserRole.Owner, user: expect.objectContaining({ id: user1.userId }) },
+              expect.objectContaining({
+                role: AlbumUserRole.Owner,
+                user: expect.objectContaining({ id: user1.userId }),
+              }),
             ]),
             shared: true,
           }),
           expect.objectContaining({
             albumName: user1NotShared,
             albumUsers: expect.arrayContaining([
-              { role: AlbumUserRole.Owner, user: expect.objectContaining({ id: user1.userId }) },
+              expect.objectContaining({
+                role: AlbumUserRole.Owner,
+                user: expect.objectContaining({ id: user1.userId }),
+              }),
             ]),
             shared: false,
           }),
           expect.objectContaining({
             albumName: user2SharedUser,
             albumUsers: expect.arrayContaining([
-              { role: AlbumUserRole.Owner, user: expect.objectContaining({ id: user2.userId }) },
+              expect.objectContaining({
+                role: AlbumUserRole.Owner,
+                user: expect.objectContaining({ id: user2.userId }),
+              }),
             ]),
             shared: true,
           }),
@@ -242,28 +269,40 @@ describe('/albums', () => {
           expect.objectContaining({
             albumName: user1SharedEditorUser,
             albumUsers: expect.arrayContaining([
-              { role: AlbumUserRole.Owner, user: expect.objectContaining({ id: user1.userId }) },
+              expect.objectContaining({
+                role: AlbumUserRole.Owner,
+                user: expect.objectContaining({ id: user1.userId }),
+              }),
             ]),
             shared: true,
           }),
           expect.objectContaining({
             albumName: user1SharedViewerUser,
             albumUsers: expect.arrayContaining([
-              { role: AlbumUserRole.Owner, user: expect.objectContaining({ id: user1.userId }) },
+              expect.objectContaining({
+                role: AlbumUserRole.Owner,
+                user: expect.objectContaining({ id: user1.userId }),
+              }),
             ]),
             shared: true,
           }),
           expect.objectContaining({
             albumName: user1SharedLink,
             albumUsers: expect.arrayContaining([
-              { role: AlbumUserRole.Owner, user: expect.objectContaining({ id: user1.userId }) },
+              expect.objectContaining({
+                role: AlbumUserRole.Owner,
+                user: expect.objectContaining({ id: user1.userId }),
+              }),
             ]),
             shared: true,
           }),
           expect.objectContaining({
             albumName: user2SharedUser,
             albumUsers: expect.arrayContaining([
-              { role: AlbumUserRole.Owner, user: expect.objectContaining({ id: user2.userId }) },
+              expect.objectContaining({
+                role: AlbumUserRole.Owner,
+                user: expect.objectContaining({ id: user2.userId }),
+              }),
             ]),
             shared: true,
           }),
@@ -282,7 +321,10 @@ describe('/albums', () => {
           expect.objectContaining({
             albumName: user1NotShared,
             albumUsers: expect.arrayContaining([
-              { role: AlbumUserRole.Owner, user: expect.objectContaining({ id: user1.userId }) },
+              expect.objectContaining({
+                role: AlbumUserRole.Owner,
+                user: expect.objectContaining({ id: user1.userId }),
+              }),
             ]),
             shared: false,
           }),
@@ -317,7 +359,10 @@ describe('/albums', () => {
           expect.objectContaining({
             albumName: user2SharedUser,
             albumUsers: expect.arrayContaining([
-              { role: AlbumUserRole.Owner, user: expect.objectContaining({ id: user2.userId }) },
+              expect.objectContaining({
+                role: AlbumUserRole.Owner,
+                user: expect.objectContaining({ id: user2.userId }),
+              }),
             ]),
           }),
         ]),
@@ -379,14 +424,20 @@ describe('/albums', () => {
           expect.objectContaining({
             albumName: user4DeletedAsset,
             albumUsers: expect.arrayContaining([
-              { role: AlbumUserRole.Owner, user: expect.objectContaining({ id: user4.userId }) },
+              expect.objectContaining({
+                role: AlbumUserRole.Owner,
+                user: expect.objectContaining({ id: user4.userId }),
+              }),
             ]),
             shared: false,
           }),
           expect.objectContaining({
             albumName: user4Empty,
             albumUsers: expect.arrayContaining([
-              { role: AlbumUserRole.Owner, user: expect.objectContaining({ id: user4.userId }) },
+              expect.objectContaining({
+                role: AlbumUserRole.Owner,
+                user: expect.objectContaining({ id: user4.userId }),
+              }),
             ]),
             shared: false,
           }),
@@ -497,7 +548,9 @@ describe('/albums', () => {
         description: '',
         albumThumbnailAssetId: null,
         shared: false,
-        albumUsers: [{ role: AlbumUserRole.Owner, user: expect.objectContaining({ id: user1.userId }) }],
+        albumUsers: [
+          expect.objectContaining({ role: AlbumUserRole.Owner, user: expect.objectContaining({ id: user1.userId }) }),
+        ],
         hasSharedLink: false,
         assetCount: 0,
         isActivityEnabled: true,
@@ -596,19 +649,29 @@ describe('/albums', () => {
       expect(body).toEqual(errorDto.badRequest('Not found or no album.update access'));
     });
 
-    it('should be able to update as an editor', async () => {
+    it('should not be able to update as an editor that does not manage the album', async () => {
       const { status, body } = await request(app)
         .patch(`/albums/${user1Albums[0].id}`)
         .set('Authorization', `Bearer ${user2.accessToken}`)
         .send({ albumName: 'New album name' });
 
+      expect(status).toBe(400);
+      expect(body).toEqual(errorDto.badRequest('Not found or no album.update access'));
+    });
+
+    it('should be able to update as a manager', async () => {
+      const album = await utils.createAlbum(user1.accessToken, {
+        albumName: 'testAlbum',
+        albumUsers: [{ userId: user2.userId, role: AlbumUserRole.Editor, isManager: true }],
+      });
+
+      const { status, body } = await request(app)
+        .patch(`/albums/${album.id}`)
+        .set('Authorization', `Bearer ${user2.accessToken}`)
+        .send({ albumName: 'New album name' });
+
       expect(status).toBe(200);
-      expect(body).toEqual(
-        expect.objectContaining({
-          id: user1Albums[0].id,
-          albumName: 'New album name',
-        }),
-      );
+      expect(body).toEqual(expect.objectContaining({ id: album.id, albumName: 'New album name' }));
     });
   });
 
@@ -788,10 +851,10 @@ describe('/albums', () => {
       expect(body).toEqual(errorDto.badRequest('Not found or no album.share access'));
     });
 
-    it('should not allow an editor to change the role of an owner', async () => {
+    it('should not allow a manager to change the role of an owner', async () => {
       const album = await utils.createAlbum(user1.accessToken, {
         albumName: 'testAlbum',
-        albumUsers: [{ userId: user2.userId, role: AlbumUserRole.Editor }],
+        albumUsers: [{ userId: user2.userId, role: AlbumUserRole.Editor, isManager: true }],
       });
 
       expect(album.albumUsers[1].role).toEqual(AlbumUserRole.Editor);

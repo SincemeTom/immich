@@ -26,6 +26,7 @@ import { derived, get } from 'svelte/store';
 import { defaultLang, locales } from '$lib/constants';
 import { authManager } from '$lib/managers/auth-manager.svelte';
 import { alwaysLoadOriginalFile, lang, locale } from '$lib/stores/preferences.store';
+import { canLoadOriginal } from '$lib/utils/album-access';
 import { isWebCompatibleImage } from '$lib/utils/asset-utils';
 import { handleError } from '$lib/utils/handle-error';
 import { convertBCP47, langs } from '$lib/utils/i18n';
@@ -224,6 +225,9 @@ const forceUseOriginal = (asset: AssetResponseDto) => {
 
 export const targetImageSize = (asset: AssetResponseDto, forceOriginal: boolean) => {
   if (forceOriginal || get(alwaysLoadOriginalFile) || forceUseOriginal(asset)) {
+    if (!canLoadOriginal(asset)) {
+      return AssetMediaSize.Fullsize;
+    }
     return asset.type === AssetTypeEnum.Video || isWebCompatibleImage(asset)
       ? AssetMediaSize.Original
       : AssetMediaSize.Fullsize;

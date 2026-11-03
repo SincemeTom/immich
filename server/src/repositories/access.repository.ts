@@ -8,6 +8,9 @@ import { PersonId } from 'src/repositories/person.repository.js';
 import { DB } from 'src/schema/index.js';
 import { asUuid } from 'src/utils/database.js';
 
+/** What a member of an album shared with them can do in it (see utils/album-access.ts) */
+export type AlbumMemberAccess = 'view' | 'download' | 'edit' | 'manage';
+
 class ActivityAccess {
   constructor(private db: Kysely<DB>) {}
 
@@ -34,6 +37,7 @@ class ActivityAccess {
       return new Set<string>();
     }
 
+    // the album's owner, or a manager of it
     return this.db
       .selectFrom('activity')
       .select('activity.id')
@@ -41,8 +45,16 @@ class ActivityAccess {
       .innerJoin('album_user', (join) =>
         join
           .onRef('album.id', '=', 'album_user.albumId')
-          .on('album_user.role', '=', sql.lit(AlbumUserRole.Owner))
-          .on('album_user.userId', '=', asUuid(userId)),
+          .on('album_user.userId', '=', asUuid(userId))
+          .on((eb) =>
+            eb.or([
+              eb('album_user.role', '=', sql.lit(AlbumUserRole.Owner)),
+              eb.and([
+                eb('album_user.role', '=', sql.lit(AlbumUserRole.Editor)),
+                eb('album_user.isManager', '=', true),
+              ]),
+            ]),
+          ),
       )
       .where('activity.id', 'in', [...activityIds])
       .execute()
@@ -95,15 +107,16 @@ class AlbumAccess {
       .then((albums) => new Set(albums.map((album) => album.id)));
   }
 
-  @GenerateSql({ params: [DummyValue.UUID, DummyValue.UUID_SET] })
+  /**
+   * The albums shared with the user (not owned) in which they can: view (any member), download (an editor, a viewer
+   * allowed to), edit (add and remove photos: an editor), manage (members, details, shared links: a manager)
+   */
+  @GenerateSql({ params: [DummyValue.UUID, DummyValue.UUID_SET, 'view'] })
   @ChunkedSet({ paramIndex: 1 })
-  async checkSharedAlbumAccess(userId: string, albumIds: Set<string>, access: AlbumUserRole) {
+  async checkSharedAlbumAccess(userId: string, albumIds: Set<string>, access: AlbumMemberAccess) {
     if (albumIds.size === 0) {
       return new Set<string>();
     }
-
-    const accessRole =
-      access === AlbumUserRole.Editor ? [AlbumUserRole.Editor] : [AlbumUserRole.Editor, AlbumUserRole.Viewer];
 
     return this.db
       .selectFrom('album')
@@ -113,7 +126,24 @@ class AlbumAccess {
       .where('album.id', 'in', [...albumIds])
       .where('album.deletedAt', 'is', null)
       .where('user.id', '=', userId)
-      .where('album_user.role', 'in', [...accessRole])
+      .where((eb) => {
+        const editor = eb('album_user.role', '=', AlbumUserRole.Editor);
+        const viewer = eb('album_user.role', '=', AlbumUserRole.Viewer);
+        switch (access) {
+          case 'view': {
+            return eb.or([editor, viewer]);
+          }
+          case 'download': {
+            return eb.or([editor, eb.and([viewer, eb('album_user.allowDownload', '=', true)])]);
+          }
+          case 'edit': {
+            return editor;
+          }
+          case 'manage': {
+            return eb.and([editor, eb('album_user.isManager', '=', true)]);
+          }
+        }
+      })
       .execute()
       .then((albums) => new Set(albums.map((album) => album.id)));
   }
@@ -143,9 +173,10 @@ class AlbumAccess {
 class AssetAccess {
   constructor(private db: Kysely<DB>) {}
 
-  @GenerateSql({ params: [DummyValue.UUID, DummyValue.UUID_SET] })
+  /** The assets in albums the user is in; to download them, those in which they can download (an owner, an editor, a viewer allowed to) */
+  @GenerateSql({ params: [DummyValue.UUID, DummyValue.UUID_SET, false] })
   @ChunkedSet({ paramIndex: 1 })
-  async checkAlbumAccess(userId: string, assetIds: Set<string>) {
+  async checkAlbumAccess(userId: string, assetIds: Set<string>, download = false) {
     if (assetIds.size === 0) {
       return new Set<string>();
     }
@@ -169,6 +200,11 @@ class AssetAccess {
       )
       .where('user.id', '=', userId)
       .where('album.deletedAt', 'is', null)
+      .$if(download, (qb) =>
+        qb.where((eb) =>
+          eb.or([eb('albumUsers.role', '!=', AlbumUserRole.Viewer), eb('albumUsers.allowDownload', '=', true)]),
+        ),
+      )
       .execute()
       .then((assets) => {
         const allowedIds = new Set<string>();

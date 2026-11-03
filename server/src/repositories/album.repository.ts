@@ -38,7 +38,7 @@ const withAlbumUsers = (authUserId?: string) => (eb: ExpressionBuilder<DB, 'albu
       .selectFrom('album_user')
       .innerJoin('user', 'user.id', 'album_user.userId')
       .whereRef('album_user.albumId', '=', 'album.id')
-      .select('album_user.role')
+      .select(['album_user.role', 'album_user.allowDownload', 'album_user.isManager'])
       .select((eb) => jsonObjectFrom(eb.selectFrom(dummy).select(columns.user)).$notNull().as('user'))
       .orderBy('album_user.role')
       .$if(!!authUserId, (qb) => qb.orderBy((eb) => eb('album_user.userId', '=', authUserId!), 'desc'))
@@ -305,13 +305,13 @@ export class AlbumRepository {
     params: [
       { albumName: DummyValue.STRING },
       [],
-      [{ userId: DummyValue.UUID, role: AlbumUserRole.Owner }, DummyValue.UUID],
+      [{ userId: DummyValue.UUID, role: AlbumUserRole.Owner, allowDownload: true, isManager: false }, DummyValue.UUID],
     ],
   })
   async create(
     album: Insertable<AlbumTable>,
     assetIds: string[],
-    albumUsers: AlbumUserCreateDto[],
+    albumUsers: (AlbumUserCreateDto & { allowDownload: boolean; isManager: boolean })[],
     authUserId: string,
   ) {
     if (albumUsers.every((u) => u.role !== AlbumUserRole.Owner)) {
@@ -320,12 +320,16 @@ export class AlbumRepository {
 
     const userIds = albumUsers.map((u) => u.userId);
     const roles = albumUsers.map((u) => u.role);
+    // as text: postgres.js sends a list of booleans as one boolean, and strings typed boolean[] as false
+    const allowDownloads = albumUsers.map((u) => String(u.allowDownload));
+    const isManagers = albumUsers.map((u) => String(u.isManager));
 
     const result = await this.db
       .with('album', (db) => db.insertInto('album').values(album).returningAll())
       .with('album_user', (db) =>
         db
           .insertInto('album_user')
+          .columns(['albumId', 'userId', 'role', 'allowDownload', 'isManager'])
           .expression((eb) =>
             eb
               .selectFrom('album')
@@ -333,9 +337,18 @@ export class AlbumRepository {
                 ref('album.id').as('albumId'),
                 sql`unnest(${userIds}::uuid[])`.as('userId'),
                 sql`unnest(${roles}::album_user_role_enum[])`.as('role'),
+                sql`unnest(${allowDownloads}::text[]::boolean[])`.as('allowDownload'),
+                sql`unnest(${isManagers}::text[]::boolean[])`.as('isManager'),
               ]),
           )
-          .returning(['album_user.albumId', 'album_user.userId', 'album_user.role']),
+          // the album's users are selected below from these, as the rows inserted are not seen otherwise
+          .returning([
+            'album_user.albumId',
+            'album_user.userId',
+            'album_user.role',
+            'album_user.allowDownload',
+            'album_user.isManager',
+          ]),
       )
       .with('album_asset', (db) =>
         db

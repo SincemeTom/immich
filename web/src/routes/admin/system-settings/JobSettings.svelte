@@ -25,6 +25,7 @@
     QueueName.Migration,
     QueueName.Ocr,
     QueueName.ContentAnalysis,
+    QueueName.LocationInference,
   ];
 
   function isSystemConfigJobDto(jobName: string): jobName is keyof AdminConfigJobDto {
@@ -53,6 +54,7 @@
     [QueueName.IntegrityCheck]: $t('integrity_checks'),
     [QueueName.AutoStack]: $t('admin.auto_stack_job'),
     [QueueName.ContentAnalysis]: $t('admin.content_analysis_job'),
+    [QueueName.LocationInference]: $t('admin.location_inference_job'),
   });
 </script>
 

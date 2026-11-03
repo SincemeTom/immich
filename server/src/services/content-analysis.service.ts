@@ -39,8 +39,12 @@ import { tokenizeForSearch } from 'src/utils/database.js';
 import { batched, isContentAnalysisEnabled } from 'src/utils/misc.js';
 import { upsertTags } from 'src/utils/tag.js';
 
-/** how long listening to one video may take: an hour of it takes a few minutes; the model's download, once, more */
-const SPEECH_TIMEOUT = 30 * 60_000;
+/**
+ * How long listening to a video may take, from when it is sent: an hour of it takes a few minutes, but the language's
+ * model is downloaded the first time, and the Neural Engine is shared; so ten minutes, and as long again as the video,
+ * up to two hours. (Fixed at 30 minutes, a stuck helper held its jobs that long: m4-vision-speech-deadlock.md.)
+ */
+export const speechTimeout = (durationMs: number | null) => Math.min(10 * 60_000 + (durationMs ?? 0), 2 * 60 * 60_000);
 
 /**
  * Content analysis, on macOS: Apple's Vision framework on each asset's preview (VisionRepository), for tags in
@@ -145,7 +149,9 @@ export class ContentAnalysisService extends BaseService {
       return JobStatus.Failed;
     }
     const heard =
-      tasks.video.length > 0 ? await this.listen(id, asset.originalPath, contentAnalysis.speechLanguage) : {};
+      tasks.video.length > 0
+        ? await this.listen(id, asset.originalPath, contentAnalysis.speechLanguage, speechTimeout(asset.duration))
+        : {};
     const done = { ...result, ...heard };
 
     const labels = succeeded<VisionLabel[]>(done.classify) ?? [];
@@ -239,9 +245,14 @@ export class ContentAnalysisService extends BaseService {
   }
 
   /** what is said in a video; nothing, logged, if it fails, so that the rest of its analysis is kept */
-  private async listen(id: string, path: string, language: string): Promise<Pick<VisionResult, 'speech'>> {
+  private async listen(
+    id: string,
+    path: string,
+    language: string,
+    timeout: number,
+  ): Promise<Pick<VisionResult, 'speech'>> {
     try {
-      const result = await this.visionRepository.analyze(path, [SPEECH_TASK], { language, timeout: SPEECH_TIMEOUT });
+      const result = await this.visionRepository.analyze(path, [SPEECH_TASK], { language, timeout });
       const error = result.error ?? (result.speech && 'error' in result.speech ? result.speech.error : undefined);
       if (error) {
         this.logger.warn(`Speech recognition of ${id} failed: ${error}`);

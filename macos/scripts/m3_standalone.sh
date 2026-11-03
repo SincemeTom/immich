@@ -2,8 +2,9 @@
 # M3: the self-contained release, run the way the .pkg runs it, on this Mac, with Homebrew out of reach.
 #
 #   fresh     configure.sh from the release on a new install, as postinstall runs it: the models placed as it places
-#             them, prepared in the background (well within Installer's 600 seconds); meanwhile the server answers and
-#             a photo uploaded waits for its jobs (m4_warm_queue.py), which run after; then m0_e2e.py: sign-up, every
+#             them, prepared in the background (well within Installer's 600 seconds); meanwhile the server runs, a photo
+#             uploaded gets its thumbnail and its smart search waits (m4_warm_queue.py), running after without a
+#             restart; then m0_e2e.py: sign-up, every
 #             test format, videos, faces, OCR, smart search, transcoding, a database backup
 #   takeover  an install.sh install first (Homebrew's PostgreSQL, Valkey and libvips, a release from install.sh) with
 #             photos (m0_e2e.py), then configure.sh from the self-contained release on it, as the .pkg does on a Mac
@@ -23,7 +24,10 @@ MODELS="$(cd "${2:?}" && pwd -P)"
 WHAT="${3:-both}"
 WORK=/tmp/m3
 LIVE="$HOME/Library/Application Support/Immich"
-PYTHON="$LIVE/current/ml/venv/bin/python"
+# the live install's Python, for httpx and Pillow: a .pkg install's (ml/python), or an install.sh one's (ml/venv)
+PYTHON="$LIVE/current/ml/python/bin/python3"
+[ -x "$PYTHON" ] || PYTHON="$LIVE/current/ml/venv/bin/python"
+[ -x "$PYTHON" ] || { echo "no Python with httpx and Pillow in $LIVE/current/ml" >&2; exit 1; }
 mkdir -p "$WORK"
 failures=0
 
@@ -97,18 +101,21 @@ e2e() {
 }
 
 # The models prepared in the background, as after the .pkg: configure.sh has just set it going. Meanwhile the server
-# answers with its API alone, and a photo uploaded waits for its jobs; the warm-up then removes its LaunchAgent and
-# restarts the server with its job worker, which takes them up.
+# runs, a photo uploaded gets its thumbnail and its smart search waits; the warm-up then removes its LaunchAgent, and
+# the same server, not restarted, takes up what waited.
 background_warm() {
-  local home="$1" port="$2" label="$3" asset waited=0 workers
+  local home="$1" port="$2" label="$3" asset waited=0 workers pid
   workers="$(cat "$home/run/server-workers" 2>/dev/null || echo none)"
-  check "the server answers while the models are prepared, with its API alone" \
-    "$(curl -fsS -m 5 "http://127.0.0.1:$port/api/server/ping" | grep -q pong && [ "$workers" = warm-up ] && echo 1 || echo 0)" \
-    "workers: $workers"
+  pid="$(launchctl print "gui/$(id -u)/$label.server" 2>/dev/null | awk '$1 == "pid" { print $3 }')"
+  check "the server runs while the models are prepared, with its job worker" \
+    "$(curl -fsS -m 5 "http://127.0.0.1:$port/api/server/ping" | grep -q pong && [ "$workers" = all ] && echo 1 || echo 0)" \
+    "workers: $workers, pid ${pid:-?}"
   if "$PYTHON" "$REPO/macos/scripts/m4_warm_queue.py" upload "http://127.0.0.1:$port" >"$WORK/warm-queue.log" 2>&1; then
-    check "a photo uploaded meanwhile is taken, its jobs waiting" 1 "$(head -1 "$WORK/warm-queue.log" | cut -c6-)"
+    check "a photo uploaded meanwhile gets its thumbnail, its smart search waiting" 1 \
+      "$(head -1 "$WORK/warm-queue.log" | cut -c6-)"
   else
-    check "a photo uploaded meanwhile is taken, its jobs waiting" 0 "$(head -3 "$WORK/warm-queue.log" | tr '\n' ' ')"
+    check "a photo uploaded meanwhile gets its thumbnail, its smart search waiting" 0 \
+      "$(head -3 "$WORK/warm-queue.log" | tr '\n' ' ')"
   fi
   asset="$(tail -1 "$WORK/warm-queue.log")"
   while [ -f "$HOME/Library/LaunchAgents/$label.warm.plist" ] && [ "$waited" -lt 1800 ]; do
@@ -118,9 +125,11 @@ background_warm() {
   check "the background warm-up finished and removed its LaunchAgent" \
     "$([ ! -f "$HOME/Library/LaunchAgents/$label.warm.plist" ] && echo 1 || echo 0)" \
     "about $waited s; $(grep -a 'ready after' "$home/logs/warm.log" 2>/dev/null | tail -1 | sed 's/^ *//')"
-  workers="$(cat "$home/run/server-workers" 2>/dev/null || echo none)"
-  check "the server back with its job worker" "$([ "$workers" = all ] \
-    && curl -fsS -m 5 "http://127.0.0.1:$port/api/server/ping" | grep -q pong && echo 1 || echo 0)" "workers: $workers"
+  local after
+  after="$(launchctl print "gui/$(id -u)/$label.server" 2>/dev/null | awk '$1 == "pid" { print $3 }')"
+  check "the same server, not restarted" "$([ -n "$pid" ] && [ "$pid" = "$after" ] \
+    && curl -fsS -m 5 "http://127.0.0.1:$port/api/server/ping" | grep -q pong && echo 1 || echo 0)" \
+    "pid ${pid:-?} before, ${after:-?} after"
   if "$PYTHON" "$REPO/macos/scripts/m4_warm_queue.py" check "http://127.0.0.1:$port" "$asset" >>"$WORK/warm-queue.log" 2>&1; then
     check "the photo's jobs ran after it" 1 "$(tail -1 "$WORK/warm-queue.log" | cut -c6-)"
   else

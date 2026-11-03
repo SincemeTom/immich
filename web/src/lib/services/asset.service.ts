@@ -62,6 +62,7 @@ import { Route } from '$lib/route';
 import { SlideshowState, slideshowStore } from '$lib/stores/slideshow.store';
 import { getAssetMediaUrl, getSharedLink, sleep } from '$lib/utils';
 import { downloadUrl } from '$lib/utils';
+import { canDownloadFromAlbum, isAlbumEditor, isAlbumManager } from '$lib/utils/album-access';
 import { listenForEditsApplied } from '$lib/utils/asset-edit-ready';
 import { rotateEdits } from '$lib/utils/asset-rotate';
 import { handleError } from '$lib/utils/handle-error';
@@ -70,7 +71,8 @@ import { getFormatter } from '$lib/utils/i18n';
 export const getAssetBulkActions = ($t: MessageFormatter, album?: AlbumResponseDto) => {
   const assetIds = assetMultiSelectManager.assets.map((asset) => asset.id);
   const ownedAssets = assetMultiSelectManager.ownedAssets;
-  const isAlbumOwner = album?.albumUsers[0].user.id === authManager.user.id;
+  const canRemoveFromAlbum =
+    !!album && (isAlbumManager(album) || (isAlbumEditor(album) && assetMultiSelectManager.isAllUserOwned));
 
   const onAction = async (name: AssetJobName) => {
     await handleRunAssetJob({ name, assetIds: ownedAssets.map(({ id }) => id) });
@@ -94,7 +96,7 @@ export const getAssetBulkActions = ($t: MessageFormatter, album?: AlbumResponseD
     title: $t('remove_from_album'),
     icon: mdiImageRemoveOutline,
     shortcuts: [{ key: 'l', shift: true }],
-    $if: () => !!album && (isAlbumOwner || assetMultiSelectManager.isAllUserOwned),
+    $if: () => canRemoveFromAlbum,
     onAction: () => handleBulkRemoveAssetsFromAlbum(assetIds, album!),
   };
 
@@ -155,7 +157,9 @@ export const getAssetActions = (
   const sharedLink = getSharedLink();
   const authUser = authManager.authenticated ? authManager.user : undefined;
   const isOwner = !!(authUser && authUser.id === asset.ownerId);
-  const isAlbumOwner = !!(authUser && authUser.id === album?.albumUsers[0].user.id);
+  // the originals of an album's photos, for those of its members who can download them
+  const canDownload = !!authUser && (isOwner || !album || canDownloadFromAlbum(album));
+  const canRemoveFromAlbum = !!authUser && !!album && (isAlbumManager(album) || (isOwner && isAlbumEditor(album)));
   const smartSearchEnabled = featureFlagsManager.value.smartSearch;
 
   const Share: ActionItem = {
@@ -169,14 +173,14 @@ export const getAssetActions = (
     title: $t('download'),
     icon: mdiDownload,
     shortcuts: { key: 'd', shift: true },
-    $if: () => !!authUser,
+    $if: () => canDownload,
     onAction: () => handleDownloadAsset(asset, { edited: true }),
   };
 
   const DownloadOriginal: ActionItem = {
     title: $t('download_original'),
     icon: mdiDownloadBox,
-    $if: () => !!authUser && asset.isEdited,
+    $if: () => canDownload && asset.isEdited,
     onAction: () => handleDownloadAsset(asset, { edited: false }),
   };
 
@@ -246,7 +250,7 @@ export const getAssetActions = (
     title: $t('remove_from_album'),
     icon: mdiImageRemoveOutline,
     shortcuts: [{ key: 'l', shift: true }],
-    $if: () => !!album && (isOwner || isAlbumOwner),
+    $if: () => canRemoveFromAlbum,
     onAction: () => handleRemoveAssetsFromAlbum([asset.id], album!),
   };
 

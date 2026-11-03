@@ -8,13 +8,28 @@ import { BulkIdErrorReasonSchema } from 'src/dtos/asset-ids.response.dto.js';
 import { MapAsset } from 'src/dtos/asset-response.dto.js';
 import { UserResponseSchema, mapUser } from 'src/dtos/user.dto.js';
 import { AlbumUserRole, AlbumUserRoleSchema, AssetOrder, AssetOrderSchema } from 'src/enum.js';
+import { effectiveAlbumUserAccess } from 'src/utils/album-access.js';
 import { asDateTimeString } from 'src/utils/date.js';
 import { stringToBool } from 'src/validation.js';
+
+const AllowDownloadSchema = z
+  .boolean()
+  .optional()
+  .describe('A viewer can download the originals too (an editor always can); new viewers cannot by default');
+
+const IsManagerSchema = z
+  .boolean()
+  .optional()
+  .describe(
+    'An editor manages the album as its owner does (members, details, shared links), but cannot delete it; new editors do not by default',
+  );
 
 const AlbumUserAddSchema = z
   .object({
     userId: z.uuidv4().describe('User ID'),
     role: AlbumUserRoleSchema.default(AlbumUserRole.Editor).optional().describe('Album user role'),
+    allowDownload: AllowDownloadSchema,
+    isManager: IsManagerSchema,
   })
   .meta({ id: 'AlbumUserAddDto' });
 
@@ -28,6 +43,8 @@ const AlbumUserCreateSchema = z
   .object({
     userId: z.uuidv4().describe('User ID'),
     role: AlbumUserRoleSchema,
+    allowDownload: AllowDownloadSchema,
+    isManager: IsManagerSchema,
   })
   .meta({ id: 'AlbumUserCreateDto' });
 
@@ -119,6 +136,12 @@ const AlbumStatisticsResponseSchema = z
 const UpdateAlbumUserSchema = z
   .object({
     role: AlbumUserRoleSchema,
+    allowDownload: AllowDownloadSchema.describe(
+      'A viewer can download the originals too; unset, a viewer keeps what it had, and one that was not a viewer cannot',
+    ),
+    isManager: IsManagerSchema.describe(
+      'An editor manages the album; unset, an editor keeps what it had, and one that was not an editor does not',
+    ),
   })
   .meta({ id: 'UpdateAlbumUserDto' });
 
@@ -126,6 +149,8 @@ const AlbumUserResponseSchema = z
   .object({
     user: UserResponseSchema,
     role: AlbumUserRoleSchema,
+    allowDownload: z.boolean().describe('Can download the originals: the owner, editors, and the viewers allowed to'),
+    isManager: z.boolean().describe('An editor that manages the album as its owner does, but cannot delete it'),
   })
   .meta({ id: 'AlbumUserResponseDto' });
 
@@ -238,6 +263,7 @@ export const mapAlbum = (entity: MaybeDehydrated<MapAlbumDto>): AlbumResponseDto
       albumUsers.push({
         user,
         role: albumUser.role,
+        ...effectiveAlbumUserAccess(albumUser),
       });
     }
   }

@@ -328,7 +328,7 @@ warm=now
 [ -n "$no_warm" ] || [ -n "$no_start" ] && warm=""
 
 step "Starting Immich"
-# set up first, so that the server starts with its API alone and runs no job before the models are ready; and before
+# set up first, so that the server holds the jobs that need the models from its start until they are ready; and before
 # the services stop, as a warm-up still running (the .pkg opened again) stops first
 [ "$warm" = background ] && "$ctl" warm --schedule
 quiet "$ctl" stop

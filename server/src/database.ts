@@ -32,6 +32,8 @@ export type AuthUser = {
 export type AlbumUser = {
   user: ShallowDehydrateObject<User>;
   role: AlbumUserRole;
+  allowDownload: boolean;
+  isManager: boolean;
 };
 
 export type AssetFile = {
@@ -573,6 +575,7 @@ export const columns = {
     'asset_exif.latitude',
     'asset_exif.lensModel',
     'asset_exif.livePhotoCID',
+    'asset_exif.locationInferred',
     'asset_exif.longitude',
     'asset_exif.make',
     'asset_exif.model',

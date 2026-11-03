@@ -15,7 +15,7 @@ import { jsonArrayFrom } from 'kysely/helpers/postgres';
 import { isEmpty, isUndefined, omitBy } from 'lodash-es';
 import { InjectKysely } from 'nestjs-kysely';
 import type { AuthDto } from 'src/dtos/auth.dto.js';
-import { LockableProperty, Stack } from 'src/database.js';
+import { LockableProperty, Stack, lockableProperties } from 'src/database.js';
 import { Chunked, ChunkedArray, DummyValue, GenerateSql } from 'src/decorators.js';
 import {
   AssetFileType,
@@ -297,6 +297,7 @@ export class AssetRepository {
                 rating: ref('rating'),
                 fps: ref('fps'),
                 tags: ref('tags'),
+                locationInferred: ref('locationInferred'),
                 lockedProperties:
                   lockedPropertiesBehavior === 'append'
                     ? distinctLocked(eb, exif.lockedProperties ?? null)
@@ -321,7 +322,10 @@ export class AssetRepository {
       .updateTable('asset_exif')
       .set((eb) => ({
         ...options,
-        lockedProperties: distinctLocked(eb, Object.keys(options) as LockableProperty[]),
+        lockedProperties: distinctLocked(
+          eb,
+          lockableProperties.filter((property) => Object.hasOwn(options, property)),
+        ),
       }))
       .where('assetId', 'in', ids)
       .execute();

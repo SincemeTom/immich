@@ -17,6 +17,7 @@
   import { getStackActions } from '$lib/services/stack.service';
   import { getSharedLink, withoutIcons } from '$lib/utils';
   import type { OnUndoDelete } from '$lib/utils/actions';
+  import { canLoadOriginal } from '$lib/utils/album-access';
   import { toTimelineAsset } from '$lib/utils/timeline-util';
   import {
     AssetTypeEnum,
@@ -72,7 +73,7 @@
   const PlayOriginalVideo: ActionItem = $derived({
     title: isPlayingOriginalVideo ? $t('play_transcoded_video') : $t('play_original_video'),
     icon: mdiVideoOutline,
-    $if: () => asset.type === AssetTypeEnum.Video,
+    $if: () => asset.type === AssetTypeEnum.Video && canLoadOriginal(asset),
     onAction: () => setPlayOriginalVideo(!isPlayingOriginalVideo),
   });
 

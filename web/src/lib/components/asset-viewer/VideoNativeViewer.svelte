@@ -9,6 +9,7 @@
   import { mediaCapabilitiesManager } from '$lib/managers/media-capabilities-manager.svelte';
   import { autoPlayVideo, lang, loopVideo as loopVideoPreference } from '$lib/stores/preferences.store';
   import { getAssetHlsSessionUrl, getAssetHlsUrl, getAssetMediaUrl, getAssetPlaybackUrl } from '$lib/utils';
+  import { canLoadOriginal } from '$lib/utils/album-access';
   import { AssetMediaSize, type AssetResponseDto } from '@immich/sdk';
   import { Icon, LoadingSpinner, shortcuts } from '@immich/ui';
   import {
@@ -82,7 +83,7 @@
       return getAssetHlsUrl(assetId);
     }
 
-    if (playOriginalVideo) {
+    if (playOriginalVideo && canLoadOriginal(asset)) {
       return getAssetMediaUrl({ id: assetId, size: AssetMediaSize.Original, cacheKey });
     }
 

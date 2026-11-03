@@ -18,6 +18,7 @@
     type SharedLinkResponseDto,
     type UserResponseDto,
   } from '@immich/sdk';
+  import { AlbumAccess, getAlbumUserAccess, type AlbumUserUpdate } from '$lib/utils/album-access';
   import { Field, HStack, Modal, ModalBody, Select, Stack, Switch, Text, type SelectOption } from '@immich/ui';
   import { onMount } from 'svelte';
   import { t } from 'svelte-i18n';
@@ -30,13 +31,23 @@
 
   let { album, readOnly = false, onClose }: Props = $props();
 
-  const handleRoleSelect = async (user: UserResponseDto, role: AlbumUserRole | 'none') => {
-    if (role === 'none') {
+  const handleAccessSelect = async (user: UserResponseDto, access: AlbumAccess | 'none') => {
+    if (access === 'none') {
       await handleRemoveUserFromAlbum(album, user);
       return;
     }
 
-    await handleUpdateUserAlbumRole({ albumId: album.id, userId: user.id, role });
+    if (access !== AlbumAccess.Owner) {
+      await handleUpdateUserAlbumRole({ albumId: album.id, userId: user.id, access });
+    }
+  };
+
+  const onAlbumUserUpdate = ({ albumId, userId, ...access }: AlbumUserUpdate) => {
+    if (albumId === album.id) {
+      album.albumUsers = album.albumUsers.map((albumUser) =>
+        albumUser.user.id === userId ? { ...albumUser, ...access } : albumUser,
+      );
+    }
   };
 
   const refreshAlbum = async () => {
@@ -67,6 +78,7 @@
 
 <OnEvents
   {onAlbumUserDelete}
+  {onAlbumUserUpdate}
   onAlbumShare={refreshAlbum}
   {onSharedLinkCreate}
   {onSharedLinkDelete}
@@ -107,8 +119,10 @@
             <HeaderActionButton action={AddUsers} />
           {/if}
         </HStack>
+        <Text size="tiny" color="muted" class="mb-2 ps-2">{$t('album_access_description')}</Text>
         <div class="ps-2">
-          {#each album.albumUsers as { user, role } (user.id)}
+          {#each album.albumUsers as albumUser (albumUser.user.id)}
+            {@const { user, role } = albumUser}
             <div class="flex items-center justify-between gap-4 py-2">
               <div class="flex flex-row items-center gap-2">
                 <div>
@@ -116,16 +130,18 @@
                 </div>
                 <Text size="small">{user.name}</Text>
               </div>
-              <Field class="w-32" disabled={readOnly || role === AlbumUserRole.Owner}>
+              <Field class="w-36" disabled={readOnly || role === AlbumUserRole.Owner}>
                 <Select
-                  value={role}
+                  value={getAlbumUserAccess(albumUser)}
                   options={[
-                    { label: $t('role_editor'), value: AlbumUserRole.Editor },
-                    { label: $t('role_viewer'), value: AlbumUserRole.Viewer },
-                    { label: $t('owner'), value: AlbumUserRole.Owner, disabled: true },
+                    { label: $t('role_manager'), value: AlbumAccess.Manager },
+                    { label: $t('role_editor'), value: AlbumAccess.Editor },
+                    { label: $t('role_downloader'), value: AlbumAccess.Downloader },
+                    { label: $t('role_viewer'), value: AlbumAccess.Viewer },
+                    { label: $t('owner'), value: AlbumAccess.Owner, disabled: true },
                     { label: $t('remove_user'), value: 'none' },
-                  ] as SelectOption<AlbumUserRole | 'none'>[]}
-                  onChange={(value) => handleRoleSelect(user, value)}
+                  ] as SelectOption<AlbumAccess | 'none'>[]}
+                  onChange={(value) => handleAccessSelect(user, value)}
                 />
               </Field>
             </div>

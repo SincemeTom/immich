@@ -8,9 +8,12 @@
 - 机器学习在神经网络引擎上运行；智能搜索默认用中英日多语言模型
 - 视频转码用 Apple 媒体引擎
 - 网页上挂载群晖 NFS 共享，可以把原图、缩略图、转码视频放到群晖
+- 地点显示中文；没有位置的照片按前后拍的照片推断位置
+- Apple Vision 内容分析：中文自动标签、截图、二维码；macOS 26 起视频里说的话可以搜索
+- 共享相册分仅查看、可下载、可编辑、可管理四档权限
 - 外部库查重、自动堆叠、视频旋转等改进
 
-各版本内容见 [CHANGELOG.md](CHANGELOG.md)，每项改动的验证记录见 [verification/](verification/README.md)。
+全部改动的汇总见 [FEATURES.md](FEATURES.md)，各版本内容见 [CHANGELOG.md](CHANGELOG.md)，每项改动的验证记录见 [verification/](verification/README.md)。
 
 ## 安装
 

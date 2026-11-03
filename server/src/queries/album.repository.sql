@@ -19,6 +19,8 @@ select
       (
         select
           "album_user"."role",
+          "album_user"."allowDownload",
+          "album_user"."isManager",
           (
             select
               to_json(obj)
@@ -98,6 +100,8 @@ select
       (
         select
           "album_user"."role",
+          "album_user"."allowDownload",
+          "album_user"."isManager",
           (
             select
               to_json(obj)
@@ -195,6 +199,8 @@ select
       (
         select
           "album_user"."role",
+          "album_user"."allowDownload",
+          "album_user"."isManager",
           (
             select
               to_json(obj)
@@ -334,24 +340,34 @@ with
   ),
   "album_user" as (
     insert into
-      "album_user"
+      "album_user" (
+        "albumId",
+        "userId",
+        "role",
+        "allowDownload",
+        "isManager"
+      )
     select
       "album"."id" as "albumId",
       unnest($2::uuid[]) as "userId",
-      unnest($3::album_user_role_enum[]) as "role"
+      unnest($3::album_user_role_enum[]) as "role",
+      unnest($4::text[]::boolean[]) as "allowDownload",
+      unnest($5::text[]::boolean[]) as "isManager"
     from
       "album"
     returning
       "album_user"."albumId",
       "album_user"."userId",
-      "album_user"."role"
+      "album_user"."role",
+      "album_user"."allowDownload",
+      "album_user"."isManager"
   ),
   "album_asset" as (
     insert into
       "album_asset"
     select
       "album"."id" as "albumId",
-      unnest($4::uuid[]) as "assetId"
+      unnest($6::uuid[]) as "assetId"
     from
       "album"
     on conflict do nothing
@@ -368,6 +384,8 @@ select
       (
         select
           "album_user"."role",
+          "album_user"."allowDownload",
+          "album_user"."isManager",
           (
             select
               to_json(obj)

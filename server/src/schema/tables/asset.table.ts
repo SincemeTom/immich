@@ -56,6 +56,8 @@ import { ASSET_CHECKSUM_CONSTRAINT } from 'src/utils/database.js';
 })
 @Index({ columns: ['originalPath', 'libraryId'] })
 @Index({ columns: ['id', 'stackId'] })
+// location inference looks for the photos taken around one, by the local time (the clock it was taken by)
+@Index({ name: 'asset_localDateTime_range_idx', columns: ['localDateTime'] })
 @Index({
   name: 'asset_originalFilename_trigram_idx',
   using: 'gin',
