@@ -2,7 +2,6 @@ import {
   addAssetsToAlbum as addToAlbum,
   addAssetsToAlbums as addToAlbums,
   addUsersToAlbum,
-  AlbumUserRole,
   BulkIdErrorReason,
   deleteAlbum,
   removeUserFromAlbum,
@@ -40,16 +39,20 @@ import AlbumOptionsModal from '$lib/modals/AlbumOptionsModal.svelte';
 import SharedLinkCreateModal from '$lib/modals/SharedLinkCreateModal.svelte';
 import { Route } from '$lib/route';
 import { userInteraction } from '$lib/stores/user.svelte';
+import {
+  AlbumAccess,
+  canDownloadFromAlbum,
+  isAlbumManager,
+  isAlbumOwner,
+  toAlbumUserAccess,
+} from '$lib/utils/album-access';
 import { createAlbumAndRedirect } from '$lib/utils/album-utils';
 import { downloadArchive } from '$lib/utils/asset-utils';
 import { openFileUploadDialog } from '$lib/utils/file-uploader';
 import { handleError } from '$lib/utils/handle-error';
 import { getFormatter } from '$lib/utils/i18n';
 
-export const isAlbumOwner = (album: AlbumResponseDto) => album.albumUsers[0].user.id === authManager.user.id;
-export const isAlbumEditor = (album: AlbumResponseDto) =>
-  isAlbumOwner(album) ||
-  album.albumUsers.find(({ user: { id } }) => id === authManager.user.id)?.role === AlbumUserRole.Editor;
+export { canDownloadFromAlbum, isAlbumEditor, isAlbumManager, isAlbumOwner } from '$lib/utils/album-access';
 
 export const getAlbumsActions = ($t: MessageFormatter) => {
   const Create: ActionItem = {
@@ -63,7 +66,8 @@ export const getAlbumsActions = ($t: MessageFormatter) => {
 
 export const getAlbumActions = ($t: MessageFormatter, album: AlbumResponseDto) => {
   const isOwned = isAlbumOwner(album);
-  const isEditor = isAlbumEditor(album);
+  const isManager = isAlbumManager(album);
+  const canDownload = canDownloadFromAlbum(album);
 
   const AddUsers: ActionItem = {
     title: $t('add_user'),
@@ -94,14 +98,14 @@ export const getAlbumActions = ($t: MessageFormatter, album: AlbumResponseDto) =
   const Download: ActionItem = {
     title: $t('download'),
     icon: mdiDownload,
-    $if: () => album.assetCount > 0,
+    $if: () => canDownload && album.assetCount > 0,
     onAction: () => handleDownloadAlbum(album),
   };
 
   const Edit: ActionItem = {
     title: $t('edit_album'),
     icon: mdiRenameOutline,
-    $if: () => isEditor,
+    $if: () => isManager,
     onAction: () => modalManager.show(AlbumEditModal, { album }),
   };
 
@@ -116,13 +120,13 @@ export const getAlbumActions = ($t: MessageFormatter, album: AlbumResponseDto) =
     title: $t('options'),
     icon: mdiCogOutline,
     $if: () => album.assetCount > 0,
-    onAction: () => modalManager.show(AlbumOptionsModal, { album, readOnly: !isOwned }),
+    onAction: () => modalManager.show(AlbumOptionsModal, { album, readOnly: !isManager }),
   };
 
   const Share: ActionItem = {
     title: $t('share'),
     icon: mdiShareVariantOutline,
-    $if: () => isOwned,
+    $if: () => isManager,
     onAction: () => modalManager.show(AlbumOptionsModal, { album }),
   };
 
@@ -133,6 +137,7 @@ export const getAlbumAssetActions = ($t: MessageFormatter, album: AlbumResponseD
   const SetCover: ActionItem = {
     title: $t('set_as_album_cover'),
     icon: mdiImageOutline,
+    $if: () => isAlbumManager(album),
     onAction: () => handleUpdateThumbnail(album, asset.id),
   };
 
@@ -237,17 +242,18 @@ const notifyAddToAlbums = (
 export const handleUpdateUserAlbumRole = async ({
   albumId,
   userId,
-  role,
+  access,
 }: {
   albumId: string;
   userId: string;
-  role: AlbumUserRole;
+  access: Exclude<AlbumAccess, AlbumAccess.Owner>;
 }) => {
   const $t = await getFormatter();
+  const updateAlbumUserDto = toAlbumUserAccess(access);
 
   try {
-    await updateAlbumUser({ id: albumId, userId, updateAlbumUserDto: { role } });
-    eventManager.emit('AlbumUserUpdate', { albumId, userId, role });
+    await updateAlbumUser({ id: albumId, userId, updateAlbumUserDto });
+    eventManager.emit('AlbumUserUpdate', { albumId, userId, ...updateAlbumUserDto });
   } catch (error) {
     handleError(error, $t('errors.unable_to_change_album_user_role'));
   }

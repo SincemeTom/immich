@@ -20785,6 +20785,14 @@
       },
       "AlbumUserAddDto": {
         "properties": {
+          "allowDownload": {
+            "description": "A viewer can download the originals too (an editor always can); new viewers cannot by default",
+            "type": "boolean"
+          },
+          "isManager": {
+            "description": "An editor manages the album as its owner does (members, details, shared links), but cannot delete it; new editors do not by default",
+            "type": "boolean"
+          },
           "role": {
             "$ref": "#/components/schemas/AlbumUserRole",
             "default": "editor",
@@ -20804,6 +20812,14 @@
       },
       "AlbumUserCreateDto": {
         "properties": {
+          "allowDownload": {
+            "description": "A viewer can download the originals too (an editor always can); new viewers cannot by default",
+            "type": "boolean"
+          },
+          "isManager": {
+            "description": "An editor manages the album as its owner does (members, details, shared links), but cannot delete it; new editors do not by default",
+            "type": "boolean"
+          },
           "role": {
             "$ref": "#/components/schemas/AlbumUserRole"
           },
@@ -20822,6 +20838,14 @@
       },
       "AlbumUserResponseDto": {
         "properties": {
+          "allowDownload": {
+            "description": "Can download the originals: the owner, editors, and the viewers allowed to",
+            "type": "boolean"
+          },
+          "isManager": {
+            "description": "An editor that manages the album as its owner does, but cannot delete it",
+            "type": "boolean"
+          },
           "role": {
             "$ref": "#/components/schemas/AlbumUserRole"
           },
@@ -20830,6 +20854,8 @@
           }
         },
         "required": [
+          "allowDownload",
+          "isManager",
           "role",
           "user"
         ],
@@ -34143,6 +34169,14 @@
       },
       "UpdateAlbumUserDto": {
         "properties": {
+          "allowDownload": {
+            "description": "A viewer can download the originals too; unset, a viewer keeps what it had, and one that was not a viewer cannot",
+            "type": "boolean"
+          },
+          "isManager": {
+            "description": "An editor manages the album; unset, an editor keeps what it had, and one that was not an editor does not",
+            "type": "boolean"
+          },
           "role": {
             "$ref": "#/components/schemas/AlbumUserRole"
           }

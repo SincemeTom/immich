@@ -1,6 +1,5 @@
 import type {
   AlbumResponseDto,
-  AlbumUserRole,
   ApiKeyResponseDto,
   AssetResponseDto,
   IntegrityReport,
@@ -19,6 +18,7 @@ import type {
   WorkflowResponseDto,
 } from '@immich/sdk';
 import type { TimelineAsset } from '$lib/managers/timeline-manager/types';
+import type { AlbumUserUpdate } from '$lib/utils/album-access';
 import { BaseEventManager } from '$lib/utils/base-event-manager.svelte';
 import type { TreeNode } from '$lib/utils/tree-utils';
 
@@ -50,7 +50,7 @@ export type Events = {
   AlbumUpdate: [AlbumResponseDto];
   AlbumDelete: [AlbumResponseDto];
   AlbumShare: [];
-  AlbumUserUpdate: [{ albumId: string; userId: string; role: AlbumUserRole }];
+  AlbumUserUpdate: [AlbumUserUpdate];
   AlbumUserDelete: [{ albumId: string; userId: string }];
 
   PersonUpdate: [PersonResponseDto];

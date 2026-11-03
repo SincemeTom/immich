@@ -1,10 +1,11 @@
-import { getAssetInfo } from '@immich/sdk';
+import { AlbumUserRole, getAssetInfo, type AlbumUserResponseDto } from '@immich/sdk';
 import { toastManager } from '@immich/ui';
 import { vitest } from 'vitest';
 import { authManager } from '$lib/managers/auth-manager.svelte';
 import { getAssetActions, handleDownloadAsset } from '$lib/services/asset.service';
 import { setSharedLink } from '$lib/utils';
 import { getFormatter } from '$lib/utils/i18n';
+import { albumFactory } from '@test-data/factories/album-factory';
 import { assetFactory } from '@test-data/factories/asset-factory';
 import { preferencesFactory } from '@test-data/factories/preferences-factory';
 import { sharedLinkFactory } from '@test-data/factories/shared-link-factory';
@@ -68,6 +69,60 @@ describe('AssetService', () => {
       setSharedLink(sharedLinkFactory.build({ allowDownload: true }));
       const assetActions = getAssetActions(() => '', asset);
       expect(assetActions.SharedLinkDownload.$if?.()).toStrictEqual(true);
+    });
+
+    describe('in a shared album', () => {
+      const owner = userAdminFactory.build({ id: 'album-owner' });
+      const member = userAdminFactory.build({ id: 'member' });
+      const albumWith = (access: Partial<AlbumUserResponseDto>) =>
+        albumFactory.build({
+          albumUsers: [
+            { user: owner, role: AlbumUserRole.Owner, allowDownload: true, isManager: false },
+            { user: member, role: AlbumUserRole.Viewer, allowDownload: false, isManager: false, ...access },
+          ],
+        });
+
+      beforeEach(() => {
+        authManager.setUser(member);
+      });
+
+      it('should not let a viewer download the photos of others', () => {
+        const actions = getAssetActions(() => '', assetFactory.build({ ownerId: owner.id }), albumWith({}));
+        expect(actions.Download.$if?.()).toBe(false);
+        expect(actions.DownloadOriginal.$if?.()).toBe(false);
+        expect(actions.RemoveFromAlbum.$if?.()).toBe(false);
+      });
+
+      it('should let a viewer allowed to download them', () => {
+        const actions = getAssetActions(
+          () => '',
+          assetFactory.build({ ownerId: owner.id }),
+          albumWith({ allowDownload: true }),
+        );
+        expect(actions.Download.$if?.()).toBe(true);
+      });
+
+      it('should let a member download their own photos', () => {
+        const actions = getAssetActions(() => '', assetFactory.build({ ownerId: member.id }), albumWith({}));
+        expect(actions.Download.$if?.()).toBe(true);
+      });
+
+      it('should let an editor remove their own photos only', () => {
+        const album = albumWith({ role: AlbumUserRole.Editor, allowDownload: true });
+        expect(
+          getAssetActions(() => '', assetFactory.build({ ownerId: member.id }), album).RemoveFromAlbum.$if?.(),
+        ).toBe(true);
+        expect(
+          getAssetActions(() => '', assetFactory.build({ ownerId: owner.id }), album).RemoveFromAlbum.$if?.(),
+        ).toBe(false);
+      });
+
+      it('should let a manager remove any photo', () => {
+        const album = albumWith({ role: AlbumUserRole.Editor, allowDownload: true, isManager: true });
+        expect(
+          getAssetActions(() => '', assetFactory.build({ ownerId: owner.id }), album).RemoveFromAlbum.$if?.(),
+        ).toBe(true);
+      });
     });
   });
 

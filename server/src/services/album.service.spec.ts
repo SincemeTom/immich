@@ -235,8 +235,8 @@ describe(AlbumService.name, () => {
         },
         [assetId],
         [
-          { userId: owner.id, role: AlbumUserRole.Owner },
-          { userId: albumUser.userId, role: AlbumUserRole.Editor },
+          { userId: owner.id, role: AlbumUserRole.Owner, allowDownload: true, isManager: false },
+          { userId: albumUser.userId, role: AlbumUserRole.Editor, allowDownload: true, isManager: false },
         ],
         owner.id,
       );
@@ -290,7 +290,10 @@ describe(AlbumService.name, () => {
           albumThumbnailAssetId: assetId,
         },
         [assetId],
-        [{ userId: owner.id, role: AlbumUserRole.Owner }, albumUser],
+        [
+          { userId: owner.id, role: AlbumUserRole.Owner, allowDownload: true, isManager: false },
+          { ...albumUser, allowDownload: true, isManager: false },
+        ],
         owner.id,
       );
 
@@ -342,7 +345,7 @@ describe(AlbumService.name, () => {
           albumThumbnailAssetId: assetId,
         },
         [assetId],
-        [{ userId: owner.id, role: AlbumUserRole.Owner }],
+        [{ userId: owner.id, role: AlbumUserRole.Owner, allowDownload: true, isManager: false }],
         owner.id,
       );
       expect(mocks.access.asset.checkOwnerAccess).toHaveBeenCalledWith(owner.id, new Set([assetId, 'asset-2']), false);
@@ -364,7 +367,7 @@ describe(AlbumService.name, () => {
       expect(mocks.album.create).toHaveBeenCalledWith(
         expect.objectContaining({ albumName: 'Empty album' }),
         [],
-        [{ userId: auth.user.id, role: AlbumUserRole.Owner }],
+        [{ userId: auth.user.id, role: AlbumUserRole.Owner, allowDownload: true, isManager: false }],
         auth.user.id,
       );
     });
@@ -531,6 +534,9 @@ describe(AlbumService.name, () => {
       expect(mocks.albumUser.create).toHaveBeenCalledWith({
         userId: user.id,
         albumId: album.id,
+        role: AlbumUserRole.Editor,
+        allowDownload: true,
+        isManager: false,
       });
       expect(mocks.event.emit).toHaveBeenCalledWith('AlbumInvite', {
         id: album.id,
@@ -559,6 +565,9 @@ describe(AlbumService.name, () => {
       expect(mocks.albumUser.create).toHaveBeenCalledWith({
         userId: user.id,
         albumId: album.id,
+        role: AlbumUserRole.Editor,
+        allowDownload: true,
+        isManager: false,
       });
       expect(mocks.event.emit).toHaveBeenCalledTimes(1);
       expect(mocks.event.emit).toHaveBeenCalledWith('AlbumInvite', {
@@ -567,9 +576,141 @@ describe(AlbumService.name, () => {
         senderName: owner.name,
       });
     });
+
+    it('should add a viewer that cannot download unless allowed to', async () => {
+      const album = AlbumFactory.create();
+      const { user: owner } = album.albumUsers.find(({ role }) => role === AlbumUserRole.Owner)!;
+      const [viewer, downloader] = [UserFactory.create(), UserFactory.create()];
+      mocks.access.album.checkOwnerAccess.mockResolvedValue(new Set([album.id]));
+      mocks.album.getById.mockResolvedValue(getForAlbum(album));
+      mocks.user.get.mockResolvedValueOnce(viewer).mockResolvedValueOnce(downloader);
+      mocks.albumUser.create.mockResolvedValue(AlbumUserFactory.from().album(album).build());
+
+      await sut.addUsers(AuthFactory.create(owner), album.id, {
+        albumUsers: [
+          { userId: viewer.id, role: AlbumUserRole.Viewer },
+          { userId: downloader.id, role: AlbumUserRole.Viewer, allowDownload: true, isManager: true },
+        ],
+      });
+
+      expect(mocks.albumUser.create).toHaveBeenCalledWith({
+        userId: viewer.id,
+        albumId: album.id,
+        role: AlbumUserRole.Viewer,
+        allowDownload: false,
+        isManager: false,
+      });
+      expect(mocks.albumUser.create).toHaveBeenCalledWith({
+        userId: downloader.id,
+        albumId: album.id,
+        role: AlbumUserRole.Viewer,
+        allowDownload: true,
+        isManager: false,
+      });
+    });
+
+    it('should add a manager', async () => {
+      const album = AlbumFactory.create();
+      const { user: owner } = album.albumUsers.find(({ role }) => role === AlbumUserRole.Owner)!;
+      const user = UserFactory.create();
+      mocks.access.album.checkOwnerAccess.mockResolvedValue(new Set([album.id]));
+      mocks.album.getById.mockResolvedValue(getForAlbum(album));
+      mocks.user.get.mockResolvedValue(user);
+      mocks.albumUser.create.mockResolvedValue(AlbumUserFactory.from().album(album).user(user).build());
+
+      await sut.addUsers(AuthFactory.create(owner), album.id, {
+        albumUsers: [{ userId: user.id, role: AlbumUserRole.Editor, isManager: true }],
+      });
+
+      expect(mocks.albumUser.create).toHaveBeenCalledWith({
+        userId: user.id,
+        albumId: album.id,
+        role: AlbumUserRole.Editor,
+        allowDownload: true,
+        isManager: true,
+      });
+    });
+
+    it('should not add another owner', async () => {
+      const album = AlbumFactory.create();
+      const { user: owner } = album.albumUsers.find(({ role }) => role === AlbumUserRole.Owner)!;
+      mocks.access.album.checkOwnerAccess.mockResolvedValue(new Set([album.id]));
+      mocks.album.getById.mockResolvedValue(getForAlbum(album));
+
+      await expect(
+        sut.addUsers(AuthFactory.create(owner), album.id, {
+          albumUsers: [{ userId: newUuid(), role: AlbumUserRole.Owner }],
+        }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(mocks.albumUser.create).not.toHaveBeenCalled();
+    });
+
+    it('should let a manager add users', async () => {
+      const manager = UserFactory.create();
+      const user = UserFactory.create();
+      const album = AlbumFactory.from().albumUser({ userId: manager.id, isManager: true }).build();
+      mocks.access.album.checkOwnerAccess.mockResolvedValue(new Set());
+      mocks.access.album.checkSharedAlbumAccess.mockResolvedValue(new Set([album.id]));
+      mocks.album.getById.mockResolvedValue(getForAlbum(album));
+      mocks.user.get.mockResolvedValue(user);
+      mocks.albumUser.create.mockResolvedValue(AlbumUserFactory.from().album(album).user(user).build());
+
+      await sut.addUsers(AuthFactory.create(manager), album.id, { albumUsers: [{ userId: user.id }] });
+
+      expect(mocks.access.album.checkSharedAlbumAccess).toHaveBeenCalledWith(manager.id, new Set([album.id]), 'manage');
+      expect(mocks.albumUser.create).toHaveBeenCalledTimes(1);
+    });
+
+    it('should not let an editor add users', async () => {
+      const editor = UserFactory.create();
+      const album = AlbumFactory.from().albumUser({ userId: editor.id }).build();
+      mocks.access.album.checkOwnerAccess.mockResolvedValue(new Set());
+      mocks.access.album.checkSharedAlbumAccess.mockResolvedValue(new Set());
+
+      await expect(
+        sut.addUsers(AuthFactory.create(editor), album.id, { albumUsers: [{ userId: newUuid() }] }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+
+      expect(mocks.access.album.checkSharedAlbumAccess).toHaveBeenCalledWith(editor.id, new Set([album.id]), 'manage');
+      expect(mocks.albumUser.create).not.toHaveBeenCalled();
+    });
   });
 
   describe('removeUser', () => {
+    it('should let a manager remove another member', async () => {
+      const [manager, user] = [UserFactory.create(), UserFactory.create()];
+      const album = AlbumFactory.from()
+        .albumUser({ userId: manager.id, isManager: true })
+        .albumUser({ userId: user.id })
+        .build();
+      mocks.access.album.checkOwnerAccess.mockResolvedValue(new Set());
+      mocks.access.album.checkSharedAlbumAccess.mockResolvedValue(new Set([album.id]));
+      mocks.album.getById.mockResolvedValue(getForAlbum(album));
+      mocks.albumUser.delete.mockResolvedValue();
+
+      await sut.removeUser(AuthFactory.create(manager), album.id, user.id);
+
+      expect(mocks.albumUser.delete).toHaveBeenCalledWith({ albumId: album.id, userId: user.id });
+    });
+
+    it('should not let a manager remove an owner', async () => {
+      const manager = UserFactory.create();
+      const coOwner = UserFactory.create();
+      const album = AlbumFactory.from()
+        .albumUser({ userId: manager.id, isManager: true })
+        .albumUser({ userId: coOwner.id, role: AlbumUserRole.Owner })
+        .build();
+      mocks.access.album.checkOwnerAccess.mockResolvedValue(new Set());
+      mocks.access.album.checkSharedAlbumAccess.mockResolvedValue(new Set([album.id]));
+      mocks.album.getById.mockResolvedValue(getForAlbum(album));
+
+      await expect(sut.removeUser(AuthFactory.create(manager), album.id, coOwner.id)).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
+
+      expect(mocks.albumUser.delete).not.toHaveBeenCalled();
+    });
+
     it('should require a valid album id', async () => {
       mocks.access.album.checkOwnerAccess.mockResolvedValue(new Set(['album-1']));
       mocks.album.getById.mockResolvedValue(void 0);
@@ -670,8 +811,70 @@ describe(AlbumService.name, () => {
 
       expect(mocks.albumUser.update).toHaveBeenCalledWith(
         { albumId: album.id, userId: user.id },
-        { role: AlbumUserRole.Viewer },
+        { role: AlbumUserRole.Viewer, allowDownload: false, isManager: false },
       );
+    });
+
+    it('should keep what a member could do when only the other flag changes', async () => {
+      const user = UserFactory.create();
+      const album = AlbumFactory.from()
+        .albumUser({ userId: user.id, role: AlbumUserRole.Viewer, allowDownload: true })
+        .build();
+      const { user: owner } = album.albumUsers.find(({ role }) => role === AlbumUserRole.Owner)!;
+      mocks.access.album.checkOwnerAccess.mockResolvedValue(new Set([album.id]));
+      mocks.album.getById.mockResolvedValue(getForAlbum(album));
+      mocks.albumUser.update.mockResolvedValue();
+
+      await sut.updateUser(AuthFactory.create(owner), album.id, user.id, { role: AlbumUserRole.Viewer });
+
+      expect(mocks.albumUser.update).toHaveBeenCalledWith(
+        { albumId: album.id, userId: user.id },
+        { role: AlbumUserRole.Viewer, allowDownload: true, isManager: false },
+      );
+    });
+
+    it('should make an editor a manager', async () => {
+      const user = UserFactory.create();
+      const album = AlbumFactory.from().albumUser({ userId: user.id }).build();
+      const { user: owner } = album.albumUsers.find(({ role }) => role === AlbumUserRole.Owner)!;
+      mocks.access.album.checkOwnerAccess.mockResolvedValue(new Set([album.id]));
+      mocks.album.getById.mockResolvedValue(getForAlbum(album));
+      mocks.albumUser.update.mockResolvedValue();
+
+      await sut.updateUser(AuthFactory.create(owner), album.id, user.id, {
+        role: AlbumUserRole.Editor,
+        isManager: true,
+      });
+
+      expect(mocks.albumUser.update).toHaveBeenCalledWith(
+        { albumId: album.id, userId: user.id },
+        { role: AlbumUserRole.Editor, allowDownload: true, isManager: true },
+      );
+    });
+
+    it('should not make a member an owner', async () => {
+      const user = UserFactory.create();
+      const album = AlbumFactory.from().albumUser({ userId: user.id }).build();
+      const { user: owner } = album.albumUsers.find(({ role }) => role === AlbumUserRole.Owner)!;
+      mocks.access.album.checkOwnerAccess.mockResolvedValue(new Set([album.id]));
+      mocks.album.getById.mockResolvedValue(getForAlbum(album));
+
+      await expect(
+        sut.updateUser(AuthFactory.create(owner), album.id, user.id, { role: AlbumUserRole.Owner }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(mocks.albumUser.update).not.toHaveBeenCalled();
+    });
+
+    it('should not let an editor change roles', async () => {
+      const [editor, user] = [UserFactory.create(), UserFactory.create()];
+      const album = AlbumFactory.from().albumUser({ userId: editor.id }).albumUser({ userId: user.id }).build();
+      mocks.access.album.checkOwnerAccess.mockResolvedValue(new Set());
+      mocks.access.album.checkSharedAlbumAccess.mockResolvedValue(new Set());
+
+      await expect(
+        sut.updateUser(AuthFactory.create(editor), album.id, user.id, { role: AlbumUserRole.Viewer }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(mocks.albumUser.update).not.toHaveBeenCalled();
     });
   });
 
@@ -736,11 +939,7 @@ describe(AlbumService.name, () => {
       await sut.get(AuthFactory.create(user), album.id);
 
       expect(mocks.album.getById).toHaveBeenCalledWith(album.id, { withAssets: false }, user.id);
-      expect(mocks.access.album.checkSharedAlbumAccess).toHaveBeenCalledWith(
-        user.id,
-        new Set([album.id]),
-        AlbumUserRole.Viewer,
-      );
+      expect(mocks.access.album.checkSharedAlbumAccess).toHaveBeenCalledWith(user.id, new Set([album.id]), 'view');
     });
 
     it('should throw an error for no access', async () => {
@@ -751,7 +950,7 @@ describe(AlbumService.name, () => {
       expect(mocks.access.album.checkSharedAlbumAccess).toHaveBeenCalledWith(
         auth.user.id,
         new Set(['album-123']),
-        AlbumUserRole.Viewer,
+        'view',
       );
     });
   });

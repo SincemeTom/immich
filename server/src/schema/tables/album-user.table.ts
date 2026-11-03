@@ -59,6 +59,17 @@ export class AlbumUserTable {
   @Column({ enum: album_user_role_enum, default: AlbumUserRole.Editor })
   role!: Generated<AlbumUserRole>;
 
+  /**
+   * A viewer that can download the originals too (an editor and the owner always can). Kept apart from the role:
+   * clients (the mobile apps) know only the three roles.
+   */
+  @Column({ type: 'boolean', default: false })
+  allowDownload!: Generated<boolean>;
+
+  /** An editor that manages the album as its owner does (its members, details, shared links), but cannot delete it */
+  @Column({ type: 'boolean', default: false })
+  isManager!: Generated<boolean>;
+
   @CreateIdColumn({ index: true })
   createId!: Generated<string>;
 

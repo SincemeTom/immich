@@ -1042,6 +1042,10 @@ export type AssetStatsResponseDto = {
     videos: number;
 };
 export type AlbumUserResponseDto = {
+    /** Can download the originals: the owner, editors, and the viewers allowed to */
+    allowDownload: boolean;
+    /** An editor that manages the album as its owner does, but cannot delete it */
+    isManager: boolean;
     role: AlbumUserRole;
     user: UserResponseDto;
 };
@@ -1084,6 +1088,10 @@ export type AlbumResponseDto = {
     updatedAt: string;
 };
 export type AlbumUserCreateDto = {
+    /** A viewer can download the originals too (an editor always can); new viewers cannot by default */
+    allowDownload?: boolean;
+    /** An editor manages the album as its owner does (members, details, shared links), but cannot delete it; new editors do not by default */
+    isManager?: boolean;
     role: AlbumUserRole;
     /** User ID */
     userId: string;
@@ -1155,9 +1163,17 @@ export type MapMarkerResponseDto = {
     state: string | null;
 };
 export type UpdateAlbumUserDto = {
+    /** A viewer can download the originals too; unset, a viewer keeps what it had, and one that was not a viewer cannot */
+    allowDownload?: boolean;
+    /** An editor manages the album; unset, an editor keeps what it had, and one that was not an editor does not */
+    isManager?: boolean;
     role: AlbumUserRole;
 };
 export type AlbumUserAddDto = {
+    /** A viewer can download the originals too (an editor always can); new viewers cannot by default */
+    allowDownload?: boolean;
+    /** An editor manages the album as its owner does (members, details, shared links), but cannot delete it; new editors do not by default */
+    isManager?: boolean;
     /** Album user role */
     role?: AlbumUserRole;
     /** User ID */

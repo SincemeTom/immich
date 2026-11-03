@@ -17,10 +17,16 @@ from
   inner join "album" on "activity"."albumId" = "album"."id"
   and "album"."deletedAt" is null
   inner join "album_user" on "album"."id" = "album_user"."albumId"
-  and "album_user"."role" = 'owner'
   and "album_user"."userId" = $1::uuid
+  and (
+    "album_user"."role" = 'owner'
+    or (
+      "album_user"."role" = 'editor'
+      and "album_user"."isManager" = $2
+    )
+  )
 where
-  "activity"."id" in ($2)
+  "activity"."id" in ($3)
 
 -- AccessRepository.activity.checkCreateAccess
 select
@@ -60,7 +66,10 @@ where
   "album"."id" in ($1)
   and "album"."deletedAt" is null
   and "user"."id" = $2
-  and "album_user"."role" in ($3, $4)
+  and (
+    "album_user"."role" = $3
+    or "album_user"."role" = $4
+  )
 
 -- AccessRepository.album.checkSharedLinkAccess
 select

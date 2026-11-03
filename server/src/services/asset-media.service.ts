@@ -277,8 +277,12 @@ export class AssetMediaService extends BaseService {
     );
 
     if (size === AssetFileType.FullSize && mimeTypes.isWebSupportedImage(originalPath) && !dto.edited) {
-      // use original file for web supported images
-      return { targetSize: 'original' };
+      // use original file for web supported images, for those who can download it: a viewer of an album that is not
+      // allowed to sees the preview (or a full-size one made, if there is)
+      const allowed = await this.checkAccess({ auth, permission: Permission.AssetDownload, ids: [id] });
+      if (allowed.has(id)) {
+        return { targetSize: 'original' };
+      }
     }
 
     if (dto.size === AssetMediaSize.FULLSIZE && !path) {

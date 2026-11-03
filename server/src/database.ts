@@ -32,6 +32,8 @@ export type AuthUser = {
 export type AlbumUser = {
   user: ShallowDehydrateObject<User>;
   role: AlbumUserRole;
+  allowDownload: boolean;
+  isManager: boolean;
 };
 
 export type AssetFile = {
