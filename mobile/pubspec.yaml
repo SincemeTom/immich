@@ -148,11 +148,13 @@ flutter:
           weight: 500
         - asset: fonts/GoogleSansCode/GoogleSansCode-SemiBold.ttf
           weight: 600
+# Pixcellar: the launcher icons are made by design/pixcellar/make_icons.py from design/pixcellar/icon-1024.png
+# (iOS, Android legacy, adaptive and themed); these settings are only for `flutter_launcher_icons`, if run
 flutter_launcher_icons:
-  image_path_android: 'assets/immich-logo.png'
-  adaptive_icon_background: '#ffffff'
-  adaptive_icon_foreground: 'assets/immich-logo-android-adaptive-icon.png'
-  image_path_ios: 'assets/immich-logo-w-bg.png'
+  image_path_android: '../design/pixcellar/icon-1024.png'
+  adaptive_icon_background: '#EDECEA'
+  adaptive_icon_foreground: 'android/app/src/main/res/drawable-xxxhdpi/ic_launcher_foreground.png'
+  image_path_ios: '../design/pixcellar/icon-1024.png'
   android: 'ic_launcher'
   ios: false
   remove_alpha_ios: true
