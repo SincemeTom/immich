@@ -106,4 +106,82 @@ void main() {
       onSuccess('asset-1', 'remote-1');
     });
   });
+
+  group('restarting the backup', () {
+    late List<UploadCallbacks> runs;
+    late List<Completer<void>> runsDone;
+
+    setUp(() {
+      mockCounts(total: 5, remainder: 5);
+      runs = [];
+      runsDone = [];
+      when(() => foregroundUploadService.uploadCandidates(any(), any(), callbacks: any(named: 'callbacks'))).thenAnswer(
+        (invocation) {
+          runs.add(invocation.namedArguments[#callbacks] as UploadCallbacks);
+          final done = Completer<void>();
+          runsDone.add(done);
+          return done.future;
+        },
+      );
+    });
+
+    test('waits for the cancelled run before uploading again', () async {
+      unawaited(notifier.startForegroundBackup('user-1'));
+      await pumpEventQueue();
+      expect(runs, hasLength(1));
+
+      final restarted = notifier.startForegroundBackup('user-1');
+      await pumpEventQueue();
+      expect(runs, hasLength(1));
+
+      runsDone[0].complete();
+      await pumpEventQueue();
+      expect(runs, hasLength(2));
+
+      runsDone[1].complete();
+      await restarted;
+    });
+
+    test('only the last of restarts in a row uploads', () async {
+      unawaited(notifier.startForegroundBackup('user-1'));
+      await pumpEventQueue();
+      final second = notifier.startForegroundBackup('user-1');
+      final third = notifier.startForegroundBackup('user-1');
+      await pumpEventQueue();
+
+      runsDone[0].complete();
+      await second;
+      await pumpEventQueue();
+      expect(runs, hasLength(2));
+
+      runsDone[1].complete();
+      await third;
+    });
+
+    test('what a cancelled run still reports does not show', () async {
+      unawaited(notifier.startForegroundBackup('user-1'));
+      await pumpEventQueue();
+      final cancelled = runs[0];
+      cancelled.onProgress!('asset-1', 'a.mp4', 10, 100);
+      expect(notifier.state.uploadItems.keys, ['asset-1']);
+
+      notifier.stopForegroundBackup(reason: 'test');
+      unawaited(notifier.startForegroundBackup('user-1'));
+      await pumpEventQueue();
+
+      cancelled.onProgress!('asset-1', 'a.mp4', 20, 100);
+      cancelled.onError!('asset-2', 'PathNotFoundException');
+      cancelled.onSuccess!('asset-3', 'remote-3');
+      cancelled.onICloudProgress!('asset-4', 0.5);
+      expect(notifier.state.uploadItems, isEmpty);
+      expect(notifier.state.iCloudDownloadProgress, isEmpty);
+
+      runsDone[0].complete();
+      await pumpEventQueue();
+      expect(notifier.state.backupCount, 0);
+      runs[1].onProgress!('asset-1', 'a.mp4', 30, 100);
+      expect(notifier.state.uploadItems['asset-1']!.progress, 0.3);
+      runsDone[1].complete();
+    });
+  });
 }

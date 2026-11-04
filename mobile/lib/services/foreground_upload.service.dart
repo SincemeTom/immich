@@ -74,6 +74,24 @@ class ForegroundUploadService {
 
   bool shouldAbortUpload = false;
 
+  /// Upload runs going on (backup, manual uploads, shared files): the temporary files are only cleared when none is
+  static int _activeRuns = 0;
+
+  /// The assets being uploaded. An asset's file is exported to the same temporary path every time and deleted once
+  /// uploaded, so two uploads of one asset (a backup and an upload to an album) must not overlap
+  static final Map<String, Completer<void>> _assetsInFlight = {};
+
+  /// To be paired with `_activeRuns--` once the run is over
+  Future<void> _startRun() async {
+    _activeRuns++;
+    if (_activeRuns == 1) {
+      _clearingCache = _storageRepository.clearCache();
+    }
+    await _clearingCache;
+  }
+
+  static Future<void>? _clearingCache;
+
   Future<({int total, int remainder, int processing})> getBackupCounts(String userId) {
     return _backupRepository.getAllCounts(userId);
   }
@@ -120,21 +138,25 @@ class ForegroundUploadService {
     required bool hasWifi,
     required UploadCallbacks callbacks,
   }) async {
-    await _storageRepository.clearCache();
-    shouldAbortUpload = false;
+    await _startRun();
+    try {
+      shouldAbortUpload = false;
 
-    for (final asset in items) {
-      if (shouldAbortUpload || cancelToken.isCompleted) {
-        break;
+      for (final asset in items) {
+        if (shouldAbortUpload || cancelToken.isCompleted) {
+          break;
+        }
+
+        final requireWifi = _shouldRequireWiFi(asset);
+        if (requireWifi && !hasWifi) {
+          _logger.warning('Skipping upload for ${asset.id} because it requires WiFi');
+          continue;
+        }
+
+        await uploadSingleAsset(asset, cancelToken, callbacks: callbacks);
       }
-
-      final requireWifi = _shouldRequireWiFi(asset);
-      if (requireWifi && !hasWifi) {
-        _logger.warning('Skipping upload for ${asset.id} because it requires WiFi');
-        continue;
-      }
-
-      await uploadSingleAsset(asset, cancelToken, callbacks: callbacks);
+    } finally {
+      _activeRuns--;
     }
   }
 
@@ -206,7 +228,7 @@ class ForegroundUploadService {
     bool Function(T item)? shouldSkip,
     int concurrentWorkers = 3,
   }) async {
-    await _storageRepository.clearCache();
+    await _startRun();
     shouldAbortUpload = false;
 
     int currentIndex = 0;
@@ -238,11 +260,37 @@ class ForegroundUploadService {
       workerFutures.add(worker());
     }
 
-    await Future.wait(workerFutures);
+    try {
+      await Future.wait(workerFutures);
+    } finally {
+      _activeRuns--;
+    }
   }
 
   @visibleForTesting
   Future<void> uploadSingleAsset(
+    LocalAsset asset,
+    Completer<void>? cancelToken, {
+    required UploadCallbacks callbacks,
+  }) async {
+    // after the other upload of the asset, this one finds it on the server (or the server tells it is a duplicate)
+    for (var other = _assetsInFlight[asset.id]; other != null; other = _assetsInFlight[asset.id]) {
+      await other.future;
+    }
+    if (cancelToken?.isCompleted ?? false) {
+      return;
+    }
+    final done = Completer<void>();
+    _assetsInFlight[asset.id] = done;
+    try {
+      await _uploadSingleAsset(asset, cancelToken, callbacks: callbacks);
+    } finally {
+      _assetsInFlight.remove(asset.id);
+      done.complete();
+    }
+  }
+
+  Future<void> _uploadSingleAsset(
     LocalAsset asset,
     Completer<void>? cancelToken, {
     required UploadCallbacks callbacks,

@@ -75,6 +75,9 @@ class BackupNotifier extends StateNotifier<BackupState> {
   final UploadSpeedManager _uploadSpeedManager;
   Completer<void>? _cancelToken;
 
+  /// The upload run going on, cancelled or not
+  Future<void>? _run;
+
   final _logger = Logger("BackupNotifier");
 
   /// Remove upload item from state
@@ -133,20 +136,61 @@ class BackupNotifier extends StateNotifier<BackupState> {
     final cancelToken = Completer<void>();
     _cancelToken = cancelToken;
 
+    // The cancelled run still finishes the file it was preparing: running alongside it would upload the same assets
+    // from the same temporary files, which each run deletes when done with them (and clears when it starts)
+    final previous = _run;
+    if (previous != null) {
+      await previous.catchError((_) {});
+    }
+    if (cancelToken.isCompleted) {
+      return;
+    }
+
     // Re-baseline the counters against the same DB read that feeds this run's candidate list,
     // otherwise a resume counts duplicate successes against the old baseline (#26215).
     await getBackupStatus(userId);
+    if (cancelToken.isCompleted) {
+      return;
+    }
 
-    return _foregroundUploadService.uploadCandidates(
+    // What a cancelled run still reports would come back as uploads that never move or end
+    bool isCurrent() => mounted && identical(_cancelToken, cancelToken);
+    final run = _foregroundUploadService.uploadCandidates(
       userId,
       cancelToken,
       callbacks: UploadCallbacks(
-        onProgress: _handleForegroundBackupProgress,
-        onSuccess: _handleForegroundBackupSuccess,
-        onError: _handleForegroundBackupError,
-        onICloudProgress: _handleICloudProgress,
+        onProgress: (id, filename, bytes, totalBytes) {
+          if (isCurrent()) {
+            _handleForegroundBackupProgress(id, filename, bytes, totalBytes);
+          }
+        },
+        onSuccess: (localId, remoteId) {
+          if (isCurrent()) {
+            _handleForegroundBackupSuccess(localId, remoteId);
+          }
+        },
+        onError: (id, errorMessage) {
+          if (isCurrent()) {
+            _handleForegroundBackupError(id, errorMessage);
+          } else {
+            _logger.warning("Upload of $id failed after its backup run was cancelled: $errorMessage");
+          }
+        },
+        onICloudProgress: (id, progress) {
+          if (isCurrent()) {
+            _handleICloudProgress(id, progress);
+          }
+        },
       ),
     );
+    _run = run;
+    try {
+      await run;
+    } finally {
+      if (identical(_run, run)) {
+        _run = null;
+      }
+    }
   }
 
   void stopForegroundBackup({required String reason}) {
