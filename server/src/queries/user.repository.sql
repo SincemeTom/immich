@@ -113,7 +113,8 @@ where
 -- UserRepository.getForChangePassword
 select
   "user"."id",
-  "user"."password"
+  "user"."password",
+  "user"."shouldChangePassword"
 from
   "user"
 where
