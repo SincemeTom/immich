@@ -5,7 +5,9 @@ import 'package:immich_mobile/constants/enums.dart';
 import 'package:immich_mobile/domain/models/album/album.model.dart';
 import 'package:immich_mobile/domain/models/album/album_access.model.dart';
 import 'package:immich_mobile/domain/models/asset/base_asset.model.dart';
+import 'package:immich_mobile/domain/models/events.model.dart';
 import 'package:immich_mobile/domain/models/user.model.dart';
+import 'package:immich_mobile/domain/utils/event_stream.dart';
 import 'package:immich_mobile/infrastructure/repositories/remote_album.repository.dart';
 import 'package:immich_mobile/models/albums/album_search.model.dart';
 import 'package:immich_mobile/providers/album/album_sort_by_options.provider.dart';
@@ -178,6 +180,9 @@ class RemoteAlbumService {
     final album = await _albumApiRepository.addAssets(albumId, assetIds);
 
     await _repository.addAssets(albumId, album.added);
+    if (album.added.isNotEmpty) {
+      EventStream.shared.emit(AlbumAssetsChangedEvent(albumId, album.added));
+    }
 
     return (added: album.added.length, failed: album.failed.length);
   }
@@ -282,6 +287,7 @@ class RemoteAlbumService {
 
     await _repository.upsertRemoteAssetStub(remoteId: remoteId, ownerId: uploader.id, source: source);
     await _repository.addAssets(albumId, result.added);
+    EventStream.shared.emit(AlbumAssetsChangedEvent(albumId, result.added));
     return result.added.length;
   }
 
@@ -360,6 +366,9 @@ class RemoteAlbumService {
   Future<int> removeAssets({required String albumId, required List<String> assetIds}) async {
     final result = await _albumApiRepository.removeAssets(albumId, assetIds);
     await _repository.removeAssets(albumId, result.removed);
+    if (result.removed.isNotEmpty) {
+      EventStream.shared.emit(AlbumAssetsChangedEvent(albumId, result.removed));
+    }
     return result.removed.length;
   }
 }

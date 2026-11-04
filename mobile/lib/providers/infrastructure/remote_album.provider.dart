@@ -7,8 +7,10 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:immich_mobile/domain/models/album/album.model.dart';
 import 'package:immich_mobile/domain/models/album/album_access.model.dart';
 import 'package:immich_mobile/domain/models/asset/base_asset.model.dart';
+import 'package:immich_mobile/domain/models/events.model.dart';
 import 'package:immich_mobile/domain/models/user.model.dart';
 import 'package:immich_mobile/domain/services/remote_album.service.dart';
+import 'package:immich_mobile/domain/utils/event_stream.dart';
 import 'package:immich_mobile/models/albums/album_search.model.dart';
 import 'package:immich_mobile/providers/album/album_sort_by_options.provider.dart';
 import 'package:immich_mobile/providers/album/pending_album_uploads.provider.dart';
@@ -36,15 +38,48 @@ class RemoteAlbumNotifier extends Notifier<RemoteAlbumState> {
   late RemoteAlbumService _remoteAlbumService;
   final _logger = Logger('RemoteAlbumNotifier');
 
+  /// The albums were read once: they then follow what the app does to their photos
+  bool _loaded = false;
+  Timer? _refreshTimer;
+
   @override
   RemoteAlbumState build() {
     _remoteAlbumService = ref.read(remoteAlbumServiceProvider);
+    final subscriptions = [
+      // trashed and restored photos change the albums' counts
+      EventStream.shared.listen<RemoteAssetsChangedEvent>((event) {
+        if (event.trashed || event.restored) {
+          _scheduleRefresh();
+        }
+      }),
+      EventStream.shared.listen<AlbumAssetsChangedEvent>((event) {
+        if (_loaded) {
+          unawaited(_refreshAlbumInState(event.albumId));
+        }
+      }),
+    ];
+    ref.onDispose(() {
+      _refreshTimer?.cancel();
+      for (final subscription in subscriptions) {
+        unawaited(subscription.cancel());
+      }
+    });
     return const RemoteAlbumState(albums: []);
+  }
+
+  /// Once for a burst of changes (an undo right after, a few actions in a row)
+  void _scheduleRefresh() {
+    if (!_loaded) {
+      return;
+    }
+    _refreshTimer?.cancel();
+    _refreshTimer = Timer(const Duration(milliseconds: 300), () => unawaited(refresh().catchError((_) {})));
   }
 
   Future<List<RemoteAlbum>> _getAll() async {
     try {
       final albums = await _remoteAlbumService.getAll();
+      _loaded = true;
       state = state.copyWith(albums: albums);
       return albums;
     } catch (error, stack) {
@@ -185,6 +220,7 @@ class RemoteAlbumNotifier extends Notifier<RemoteAlbumState> {
 
     final updatedAlbums = state.albums.where((album) => album.id != albumId).toList();
     state = state.copyWith(albums: updatedAlbums);
+    ref.invalidate(albumsContainingAssetProvider);
   }
 
   Future<List<RemoteAsset>> getAssets(String albumId) {
@@ -306,6 +342,7 @@ class RemoteAlbumNotifier extends Notifier<RemoteAlbumState> {
 
     final updatedAlbums = state.albums.where((album) => album.id != albumId).toList();
     state = state.copyWith(albums: updatedAlbums);
+    ref.invalidate(albumsContainingAssetProvider);
   }
 
   Future<void> setActivityStatus(String albumId, bool enabled) {

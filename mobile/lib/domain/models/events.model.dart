@@ -49,4 +49,17 @@ class RemoteAssetsChangedEvent extends Event {
     this.visibility,
     this.isFavorite,
   });
+
+  /// The assets went from, or came back to, where they show: the trash, the archive, the locked folder
+  bool get changesWhereShown => trashed || restored || visibility != null;
+}
+
+// Remote Album Events
+/// The app added or removed [assetIds] to or from the album [albumId], for what shows albums from a one-off read of the
+/// local database (the album list's counts, the albums an asset is in)
+class AlbumAssetsChangedEvent extends Event {
+  final String albumId;
+  final List<String> assetIds;
+
+  const AlbumAssetsChangedEvent(this.albumId, this.assetIds);
 }

@@ -64,4 +64,46 @@ void main() {
       expect(result[0].id, remote.id);
     });
   });
+
+  group('trash', () {
+    late String userId;
+    late String trashedId;
+    late String keptId;
+    late String partnerTrashedId;
+
+    setUp(() async {
+      final user = await ctx.newUser();
+      userId = user.id;
+      final partner = await ctx.newUser();
+      trashedId = (await ctx.newRemoteAsset(ownerId: userId, deletedAt: DateTime.utc(2024))).id;
+      keptId = (await ctx.newRemoteAsset(ownerId: userId)).id;
+      partnerTrashedId = (await ctx.newRemoteAsset(ownerId: partner.id, deletedAt: DateTime.utc(2024))).id;
+    });
+
+    Future<Set<String>> remainingIds() async =>
+        (await ctx.db.select(ctx.db.remoteAssetEntity).get()).map((row) => row.id).toSet();
+
+    test('emptyTrash deletes the owner\'s trashed assets and returns their ids', () async {
+      final ids = await sut.emptyTrash(userId);
+
+      expect(ids, [trashedId]);
+      expect(await remainingIds(), {keptId, partnerTrashedId});
+    });
+
+    test('restoreAllTrash restores the owner\'s trashed assets and returns their ids', () async {
+      final ids = await sut.restoreAllTrash(userId);
+
+      expect(ids, [trashedId]);
+      final rows = await ctx.db.select(ctx.db.remoteAssetEntity).get();
+      expect(rows.firstWhere((row) => row.id == trashedId).deletedAt, isNull);
+      expect(rows.firstWhere((row) => row.id == partnerTrashedId).deletedAt, isNotNull);
+    });
+
+    test('return no ids when the trash is empty', () async {
+      await sut.emptyTrash(userId);
+
+      expect(await sut.emptyTrash(userId), isEmpty);
+      expect(await sut.restoreAllTrash(userId), isEmpty);
+    });
+  });
 }

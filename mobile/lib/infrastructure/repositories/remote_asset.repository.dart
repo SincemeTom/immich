@@ -125,14 +125,31 @@ class RemoteAssetRepository extends DatabaseAccessor<Drift> with $RemoteAssetRep
     });
   }
 
-  Future<void> emptyTrash(String ownerId) async {
-    await _db.remoteAssetEntity.deleteWhere((t) => t.deletedAt.isNotNull() & t.ownerId.equals(ownerId));
+  /// The ids of the assets deleted
+  Future<List<String>> emptyTrash(String ownerId) {
+    return _db.transaction(() async {
+      final ids = await _trashedIds(ownerId);
+      await _db.remoteAssetEntity.deleteWhere((t) => t.deletedAt.isNotNull() & t.ownerId.equals(ownerId));
+      return ids;
+    });
   }
 
-  Future<void> restoreAllTrash(String ownerId) async {
-    await (_db.remoteAssetEntity.update()..where((t) => t.deletedAt.isNotNull() & t.ownerId.equals(ownerId))).write(
-      const RemoteAssetEntityCompanion(deletedAt: Value(null)),
-    );
+  /// The ids of the assets restored
+  Future<List<String>> restoreAllTrash(String ownerId) {
+    return _db.transaction(() async {
+      final ids = await _trashedIds(ownerId);
+      await (_db.remoteAssetEntity.update()..where((t) => t.deletedAt.isNotNull() & t.ownerId.equals(ownerId))).write(
+        const RemoteAssetEntityCompanion(deletedAt: Value(null)),
+      );
+      return ids;
+    });
+  }
+
+  Future<List<String>> _trashedIds(String ownerId) {
+    final query = _db.remoteAssetEntity.selectOnly()
+      ..addColumns([_db.remoteAssetEntity.id])
+      ..where(_db.remoteAssetEntity.deletedAt.isNotNull() & _db.remoteAssetEntity.ownerId.equals(ownerId));
+    return query.map((row) => row.read(_db.remoteAssetEntity.id)!).get();
   }
 
   Future<void> deleteAssets(List<String> ids) {
