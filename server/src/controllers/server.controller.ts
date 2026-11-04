@@ -1,5 +1,6 @@
 import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Put } from '@nestjs/common';
 import { ApiNotFoundResponse, ApiTags } from '@nestjs/swagger';
+import type { AuthDto } from 'src/dtos/auth.dto.js';
 import { Endpoint, HistoryBuilder } from 'src/decorators.js';
 import { LicenseKeyDto, LicenseResponseDto } from 'src/dtos/license.dto.js';
 import {
@@ -10,13 +11,14 @@ import {
   ServerMediaTypesResponseDto,
   ServerPingResponse,
   ServerStatsResponseDto,
+  ServerStorageDetailsResponseDto,
   ServerStorageResponseDto,
   ServerVersionHistoryResponseDto,
   ServerVersionResponseDto,
 } from 'src/dtos/server.dto.js';
 import { VersionCheckStateResponseDto } from 'src/dtos/system-metadata.dto.js';
 import { ApiTag, Permission } from 'src/enum.js';
-import { Authenticated } from 'src/middleware/auth.guard.js';
+import { Auth, Authenticated } from 'src/middleware/auth.guard.js';
 import { ServerService } from 'src/services/server.service.js';
 import { SystemMetadataService } from 'src/services/system-metadata.service.js';
 import { VersionService } from 'src/services/version.service.js';
@@ -56,11 +58,24 @@ export class ServerController {
   @Authenticated({ permission: Permission.ServerStorage })
   @Endpoint({
     summary: 'Get storage',
-    description: 'Retrieve the current storage utilization information of the server.',
+    description:
+      "Retrieve the server's storage, the disk the library is on and the network shares it mounts, and what your photos take of it: uploaded, and of your external libraries.",
     history: new HistoryBuilder().added('v1').beta('v1').stable('v2'),
   })
-  getStorage(): Promise<ServerStorageResponseDto> {
-    return this.service.getStorage();
+  getStorage(@Auth() auth: AuthDto): Promise<ServerStorageResponseDto> {
+    return this.service.getStorage(auth);
+  }
+
+  @Get('storage/details')
+  @Authenticated({ permission: Permission.ServerStatistics, admin: true })
+  @Endpoint({
+    summary: 'Get storage details',
+    description:
+      "Retrieve the server's storage volume by volume: the disk the library is on, and each network share, with whether it is counted.",
+    history: new HistoryBuilder().added('v3.3.5').alpha('v3.3.5'),
+  })
+  getStorageDetails(): Promise<ServerStorageDetailsResponseDto> {
+    return this.service.getStorageDetails();
   }
 
   @Get('ping')

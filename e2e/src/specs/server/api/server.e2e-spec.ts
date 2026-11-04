@@ -62,6 +62,10 @@ describe('/server', () => {
         diskUsagePercentage: expect.any(Number),
         diskUse: expect.any(String),
         diskUseRaw: expect.any(Number),
+        usageUploads: expect.any(Number),
+        usageExternal: expect.any(Number),
+        quotaSizeInBytes: null,
+        sharesNotCounted: 0,
       });
     });
   });

@@ -452,6 +452,9 @@ const AdminConfigSchemaWithVisibility = z
           .meta({ visibility: User }),
         loginPageMessage: z.string().describe('Login page message').meta({ visibility: Public }),
         publicUsers: configBool.describe('Public users').meta({ visibility: User }),
+        storageIncludesNetworkShares: configBool.describe(
+          "Whether the server's storage counts the network shares the server mounts (macOS), besides the disk the library is on",
+        ),
       })
       .meta({ id: 'AdminConfigServerDto' }),
     user: z
@@ -810,6 +813,7 @@ export const defaults = Object.freeze<SystemConfig>({
     externalDomain: '',
     loginPageMessage: '',
     publicUsers: true,
+    storageIncludesNetworkShares: true,
   },
   notifications: {
     smtp: {

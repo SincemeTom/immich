@@ -401,6 +401,8 @@ export type AdminConfigServerDto = {
     loginPageMessage: string;
     /** Public users */
     publicUsers: boolean;
+    /** Whether the server's storage counts the network shares the server mounts (macOS), besides the disk the library is on */
+    storageIncludesNetworkShares: boolean;
 };
 export type AdminConfigStorageTemplateDto = {
     /** Enabled */
@@ -3137,20 +3139,64 @@ export type ServerStatsResponseDto = {
     videos: number;
 };
 export type ServerStorageResponseDto = {
-    /** Available disk space (human-readable format) */
+    /** The server's available space (human-readable format) */
     diskAvailable: string;
-    /** Available disk space in bytes */
+    /** The server's available space in bytes */
     diskAvailableRaw: number;
-    /** Total disk size (human-readable format) */
+    /** The server's storage (human-readable format): the disk the library is on, and the network shares it mounts */
     diskSize: string;
-    /** Total disk size in bytes */
+    /** The server's storage in bytes */
     diskSizeRaw: number;
-    /** Disk usage percentage (0-100) */
+    /** What your photos take, as a percentage (0-100) of the server's storage */
     diskUsagePercentage: number;
-    /** Used disk space (human-readable format) */
+    /** What your photos take (human-readable format): uploaded, and of your external libraries */
     diskUse: string;
-    /** Used disk space in bytes */
+    /** What your photos take in bytes: uploaded, and of your external libraries */
     diskUseRaw: number;
+    /** Your quota in bytes, if you have one */
+    quotaSizeInBytes: number | null;
+    /** Network shares the server's storage could not count: not mounted, or not answering */
+    sharesNotCounted: number;
+    /** What the photos of your external libraries take in bytes */
+    usageExternal: number;
+    /** What your uploaded photos take in bytes: what the quota counts */
+    usageUploads: number;
+};
+export type StorageVolumeDto = {
+    /** Available space in bytes, when it answered */
+    availableBytes?: number;
+    /** "local" for the disk the library is on, else the network share id */
+    id: string;
+    kind: StorageVolumeKind;
+    /** The network share's name; empty for the disk the library is on */
+    name: string;
+    /** Where it is mounted, or the library folder */
+    path: string;
+    /** The volume it is the same as */
+    sameAs?: string;
+    /** The library folder for the disk it is on, host:/export for a network share */
+    source: string;
+    status: StorageVolumeStatus;
+    /** Size in bytes, when it answered */
+    totalBytes?: number;
+    /** Used space in bytes, when it answered */
+    usedBytes?: number;
+};
+export type ServerStorageDetailsResponseDto = {
+    /** Available space in bytes, of the volumes counted */
+    availableBytes: number;
+    /** When the network shares' space was read (ISO 8601) */
+    checkedAt?: string;
+    /** Whether the server's storage counts the network shares */
+    includesNetworkShares: boolean;
+    /** Network shares not counted, as they were not mounted or did not answer */
+    notCounted: number;
+    /** The server's storage in bytes */
+    totalBytes: number;
+    /** Used space in bytes, of the volumes counted */
+    usedBytes: number;
+    /** The disk the library is on, and each network share */
+    volumes: StorageVolumeDto[];
 };
 export type ServerVersionResponseDto = {
     /** Major version number */
@@ -7446,6 +7492,17 @@ export function getStorage(opts?: Oazapfts.RequestOpts) {
     }));
 }
 /**
+ * Get storage details
+ */
+export function getStorageDetails(opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchJson<{
+        status: 200;
+        data: ServerStorageDetailsResponseDto;
+    }>("/server/storage/details", {
+        ...opts
+    }));
+}
+/**
  * Get server version
  */
 export function getServerVersion(opts?: Oazapfts.RequestOpts) {
@@ -9215,6 +9272,17 @@ export enum SearchSuggestionType {
     CameraMake = "camera-make",
     CameraModel = "camera-model",
     CameraLensModel = "camera-lens-model"
+}
+export enum StorageVolumeKind {
+    Local = "local",
+    NetworkShare = "networkShare"
+}
+export enum StorageVolumeStatus {
+    Counted = "counted",
+    SameVolume = "sameVolume",
+    Offline = "offline",
+    Disabled = "disabled",
+    Excluded = "excluded"
 }
 export enum SharedLinkType {
     Album = "ALBUM",

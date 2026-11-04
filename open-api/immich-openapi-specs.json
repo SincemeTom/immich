@@ -14278,7 +14278,7 @@
     },
     "/server/storage": {
       "get": {
-        "description": "Retrieve the current storage utilization information of the server.",
+        "description": "Retrieve the server's storage, the disk the library is on and the network shares it mounts, and what your photos take of it: uploaded, and of your external libraries.",
         "operationId": "getStorage",
         "parameters": [],
         "responses": {
@@ -14324,6 +14324,53 @@
         ],
         "x-immich-permission": "server.storage",
         "x-immich-state": "Stable"
+      }
+    },
+    "/server/storage/details": {
+      "get": {
+        "description": "Retrieve the server's storage volume by volume: the disk the library is on, and each network share, with whether it is counted.",
+        "operationId": "getStorageDetails",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServerStorageDetailsResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "cookie": []
+          },
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "Get storage details",
+        "tags": [
+          "Server"
+        ],
+        "x-immich-admin-only": true,
+        "x-immich-history": [
+          {
+            "version": "v3.3.5",
+            "state": "Added"
+          },
+          {
+            "version": "v3.3.5",
+            "state": "Alpha"
+          }
+        ],
+        "x-immich-permission": "server.statistics",
+        "x-immich-state": "Alpha"
       }
     },
     "/server/version": {
@@ -20873,12 +20920,17 @@
           "publicUsers": {
             "description": "Public users",
             "type": "boolean"
+          },
+          "storageIncludesNetworkShares": {
+            "description": "Whether the server's storage counts the network shares the server mounts (macOS), besides the disk the library is on",
+            "type": "boolean"
           }
         },
         "required": [
           "externalDomain",
           "loginPageMessage",
-          "publicUsers"
+          "publicUsers",
+          "storageIncludesNetworkShares"
         ],
         "type": "object"
       },
@@ -29821,39 +29873,116 @@
         ],
         "type": "object"
       },
+      "ServerStorageDetailsResponseDto": {
+        "properties": {
+          "availableBytes": {
+            "description": "Available space in bytes, of the volumes counted",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "checkedAt": {
+            "description": "When the network shares' space was read (ISO 8601)",
+            "type": "string"
+          },
+          "includesNetworkShares": {
+            "description": "Whether the server's storage counts the network shares",
+            "type": "boolean"
+          },
+          "notCounted": {
+            "description": "Network shares not counted, as they were not mounted or did not answer",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "totalBytes": {
+            "description": "The server's storage in bytes",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "usedBytes": {
+            "description": "Used space in bytes, of the volumes counted",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "volumes": {
+            "description": "The disk the library is on, and each network share",
+            "items": {
+              "$ref": "#/components/schemas/StorageVolumeDto"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "availableBytes",
+          "includesNetworkShares",
+          "notCounted",
+          "totalBytes",
+          "usedBytes",
+          "volumes"
+        ],
+        "type": "object"
+      },
       "ServerStorageResponseDto": {
         "properties": {
           "diskAvailable": {
-            "description": "Available disk space (human-readable format)",
+            "description": "The server's available space (human-readable format)",
             "type": "string"
           },
           "diskAvailableRaw": {
-            "description": "Available disk space in bytes",
+            "description": "The server's available space in bytes",
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
           },
           "diskSize": {
-            "description": "Total disk size (human-readable format)",
+            "description": "The server's storage (human-readable format): the disk the library is on, and the network shares it mounts",
             "type": "string"
           },
           "diskSizeRaw": {
-            "description": "Total disk size in bytes",
+            "description": "The server's storage in bytes",
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
           },
           "diskUsagePercentage": {
-            "description": "Disk usage percentage (0-100)",
+            "description": "What your photos take, as a percentage (0-100) of the server's storage",
             "format": "double",
             "type": "number"
           },
           "diskUse": {
-            "description": "Used disk space (human-readable format)",
+            "description": "What your photos take (human-readable format): uploaded, and of your external libraries",
             "type": "string"
           },
           "diskUseRaw": {
-            "description": "Used disk space in bytes",
+            "description": "What your photos take in bytes: uploaded, and of your external libraries",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "quotaSizeInBytes": {
+            "description": "Your quota in bytes, if you have one",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "nullable": true,
+            "type": "integer"
+          },
+          "sharesNotCounted": {
+            "description": "Network shares the server's storage could not count: not mounted, or not answering",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "usageExternal": {
+            "description": "What the photos of your external libraries take in bytes",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "usageUploads": {
+            "description": "What your uploaded photos take in bytes: what the quota counts",
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
@@ -29866,7 +29995,11 @@
           "diskSizeRaw",
           "diskUsagePercentage",
           "diskUse",
-          "diskUseRaw"
+          "diskUseRaw",
+          "quotaSizeInBytes",
+          "sharesNotCounted",
+          "usageExternal",
+          "usageUploads"
         ],
         "type": "object"
       },
@@ -31963,6 +32096,82 @@
           "users"
         ],
         "type": "object"
+      },
+      "StorageVolumeDto": {
+        "properties": {
+          "availableBytes": {
+            "description": "Available space in bytes, when it answered",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "id": {
+            "description": "\"local\" for the disk the library is on, else the network share id",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/StorageVolumeKind"
+          },
+          "name": {
+            "description": "The network share's name; empty for the disk the library is on",
+            "type": "string"
+          },
+          "path": {
+            "description": "Where it is mounted, or the library folder",
+            "type": "string"
+          },
+          "sameAs": {
+            "description": "The volume it is the same as",
+            "type": "string"
+          },
+          "source": {
+            "description": "The library folder for the disk it is on, host:/export for a network share",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/StorageVolumeStatus"
+          },
+          "totalBytes": {
+            "description": "Size in bytes, when it answered",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "usedBytes": {
+            "description": "Used space in bytes, when it answered",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "name",
+          "path",
+          "source",
+          "status"
+        ],
+        "type": "object"
+      },
+      "StorageVolumeKind": {
+        "description": "Kind",
+        "enum": [
+          "local",
+          "networkShare"
+        ],
+        "type": "string"
+      },
+      "StorageVolumeStatus": {
+        "description": "Counted; the same volume as one counted; offline; unmounted by hand; or not counted, as the setting says",
+        "enum": [
+          "counted",
+          "sameVolume",
+          "offline",
+          "disabled",
+          "excluded"
+        ],
+        "type": "string"
       },
       "StringFilter": {
         "properties": {
