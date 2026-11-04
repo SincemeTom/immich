@@ -45,6 +45,7 @@ import { StackRepository } from 'src/repositories/stack.repository.js';
 import { StorageRepository } from 'src/repositories/storage.repository.js';
 import { SyncCheckpointRepository } from 'src/repositories/sync-checkpoint.repository.js';
 import { SyncRepository } from 'src/repositories/sync.repository.js';
+import { SynologyAlbumRepository } from 'src/repositories/synology-album.repository.js';
 import { SynologyRepository } from 'src/repositories/synology.repository.js';
 import { SystemMetadataRepository } from 'src/repositories/system-metadata.repository.js';
 import { TagRepository } from 'src/repositories/tag.repository.js';
@@ -106,6 +107,7 @@ export const repositories = [
   StorageRepository,
   SyncRepository,
   SyncCheckpointRepository,
+  SynologyAlbumRepository,
   SynologyRepository,
   SystemMetadataRepository,
   TagRepository,

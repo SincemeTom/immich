@@ -73,6 +73,45 @@ describe(SynologyController.name, () => {
     });
   });
 
+  describe('POST /synology/account/sync', () => {
+    it('should answer 200', async () => {
+      service.syncAccount.mockResolvedValue({ bound: true, syncPending: true });
+
+      const { status } = await request(ctx.getHttpServer()).post('/synology/account/sync');
+
+      expect(ctx.authenticate).toHaveBeenCalled();
+      expect(status).toBe(200);
+    });
+  });
+
+  describe('PUT /synology/account/schedule', () => {
+    it('should take a time of day', async () => {
+      service.updateSchedule.mockResolvedValue({ bound: true });
+
+      const { status } = await request(ctx.getHttpServer())
+        .put('/synology/account/schedule')
+        .send({ autoSync: true, syncTime: ' 04:30 ' });
+
+      expect(ctx.authenticate).toHaveBeenCalled();
+      expect(status).toBe(200);
+      expect(service.updateSchedule).toHaveBeenCalledWith(undefined, { autoSync: true, syncTime: '04:30' });
+    });
+
+    it.each([
+      [{ autoSync: true }, 'syncTime'],
+      [{ autoSync: true, syncTime: '4:30' }, 'syncTime'],
+      [{ autoSync: true, syncTime: '24:00' }, 'syncTime'],
+      [{ syncTime: '03:00' }, 'autoSync'],
+    ])('should refuse %j', async (body, path) => {
+      const { status, body: response } = await request(ctx.getHttpServer())
+        .put('/synology/account/schedule')
+        .send(body);
+
+      expect(status).toBe(400);
+      expect(JSON.stringify(response)).toContain(path);
+    });
+  });
+
   describe('DELETE /synology/account', () => {
     it('should answer 204', async () => {
       const { status } = await request(ctx.getHttpServer()).delete('/synology/account');

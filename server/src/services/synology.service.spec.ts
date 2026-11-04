@@ -1,8 +1,8 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import type { ArgOf } from 'src/repositories/event.repository.js';
 import type { SynologyResponse } from 'src/repositories/synology.repository.js';
-import type { SynologyAccount } from 'src/types.js';
-import { SystemMetadataKey } from 'src/enum.js';
+import type { SynologyAccount, SynologySyncReport } from 'src/types.js';
+import { CronJob, JobName, JobStatus, SystemMetadataKey } from 'src/enum.js';
 import { SYNOLOGY_KEYCHAIN_SERVICE, SynologyService } from 'src/services/synology.service.js';
 import { SynologyError, SynologyErrorReason } from 'src/utils/synology.js';
 import { mockEnvData } from 'test/repositories/config.repository.mock.js';
@@ -33,6 +33,9 @@ const bound = (overrides: Partial<SynologyAccount> = {}): SynologyAccount => ({
   albumCount: 3,
   ...overrides,
 });
+
+/** a local time in November 2026 */
+const at = (hours: number, minutes = 0, day = 5) => new Date(2026, 10, day, hours, minutes);
 
 describe(SynologyService.name, () => {
   let sut: SynologyService;
@@ -155,6 +158,10 @@ describe(SynologyService.name, () => {
         albumCount: 3,
         errorReason: SynologyErrorReason.WrongPassword,
         message: 'error 400',
+        autoSync: true,
+        syncTime: '03:00',
+        nextSyncAt: expect.any(String),
+        syncPending: false,
       });
       expect(JSON.stringify(account)).not.toContain('pw');
       expect(mocks.keychain.get).not.toHaveBeenCalled();
@@ -532,4 +539,258 @@ describe(SynologyService.name, () => {
       await expect(sut.onUserDelete({ id: 'user-1' } as ArgOf<'UserDelete'>)).resolves.toBeUndefined();
     });
   });
+
+  describe('onBootstrap', () => {
+    it('should check every minute for syncs that are due', () => {
+      mocks.cron.create.mockReturnValue(undefined as never);
+
+      sut.onBootstrap();
+
+      expect(mocks.cron.create).toHaveBeenCalledWith(
+        expect.objectContaining({ name: CronJob.SynologyAlbumSync, expression: '* * * * *', start: true }),
+      );
+    });
+
+    it('should not when not on macOS', () => {
+      mocks.config.getEnv.mockReturnValue(
+        mockEnvData({ storage: { ignoreMountCheckErrors: false, networkSharesLocation: undefined } }),
+      );
+
+      sut.onBootstrap();
+
+      expect(mocks.cron.create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('syncAccount', () => {
+    it('should want a bound account', async () => {
+      await expect(sut.syncAccount(auth)).rejects.toBeInstanceOf(NotFoundException);
+      expect(mocks.job.queue).not.toHaveBeenCalled();
+    });
+
+    it('should queue a sync, and say it waits', async () => {
+      accounts['user-1'] = bound();
+
+      const account = await sut.syncAccount(auth);
+
+      expect(mocks.job.queue).toHaveBeenCalledWith({ name: JobName.SynologyAlbumSync, data: { id: 'user-1' } });
+      expect(account.syncPending).toBe(true);
+      expect(accounts['user-1'].syncQueuedAt).toEqual(expect.any(String));
+    });
+
+    it('should no longer say a sync waits once it ran', async () => {
+      accounts['user-1'] = bound({
+        syncQueuedAt: new Date(Date.now() - 60_000).toISOString(),
+        lastSync: { ...report(), startedAt: new Date(Date.now() - 30_000).toISOString() },
+      });
+
+      await expect(sut.getAccount(auth)).resolves.toEqual(expect.objectContaining({ syncPending: false }));
+    });
+  });
+
+  describe('updateSchedule', () => {
+    it('should keep the time, and when it was set', async () => {
+      accounts['user-1'] = bound();
+
+      const account = await sut.updateSchedule(auth, { autoSync: true, syncTime: '22:30' });
+
+      expect(account).toEqual(expect.objectContaining({ autoSync: true, syncTime: '22:30' }));
+      expect(new Date(account.nextSyncAt!).getHours()).toBe(22);
+      expect(accounts['user-1']).toEqual(
+        expect.objectContaining({ autoSync: true, syncTime: '22:30', scheduledAt: expect.any(String) }),
+      );
+    });
+
+    it('should not say when the next sync is, if turned off', async () => {
+      accounts['user-1'] = bound();
+
+      const account = await sut.updateSchedule(auth, { autoSync: false, syncTime: '03:00' });
+
+      expect(account.autoSync).toBe(false);
+      expect(account.nextSyncAt).toBeUndefined();
+    });
+  });
+
+  describe('queueDueSyncs', () => {
+    it('should queue the accounts whose time came round since their last sync', async () => {
+      accounts['user-1'] = bound({ boundAt: at(10, 0, 1).toISOString() });
+      accounts['user-2'] = bound({ account: 'bob', photosUserId: 2, boundAt: at(10, 0, 1).toISOString() });
+      accounts['user-2'].lastSync = { ...report(), startedAt: at(3, 0).toISOString() };
+      accounts['user-3'] = bound({ account: 'carol', photosUserId: 3, autoSync: false });
+
+      await sut.queueDueSyncs(at(3, 1));
+
+      expect(mocks.job.queueAll).toHaveBeenCalledWith([{ name: JobName.SynologyAlbumSync, data: { id: 'user-1' } }]);
+      expect(accounts['user-1'].syncQueuedAt).toBe(at(3, 1).toISOString());
+    });
+
+    it('should not queue before the time', async () => {
+      accounts['user-1'] = bound({ boundAt: at(6, 0, 4).toISOString(), syncTime: '05:00' });
+
+      await sut.queueDueSyncs(at(4, 59, 5));
+
+      expect(mocks.job.queueAll).not.toHaveBeenCalled();
+    });
+
+    it('should not queue an account bound since the time came round', async () => {
+      accounts['user-1'] = bound({ boundAt: at(10).toISOString() });
+
+      await sut.queueDueSyncs(at(11));
+
+      expect(mocks.job.queueAll).not.toHaveBeenCalled();
+    });
+
+    it('should not queue one whose time was set earlier than now, until the next day', async () => {
+      accounts['user-1'] = bound({ boundAt: at(1, 0, 1).toISOString(), syncTime: '09:00' });
+      accounts['user-1'].scheduledAt = at(10).toISOString();
+      accounts['user-1'].lastSync = { ...report(), startedAt: at(3, 0, 4).toISOString() };
+
+      await sut.queueDueSyncs(at(11));
+      expect(mocks.job.queueAll).not.toHaveBeenCalled();
+
+      await sut.queueDueSyncs(at(9, 0, 6));
+      expect(mocks.job.queueAll).toHaveBeenCalledTimes(1);
+    });
+
+    it('should queue it once', async () => {
+      accounts['user-1'] = bound({ boundAt: at(10, 0, 1).toISOString() });
+
+      await sut.queueDueSyncs(at(3, 1));
+      await sut.queueDueSyncs(at(3, 2));
+
+      expect(mocks.job.queueAll).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('handleAlbumSync', () => {
+    beforeEach(() => {
+      keychain.set(`${SYNOLOGY_KEYCHAIN_SERVICE}/user-1`, JSON.stringify({ password: 'pw' }));
+      replies['SYNO.Foto.Browse.Album list'] = ok({ list: [] });
+      mocks.synologyAlbum.getAll.mockResolvedValue([]);
+      mocks.user.getMetadata.mockResolvedValue([]);
+    });
+
+    it('should skip a user without an account', async () => {
+      await expect(sut.handleAlbumSync({ id: 'user-1' })).resolves.toBe(JobStatus.Skipped);
+      expect(mocks.synology.call).not.toHaveBeenCalled();
+    });
+
+    it('should log in, read the albums, log out, and keep a report', async () => {
+      accounts['user-1'] = bound();
+
+      await expect(sut.handleAlbumSync({ id: 'user-1' })).resolves.toBe(JobStatus.Success);
+
+      expect(called('SYNO.Foto.Browse.Album', 'list')).toHaveLength(1);
+      expect(called('SYNO.API.Auth', 'logout')).toHaveLength(1);
+      expect(accounts['user-1'].lastSync).toEqual(
+        expect.objectContaining({ success: true, albums: 0, startedAt: expect.any(String) }),
+      );
+    });
+
+    it('should report a failed login, and change nothing', async () => {
+      accounts['user-1'] = bound();
+      replies['SYNO.API.Auth login'] = fail(400);
+
+      await expect(sut.handleAlbumSync({ id: 'user-1' })).resolves.toBe(JobStatus.Failed);
+
+      expect(accounts['user-1'].lastSync).toEqual(
+        expect.objectContaining({ success: false, errorReason: SynologyErrorReason.WrongPassword }),
+      );
+      expect(mocks.synologyAlbum.getAll).not.toHaveBeenCalled();
+      expect(mocks.album.create).not.toHaveBeenCalled();
+    });
+
+    it('should report the password gone from the Keychain', async () => {
+      accounts['user-1'] = bound();
+      keychain.clear();
+
+      await expect(sut.handleAlbumSync({ id: 'user-1' })).resolves.toBe(JobStatus.Failed);
+
+      expect(accounts['user-1'].lastSync).toEqual(
+        expect.objectContaining({ success: false, errorReason: SynologyErrorReason.Keychain }),
+      );
+      expect(mocks.synology.call).not.toHaveBeenCalled();
+    });
+
+    it('should not remove the albums when Synology cannot list them, and log out', async () => {
+      accounts['user-1'] = bound();
+      replies['SYNO.Foto.Browse.Album list'] = fail(105);
+
+      await expect(sut.handleAlbumSync({ id: 'user-1' })).resolves.toBe(JobStatus.Failed);
+
+      expect(mocks.album.delete).not.toHaveBeenCalled();
+      expect(called('SYNO.API.Auth', 'logout')).toHaveLength(1);
+    });
+
+    it('should keep the albums synced before when Synology lists none', async () => {
+      accounts['user-1'] = bound();
+      mocks.synologyAlbum.getAll.mockResolvedValue([
+        {
+          albumId: 'album-1',
+          userId: 'user-1',
+          source: `${url}#1`,
+          synologyAlbumId: 7,
+          name: 'Trip',
+          thumbnailItemId: null,
+          createdAt: new Date(),
+          syncedAt: new Date(),
+        },
+      ] as any);
+
+      await expect(sut.handleAlbumSync({ id: 'user-1' })).resolves.toBe(JobStatus.Success);
+
+      expect(mocks.album.delete).not.toHaveBeenCalled();
+    });
+
+    it('should not keep the report of an account unbound meanwhile', async () => {
+      accounts['user-1'] = bound();
+      replies['SYNO.Foto.Browse.Album list'] = () => {
+        accounts = {};
+        return ok({ list: [] });
+      };
+
+      await sut.handleAlbumSync({ id: 'user-1' });
+
+      expect(accounts).toEqual({});
+    });
+  });
+
+  describe('bindAccount, after syncs', () => {
+    it('should keep the schedule, and the last sync of the same account', async () => {
+      accounts['user-1'] = bound({ autoSync: false, syncTime: '04:15', lastSync: report() });
+
+      await sut.bindAccount(auth, { url, account: 'alice', password: 'pw2', verifyCertificate: true });
+
+      expect(accounts['user-1']).toEqual(
+        expect.objectContaining({ autoSync: false, syncTime: '04:15', lastSync: report() }),
+      );
+    });
+
+    it('should not keep the last sync of another account', async () => {
+      accounts['user-1'] = bound({ photosUserId: 9, syncTime: '04:15', lastSync: report() });
+
+      await sut.bindAccount(auth, { url, account: 'alice', password: 'pw2', verifyCertificate: true });
+
+      expect(accounts['user-1'].syncTime).toBe('04:15');
+      expect(accounts['user-1'].lastSync).toBeUndefined();
+    });
+  });
+});
+
+const report = (): SynologySyncReport => ({
+  startedAt: '2026-11-04T03:00:00.000Z',
+  finishedAt: '2026-11-04T03:01:00.000Z',
+  success: true,
+  albums: 1,
+  albumsCreated: 1,
+  albumsUpdated: 0,
+  albumsRemoved: 0,
+  albumsEmpty: 0,
+  albumsFailed: 0,
+  items: 2,
+  matched: 2,
+  others: 0,
+  added: 2,
+  removed: 0,
+  unmatchedPaths: [],
 });

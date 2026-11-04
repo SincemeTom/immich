@@ -930,6 +930,8 @@ export enum JobName {
   LibrarySyncFiles = 'LibrarySyncFiles',
   LibraryScanQueueAll = 'LibraryScanQueueAll',
 
+  SynologyAlbumSync = 'SynologyAlbumSync',
+
   HlsSessionCleanup = 'HlsSessionCleanup',
 
   MemoryCleanup = 'MemoryCleanup',
@@ -1266,6 +1268,7 @@ export enum CronJob {
   LibraryScan = 'LibraryScan',
   NetworkShareCheck = 'NetworkShareCheck',
   NightlyJobs = 'NightlyJobs',
+  SynologyAlbumSync = 'SynologyAlbumSync',
   VersionCheck = 'VersionCheck',
 }
 

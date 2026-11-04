@@ -1,6 +1,6 @@
 import { createZodDto } from 'nestjs-zod';
 import z from 'zod';
-import { SynologyErrorReason, toSynologyUrl } from 'src/utils/synology.js';
+import { SynologyErrorReason, isSynologySyncTime, toSynologyUrl } from 'src/utils/synology.js';
 
 const SynologyErrorReasonSchema = z
   .enum(SynologyErrorReason)
@@ -35,6 +35,28 @@ const SynologyAccountBindSchema = z
   })
   .meta({ id: 'SynologyAccountBindDto' });
 
+const SynologySyncReportSchema = z
+  .object({
+    startedAt: z.string().describe('When the sync started'),
+    finishedAt: z.string().describe('When it finished'),
+    success: z.boolean().describe('Whether it could log in and read the albums'),
+    errorReason: SynologyErrorReasonSchema.optional(),
+    message: z.string().optional().describe('The error, as Synology or the system reported it'),
+    albums: z.int().describe('The Synology albums of the account'),
+    albumsCreated: z.int().describe('Albums created in Immich'),
+    albumsUpdated: z.int().describe('Albums changed: renamed, another cover, photos added or removed'),
+    albumsRemoved: z.int().describe('Albums the sync created and Synology no longer has: removed, not their photos'),
+    albumsEmpty: z.int().describe('Albums none of whose photos were found in the external libraries: not created'),
+    albumsFailed: z.int().describe('Albums whose photos Synology did not list: left as they were'),
+    items: z.int().describe("The account's own photos in its albums"),
+    matched: z.int().describe("Of them, those found in the user's external libraries"),
+    others: z.int().describe('Photos others added to the albums: not synced yet'),
+    added: z.int().describe('Photos added to albums'),
+    removed: z.int().describe('Photos removed from albums'),
+    unmatchedPaths: z.array(z.string()).describe('The first photos not found, as paths in Synology Photos'),
+  })
+  .meta({ id: 'SynologySyncReportDto' });
+
 const SynologyAccountResponseSchema = z
   .object({
     bound: z.boolean().describe('Whether the user bound a Synology account'),
@@ -47,8 +69,24 @@ const SynologyAccountResponseSchema = z
     albumCount: z.int().optional().describe('How many albums of its own the account had then'),
     errorReason: SynologyErrorReasonSchema.optional(),
     message: z.string().optional().describe('The last error, as Synology or the system reported it'),
+    autoSync: z.boolean().optional().describe('Whether the albums are synced every day'),
+    syncTime: z.string().optional().describe("The server's local time of day the albums are synced at, HH:MM"),
+    nextSyncAt: z.string().optional().describe('When they are synced next, if every day'),
+    syncPending: z.boolean().optional().describe('Whether a sync waits or runs'),
+    lastSync: SynologySyncReportSchema.optional().describe('What the last sync did'),
   })
   .meta({ id: 'SynologyAccountResponseDto' });
+
+const SynologySyncScheduleSchema = z
+  .object({
+    autoSync: z.boolean().describe('Sync the albums every day'),
+    syncTime: z
+      .string()
+      .trim()
+      .refine(isSynologySyncTime, 'Must be a time of day such as 03:00')
+      .describe("The server's local time of day to sync them at, HH:MM"),
+  })
+  .meta({ id: 'SynologySyncScheduleDto' });
 
 const SynologyAccountTestResponseSchema = z
   .object({
@@ -63,3 +101,4 @@ const SynologyAccountTestResponseSchema = z
 export class SynologyAccountBindDto extends createZodDto(SynologyAccountBindSchema) {}
 export class SynologyAccountResponseDto extends createZodDto(SynologyAccountResponseSchema) {}
 export class SynologyAccountTestResponseDto extends createZodDto(SynologyAccountTestResponseSchema) {}
+export class SynologySyncScheduleDto extends createZodDto(SynologySyncScheduleSchema) {}

@@ -66,6 +66,7 @@ import { StackRepository } from 'src/repositories/stack.repository.js';
 import { StorageRepository } from 'src/repositories/storage.repository.js';
 import { SyncCheckpointRepository } from 'src/repositories/sync-checkpoint.repository.js';
 import { SyncRepository } from 'src/repositories/sync.repository.js';
+import { SynologyAlbumRepository } from 'src/repositories/synology-album.repository.js';
 import { SynologyRepository } from 'src/repositories/synology.repository.js';
 import { SystemMetadataRepository } from 'src/repositories/system-metadata.repository.js';
 import { TagRepository } from 'src/repositories/tag.repository.js';
@@ -286,6 +287,7 @@ export type ServiceOverrides = {
   storage: StorageRepository;
   sync: SyncRepository;
   syncCheckpoint: SyncCheckpointRepository;
+  synologyAlbum: SynologyAlbumRepository;
   synology: SynologyRepository;
   systemMetadata: SystemMetadataRepository;
   tag: TagRepository;
@@ -377,6 +379,7 @@ export const getMocks = () => {
     storage: newStorageRepositoryMock(),
     sync: automock(SyncRepository),
     syncCheckpoint: automock(SyncCheckpointRepository),
+    synologyAlbum: automock(SynologyAlbumRepository),
     synology: automock(SynologyRepository),
     systemMetadata: newSystemMetadataRepositoryMock(),
     // systemMetadata: automock(SystemMetadataRepository, { strict: false }),
@@ -455,6 +458,7 @@ export const newTestService = <T extends BaseService>(
     overrides.storage || (mocks.storage as As<StorageRepository>),
     overrides.sync || (mocks.sync as As<SyncRepository>),
     overrides.syncCheckpoint || (mocks.syncCheckpoint as As<SyncCheckpointRepository>),
+    overrides.synologyAlbum || (mocks.synologyAlbum as As<SynologyAlbumRepository>),
     overrides.synology || (mocks.synology as As<SynologyRepository>),
     overrides.systemMetadata || (mocks.systemMetadata as As<SystemMetadataRepository>),
     overrides.tag || (mocks.tag as As<TagRepository>),

@@ -3323,11 +3323,48 @@ export type SyncStreamDto = {
     /** Sync request types */
     types: SyncRequestType[];
 };
+export type SynologySyncReportDto = {
+    /** Photos added to albums */
+    added: number;
+    /** The Synology albums of the account */
+    albums: number;
+    /** Albums created in Immich */
+    albumsCreated: number;
+    /** Albums none of whose photos were found in the external libraries: not created */
+    albumsEmpty: number;
+    /** Albums whose photos Synology did not list: left as they were */
+    albumsFailed: number;
+    /** Albums the sync created and Synology no longer has: removed, not their photos */
+    albumsRemoved: number;
+    /** Albums changed: renamed, another cover, photos added or removed */
+    albumsUpdated: number;
+    errorReason?: SynologyErrorReason;
+    /** When it finished */
+    finishedAt: string;
+    /** The account's own photos in its albums */
+    items: number;
+    /** Of them, those found in the user's external libraries */
+    matched: number;
+    /** The error, as Synology or the system reported it */
+    message?: string;
+    /** Photos others added to the albums: not synced yet */
+    others: number;
+    /** Photos removed from albums */
+    removed: number;
+    /** When the sync started */
+    startedAt: string;
+    /** Whether it could log in and read the albums */
+    success: boolean;
+    /** The first photos not found, as paths in Synology Photos */
+    unmatchedPaths: string[];
+};
 export type SynologyAccountResponseDto = {
     /** Synology account name */
     account?: string;
     /** How many albums of its own the account had then */
     albumCount?: number;
+    /** Whether the albums are synced every day */
+    autoSync?: boolean;
     /** Whether the user bound a Synology account */
     bound: boolean;
     /** When the account was bound */
@@ -3335,10 +3372,18 @@ export type SynologyAccountResponseDto = {
     /** When the server last logged in with it */
     checkedAt?: string;
     errorReason?: SynologyErrorReason;
+    /** What the last sync did */
+    lastSync?: SynologySyncReportDto;
     /** The last error, as Synology or the system reported it */
     message?: string;
     /** The name Synology Photos has for the account */
     name?: string;
+    /** When they are synced next, if every day */
+    nextSyncAt?: string;
+    /** Whether a sync waits or runs */
+    syncPending?: boolean;
+    /** The server's local time of day the albums are synced at, HH:MM */
+    syncTime?: string;
     /** Address of the Synology */
     url?: string;
     /** Whether the Synology's HTTPS certificate is checked */
@@ -3365,6 +3410,12 @@ export type SynologyAccountTestResponseDto = {
     message?: string;
     /** Whether the server could log in and read Synology Photos */
     success: boolean;
+};
+export type SynologySyncScheduleDto = {
+    /** Sync the albums every day */
+    autoSync: boolean;
+    /** The server's local time of day to sync them at, HH:MM */
+    syncTime: string;
 };
 export type SystemConfigTemplateStorageOptionDto = {
     /** Available day format options for storage template */
@@ -7791,6 +7842,33 @@ export function bindSynologyAccount({ synologyAccountBindDto }: {
     })));
 }
 /**
+ * Schedule my Synology album sync
+ */
+export function updateSynologySyncSchedule({ synologySyncScheduleDto }: {
+    synologySyncScheduleDto: SynologySyncScheduleDto;
+}, opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchJson<{
+        status: 200;
+        data: SynologyAccountResponseDto;
+    }>("/synology/account/schedule", oazapfts.json({
+        ...opts,
+        method: "PUT",
+        body: synologySyncScheduleDto
+    })));
+}
+/**
+ * Sync my Synology albums
+ */
+export function syncSynologyAccount(opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchJson<{
+        status: 200;
+        data: SynologyAccountResponseDto;
+    }>("/synology/account/sync", {
+        ...opts,
+        method: "POST"
+    }));
+}
+/**
  * Test my Synology account
  */
 export function testSynologyAccount(opts?: Oazapfts.RequestOpts) {
@@ -9043,6 +9121,7 @@ export enum JobName {
     LibrarySyncFilesQueueAll = "LibrarySyncFilesQueueAll",
     LibrarySyncFiles = "LibrarySyncFiles",
     LibraryScanQueueAll = "LibraryScanQueueAll",
+    SynologyAlbumSync = "SynologyAlbumSync",
     HlsSessionCleanup = "HlsSessionCleanup",
     MemoryCleanup = "MemoryCleanup",
     MemoryGenerate = "MemoryGenerate",

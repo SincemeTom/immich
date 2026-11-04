@@ -16169,6 +16169,108 @@
         "x-immich-state": "Alpha"
       }
     },
+    "/synology/account/schedule": {
+      "put": {
+        "description": "Whether the albums are synced every day, and at what time of day, in the server's time zone.",
+        "operationId": "updateSynologySyncSchedule",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SynologySyncScheduleDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SynologyAccountResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "cookie": []
+          },
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "Schedule my Synology album sync",
+        "tags": [
+          "Synology"
+        ],
+        "x-immich-history": [
+          {
+            "version": "v3.3.5",
+            "state": "Added"
+          },
+          {
+            "version": "v3.3.5",
+            "state": "Alpha"
+          }
+        ],
+        "x-immich-permission": "userPreference.update",
+        "x-immich-state": "Alpha"
+      }
+    },
+    "/synology/account/sync": {
+      "post": {
+        "description": "Sync the albums of the bound account now, in the background: each becomes an album of the user, with the photos found in their external libraries. Nothing on Synology is changed.",
+        "operationId": "syncSynologyAccount",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SynologyAccountResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "cookie": []
+          },
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "Sync my Synology albums",
+        "tags": [
+          "Synology"
+        ],
+        "x-immich-history": [
+          {
+            "version": "v3.3.5",
+            "state": "Added"
+          },
+          {
+            "version": "v3.3.5",
+            "state": "Alpha"
+          }
+        ],
+        "x-immich-permission": "userPreference.update",
+        "x-immich-state": "Alpha"
+      }
+    },
     "/synology/account/test": {
       "post": {
         "description": "Log in to Synology with the bound account, read Synology Photos, and log out.",
@@ -24141,6 +24243,7 @@
           "LibrarySyncFilesQueueAll",
           "LibrarySyncFiles",
           "LibraryScanQueueAll",
+          "SynologyAlbumSync",
           "HlsSessionCleanup",
           "MemoryCleanup",
           "MemoryGenerate",
@@ -33963,6 +34066,10 @@
             "minimum": -9007199254740991,
             "type": "integer"
           },
+          "autoSync": {
+            "description": "Whether the albums are synced every day",
+            "type": "boolean"
+          },
           "bound": {
             "description": "Whether the user bound a Synology account",
             "type": "boolean"
@@ -33978,12 +34085,28 @@
           "errorReason": {
             "$ref": "#/components/schemas/SynologyErrorReason"
           },
+          "lastSync": {
+            "$ref": "#/components/schemas/SynologySyncReportDto",
+            "description": "What the last sync did"
+          },
           "message": {
             "description": "The last error, as Synology or the system reported it",
             "type": "string"
           },
           "name": {
             "description": "The name Synology Photos has for the account",
+            "type": "string"
+          },
+          "nextSyncAt": {
+            "description": "When they are synced next, if every day",
+            "type": "string"
+          },
+          "syncPending": {
+            "description": "Whether a sync waits or runs",
+            "type": "boolean"
+          },
+          "syncTime": {
+            "description": "The server's local time of day the albums are synced at, HH:MM",
             "type": "string"
           },
           "url": {
@@ -34049,6 +34172,137 @@
           "other"
         ],
         "type": "string"
+      },
+      "SynologySyncReportDto": {
+        "properties": {
+          "added": {
+            "description": "Photos added to albums",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "albums": {
+            "description": "The Synology albums of the account",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "albumsCreated": {
+            "description": "Albums created in Immich",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "albumsEmpty": {
+            "description": "Albums none of whose photos were found in the external libraries: not created",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "albumsFailed": {
+            "description": "Albums whose photos Synology did not list: left as they were",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "albumsRemoved": {
+            "description": "Albums the sync created and Synology no longer has: removed, not their photos",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "albumsUpdated": {
+            "description": "Albums changed: renamed, another cover, photos added or removed",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "errorReason": {
+            "$ref": "#/components/schemas/SynologyErrorReason"
+          },
+          "finishedAt": {
+            "description": "When it finished",
+            "type": "string"
+          },
+          "items": {
+            "description": "The account's own photos in its albums",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "matched": {
+            "description": "Of them, those found in the user's external libraries",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "message": {
+            "description": "The error, as Synology or the system reported it",
+            "type": "string"
+          },
+          "others": {
+            "description": "Photos others added to the albums: not synced yet",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "removed": {
+            "description": "Photos removed from albums",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "startedAt": {
+            "description": "When the sync started",
+            "type": "string"
+          },
+          "success": {
+            "description": "Whether it could log in and read the albums",
+            "type": "boolean"
+          },
+          "unmatchedPaths": {
+            "description": "The first photos not found, as paths in Synology Photos",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "added",
+          "albums",
+          "albumsCreated",
+          "albumsEmpty",
+          "albumsFailed",
+          "albumsRemoved",
+          "albumsUpdated",
+          "finishedAt",
+          "items",
+          "matched",
+          "others",
+          "removed",
+          "startedAt",
+          "success",
+          "unmatchedPaths"
+        ],
+        "type": "object"
+      },
+      "SynologySyncScheduleDto": {
+        "properties": {
+          "autoSync": {
+            "description": "Sync the albums every day",
+            "type": "boolean"
+          },
+          "syncTime": {
+            "description": "The server's local time of day to sync them at, HH:MM",
+            "type": "string"
+          }
+        },
+        "required": [
+          "autoSync",
+          "syncTime"
+        ],
+        "type": "object"
       },
       "SystemConfigTemplateStorageOptionDto": {
         "properties": {

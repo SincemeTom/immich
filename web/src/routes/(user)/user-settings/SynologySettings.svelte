@@ -5,8 +5,10 @@
     bindSynologyAccount,
     getSynologyAccount,
     SynologyErrorReason,
+    syncSynologyAccount,
     testSynologyAccount,
     unbindSynologyAccount,
+    updateSynologySyncSchedule,
     type SynologyAccountResponseDto,
     type SynologyAccountTestResponseDto,
   } from '@immich/sdk';
@@ -40,6 +42,10 @@
   let needsOtp = $state(false);
   let failure = $state<{ reason?: SynologyErrorReason; message?: string }>();
 
+  let autoSync = $state(true);
+  let syncTime = $state('03:00');
+  let syncing = $state(false);
+
   const hasScheme = /^[a-z][\d+.a-z-]*:\/\//i;
 
   /** the origin the server keeps for an address: HTTPS without a scheme, and no path */
@@ -61,6 +67,32 @@
     !!url.trim() && !!name.trim() && (!!password || keepsPassword) && (!needsOtp || /^\d{6,8}$/.test(otpCode.trim())),
   );
 
+  const scheduleChanged = $derived(
+    !!account?.bound && (autoSync !== (account.autoSync ?? true) || syncTime !== (account.syncTime ?? '03:00')),
+  );
+  const validTime = $derived(/^([01]\d|2[0-3]):[0-5]\d$/.test(syncTime));
+
+  const resetSchedule = () => {
+    autoSync = account?.autoSync ?? true;
+    syncTime = account?.syncTime ?? '03:00';
+  };
+
+  // while a sync waits or runs, what it did is read again every few seconds
+  $effect(() => {
+    if (!account?.syncPending) {
+      return;
+    }
+
+    const timer = setInterval(() => {
+      getSynologyAccount()
+        .then((value) => (account = value))
+        .catch(() => {
+          // tried again next time
+        });
+    }, 3000);
+    return () => clearInterval(timer);
+  });
+
   const reasonText = (reason?: SynologyErrorReason) => $t(`synology_error_${reason ?? SynologyErrorReason.Other}`);
 
   const formatTime = (value?: string) =>
@@ -80,6 +112,7 @@
   onMount(async () => {
     try {
       account = await getSynologyAccount();
+      resetSchedule();
       if (!account.bound) {
         startEditing();
       }
@@ -92,6 +125,7 @@
   const onResult = (result: SynologyAccountTestResponseDto, successMessage: string) => {
     account = result.account;
     if (result.success) {
+      resetSchedule();
       failure = undefined;
       needsOtp = false;
       editing = false;
@@ -143,6 +177,31 @@
       onResult(result, $t('synology_account_test_ok', { values: { count: result.albumCount ?? 0 } }));
     } catch (error) {
       handleError(error, $t('errors.unable_to_test_synology_account'));
+    } finally {
+      busy = false;
+    }
+  };
+
+  const handleSync = async () => {
+    syncing = true;
+    try {
+      account = await syncSynologyAccount();
+      toastManager.primary($t('synology_sync_queued'));
+    } catch (error) {
+      handleError(error, $t('errors.unable_to_sync_synology_albums'));
+    } finally {
+      syncing = false;
+    }
+  };
+
+  const handleSaveSchedule = async () => {
+    busy = true;
+    try {
+      account = await updateSynologySyncSchedule({ synologySyncScheduleDto: { autoSync, syncTime } });
+      resetSchedule();
+      toastManager.primary($t('synology_sync_schedule_saved'));
+    } catch (error) {
+      handleError(error, $t('errors.unable_to_save_synology_schedule'));
     } finally {
       busy = false;
     }
@@ -209,6 +268,115 @@
           <Button shape="round" size="small" loading={busy} disabled={busy} onclick={handleTest}>
             {$t('synology_account_test')}
           </Button>
+        </div>
+
+        <div class="flex flex-col gap-3 border-t border-gray-200 pt-4 dark:border-gray-700" data-testid="synology-sync">
+          <Text fontWeight="medium">{$t('synology_sync')}</Text>
+          <Text size="small" color="muted">{$t('synology_sync_description')}</Text>
+
+          <Field label={$t('synology_sync_daily')} description={$t('synology_sync_daily_description')}>
+            <Switch bind:checked={autoSync} disabled={busy} />
+          </Field>
+          {#if autoSync}
+            <Field label={$t('synology_sync_time')}>
+              <Input type="time" bind:value={syncTime} disabled={busy} class="max-w-40" />
+            </Field>
+          {/if}
+
+          {#if scheduleChanged}
+            <div class="flex flex-wrap justify-end gap-2">
+              <Button shape="round" size="small" variant="outline" disabled={busy} onclick={resetSchedule}>
+                {$t('cancel')}
+              </Button>
+              <Button
+                shape="round"
+                size="small"
+                loading={busy}
+                disabled={busy || (autoSync && !validTime)}
+                onclick={handleSaveSchedule}
+              >
+                {$t('save')}
+              </Button>
+            </div>
+          {:else if account.autoSync && account.nextSyncAt}
+            <Text size="small" color="muted">
+              {$t('synology_sync_next', { values: { time: formatTime(account.nextSyncAt) } })}
+            </Text>
+          {/if}
+
+          {#if account.lastSync}
+            {@const report = account.lastSync}
+            <div class="flex flex-col gap-1" data-testid="synology-sync-report">
+              <Text size="small">{$t('synology_sync_last', { values: { time: formatTime(report.finishedAt) } })}</Text>
+              {#if report.success}
+                <Text size="small" color="muted">
+                  {$t('synology_sync_albums', {
+                    values: {
+                      count: report.albums,
+                      created: report.albumsCreated,
+                      updated: report.albumsUpdated,
+                      removed: report.albumsRemoved,
+                    },
+                  })}
+                </Text>
+                <Text size="small" color="muted">
+                  {$t('synology_sync_photos', {
+                    values: {
+                      matched: report.matched,
+                      items: report.items,
+                      added: report.added,
+                      removed: report.removed,
+                    },
+                  })}
+                </Text>
+                {#if report.albumsEmpty > 0}
+                  <Text size="small" color="muted">
+                    {$t('synology_sync_empty', { values: { count: report.albumsEmpty } })}
+                  </Text>
+                {/if}
+                {#if report.others > 0}
+                  <Text size="small" color="muted">
+                    {$t('synology_sync_others', { values: { count: report.others } })}
+                  </Text>
+                {/if}
+                {#if report.albumsFailed > 0}
+                  <Alert color="warning" size="small">
+                    <Text size="small"
+                      >{$t('synology_sync_failed_albums', { values: { count: report.albumsFailed } })}</Text
+                    >
+                  </Alert>
+                {/if}
+                {#if report.unmatchedPaths.length > 0}
+                  <details class="text-sm">
+                    <summary class="cursor-pointer">
+                      {$t('synology_sync_unmatched')} ({report.items - report.matched})
+                    </summary>
+                    <ul class="ms-4 mt-1 font-mono text-xs break-all">
+                      {#each report.unmatchedPaths as path (path)}
+                        <li>{path}</li>
+                      {/each}
+                    </ul>
+                  </details>
+                {/if}
+              {:else}
+                <Alert color="danger" size="small" title={reasonText(report.errorReason)}>
+                  {#if report.message}<Text size="tiny">{report.message}</Text>{/if}
+                </Alert>
+              {/if}
+            </div>
+          {/if}
+
+          <div class="flex justify-end">
+            <Button
+              shape="round"
+              size="small"
+              loading={syncing || account.syncPending}
+              disabled={busy || syncing || account.syncPending}
+              onclick={handleSync}
+            >
+              {account.syncPending ? $t('synology_sync_pending') : $t('synology_sync_now')}
+            </Button>
+          </div>
         </div>
       {:else}
         <form autocomplete="off" {onsubmit} class="flex flex-col gap-4">

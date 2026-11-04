@@ -444,6 +444,9 @@ export type JobItem =
   | { name: JobName.LibraryScanQueueAll; data?: IBaseJob }
   | { name: JobName.LibraryDeleteCheck; data: IBaseJob }
 
+  // Synology Photos: the albums of a user's account (id: the user)
+  | { name: JobName.SynologyAlbumSync; data: IEntityJob }
+
   // Notification
   | { name: JobName.SendMail; data: IEmailJob }
   | { name: JobName.NotifyAlbumInvite; data: INotifyAlbumInviteJob }
@@ -614,6 +617,44 @@ export type SynologyAccount = {
   checkedAt: string;
   albumCount?: number;
   error?: { reason: SynologyErrorReason; message: string };
+  /** whether the albums are synced every day, at syncTime; on unless turned off */
+  autoSync?: boolean;
+  /** the server's local time the albums are synced at, HH:MM; 03:00 unless set */
+  syncTime?: string;
+  /** when the schedule was last changed: a time set earlier than now waits for the next day */
+  scheduledAt?: string;
+  /** when a sync was last asked for, by the schedule or by the user */
+  syncQueuedAt?: string;
+  lastSync?: SynologySyncReport;
+};
+
+/** What the last album sync did */
+export type SynologySyncReport = {
+  startedAt: string;
+  finishedAt: string;
+  success: boolean;
+  errorReason?: SynologyErrorReason;
+  message?: string;
+  /** the Synology albums of the account */
+  albums: number;
+  albumsCreated: number;
+  albumsUpdated: number;
+  /** albums the sync had created, gone from Synology: removed from Immich, without their photos */
+  albumsRemoved: number;
+  /** albums with none of the account's own photos found: not created */
+  albumsEmpty: number;
+  /** albums whose photos Synology did not list: left as they were */
+  albumsFailed: number;
+  /** the account's own photos in its albums, and how many of them were found in the user's external libraries */
+  items: number;
+  matched: number;
+  /** photos others added to the account's albums: not synced yet */
+  others: number;
+  /** photos added to albums, and removed from them */
+  added: number;
+  removed: number;
+  /** the first of the account's photos not found, as paths in Synology Photos */
+  unmatchedPaths: string[];
 };
 
 export type UserPreferences = {

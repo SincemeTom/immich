@@ -53,6 +53,7 @@ import { StackRepository } from 'src/repositories/stack.repository.js';
 import { StorageRepository } from 'src/repositories/storage.repository.js';
 import { SyncCheckpointRepository } from 'src/repositories/sync-checkpoint.repository.js';
 import { SyncRepository } from 'src/repositories/sync.repository.js';
+import { SynologyAlbumRepository } from 'src/repositories/synology-album.repository.js';
 import { SynologyRepository } from 'src/repositories/synology.repository.js';
 import { SystemMetadataRepository } from 'src/repositories/system-metadata.repository.js';
 import { TagRepository } from 'src/repositories/tag.repository.js';
@@ -124,6 +125,7 @@ export const BASE_SERVICE_DEPENDENCIES = [
   StorageRepository,
   SyncRepository,
   SyncCheckpointRepository,
+  SynologyAlbumRepository,
   SynologyRepository,
   SystemMetadataRepository,
   TagRepository,
@@ -190,6 +192,7 @@ export class BaseService {
     protected storageRepository: StorageRepository,
     protected syncRepository: SyncRepository,
     protected syncCheckpointRepository: SyncCheckpointRepository,
+    protected synologyAlbumRepository: SynologyAlbumRepository,
     protected synologyRepository: SynologyRepository,
     protected systemMetadataRepository: SystemMetadataRepository,
     protected tagRepository: TagRepository,
@@ -265,6 +268,7 @@ export class BaseService {
       ctx.storageRepository,
       ctx.syncRepository,
       ctx.syncCheckpointRepository,
+      ctx.synologyAlbumRepository,
       ctx.synologyRepository,
       ctx.systemMetadataRepository,
       ctx.tagRepository,

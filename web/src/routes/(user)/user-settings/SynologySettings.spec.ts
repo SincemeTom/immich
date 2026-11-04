@@ -2,9 +2,12 @@ import {
   bindSynologyAccount,
   getSynologyAccount,
   SynologyErrorReason,
+  syncSynologyAccount,
   testSynologyAccount,
   unbindSynologyAccount,
+  updateSynologySyncSchedule,
   type SynologyAccountResponseDto,
+  type SynologySyncReportDto,
 } from '@immich/sdk';
 import { modalManager } from '@immich/ui';
 import '@testing-library/jest-dom';
@@ -19,6 +22,8 @@ vi.mock('@immich/sdk', async (original) => ({
   bindSynologyAccount: vi.fn(),
   testSynologyAccount: vi.fn(),
   unbindSynologyAccount: vi.fn(),
+  syncSynologyAccount: vi.fn(),
+  updateSynologySyncSchedule: vi.fn(),
 }));
 
 const bound: SynologyAccountResponseDto = {
@@ -30,6 +35,32 @@ const bound: SynologyAccountResponseDto = {
   boundAt: '2026-11-01T00:00:00.000Z',
   checkedAt: '2026-11-01T00:00:00.000Z',
   albumCount: 49,
+};
+
+const report: SynologySyncReportDto = {
+  startedAt: '2026-11-04T03:00:00.000Z',
+  finishedAt: '2026-11-04T03:02:00.000Z',
+  success: true,
+  albums: 49,
+  albumsCreated: 47,
+  albumsUpdated: 0,
+  albumsRemoved: 0,
+  albumsEmpty: 2,
+  albumsFailed: 1,
+  items: 13_426,
+  matched: 13_400,
+  others: 3896,
+  added: 13_400,
+  removed: 0,
+  unmatchedPaths: ['2023/Trip/gone.jpg'],
+};
+
+const scheduled: SynologyAccountResponseDto = {
+  ...bound,
+  autoSync: true,
+  syncTime: '03:00',
+  nextSyncAt: '2026-11-05T03:00:00.000Z',
+  syncPending: false,
 };
 
 const inputs = () => {
@@ -204,5 +235,74 @@ describe('SynologySettings', () => {
 
     expect(unbindSynologyAccount).not.toHaveBeenCalled();
     expect(screen.getByTestId('synology-account')).toBeInTheDocument();
+  });
+
+  it('should show what the last sync did', async () => {
+    vi.mocked(getSynologyAccount).mockResolvedValue({ ...scheduled, lastSync: report });
+    renderWithTooltips(SynologySettings, {});
+
+    const section = await screen.findByTestId('synology-sync-report');
+    expect(section).toHaveTextContent('synology_sync_albums');
+    expect(section).toHaveTextContent('synology_sync_photos');
+    expect(section).toHaveTextContent('synology_sync_empty');
+    expect(section).toHaveTextContent('synology_sync_others');
+    expect(section).toHaveTextContent('synology_sync_failed_albums');
+    expect(section).toHaveTextContent('2023/Trip/gone.jpg');
+    expect(screen.getByText('synology_sync_next')).toBeInTheDocument();
+  });
+
+  it('should show why the last sync failed', async () => {
+    vi.mocked(getSynologyAccount).mockResolvedValue({
+      ...scheduled,
+      lastSync: { ...report, success: false, errorReason: SynologyErrorReason.WrongPassword, unmatchedPaths: [] },
+    });
+    renderWithTooltips(SynologySettings, {});
+
+    const section = await screen.findByTestId('synology-sync-report');
+    expect(section).toHaveTextContent('synology_error_wrongPassword');
+    expect(section).not.toHaveTextContent('synology_sync_photos');
+  });
+
+  it('should sync now, and say it is syncing', async () => {
+    vi.mocked(getSynologyAccount).mockResolvedValue(scheduled);
+    vi.mocked(syncSynologyAccount).mockResolvedValue({ ...scheduled, syncPending: true });
+    renderWithTooltips(SynologySettings, {});
+
+    await fireEvent.click(await screen.findByRole('button', { name: 'synology_sync_now' }));
+
+    expect(syncSynologyAccount).toHaveBeenCalled();
+    const button = await screen.findByRole('button', { name: /synology_sync_pending/ });
+    expect(button).toBeDisabled();
+  });
+
+  it('should save the time of day, once changed', async () => {
+    vi.mocked(getSynologyAccount).mockResolvedValue(scheduled);
+    vi.mocked(updateSynologySyncSchedule).mockResolvedValue({ ...scheduled, syncTime: '22:30' });
+    renderWithTooltips(SynologySettings, {});
+
+    await screen.findByTestId('synology-sync');
+    expect(screen.queryByRole('button', { name: 'save' })).toBeNull();
+    await fireEvent.input(document.querySelector('input[type="time"]')!, { target: { value: '22:30' } });
+    await fireEvent.click(screen.getByRole('button', { name: 'save' }));
+
+    expect(updateSynologySyncSchedule).toHaveBeenCalledWith({
+      synologySyncScheduleDto: { autoSync: true, syncTime: '22:30' },
+    });
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'save' })).toBeNull());
+  });
+
+  it('should turn the daily sync off', async () => {
+    vi.mocked(getSynologyAccount).mockResolvedValue(scheduled);
+    vi.mocked(updateSynologySyncSchedule).mockResolvedValue({ ...scheduled, autoSync: false, nextSyncAt: undefined });
+    renderWithTooltips(SynologySettings, {});
+
+    await fireEvent.click(await screen.findByRole('switch'));
+    expect(document.querySelector('input[type="time"]')).toBeNull();
+    await fireEvent.click(screen.getByRole('button', { name: 'save' }));
+
+    expect(updateSynologySyncSchedule).toHaveBeenCalledWith({
+      synologySyncScheduleDto: { autoSync: false, syncTime: '03:00' },
+    });
+    await waitFor(() => expect(screen.queryByText('synology_sync_next')).toBeNull());
   });
 });

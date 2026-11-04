@@ -1,3 +1,6 @@
+import type { SynologyLibraryAsset } from 'src/repositories/synology-album.repository.js';
+import type { SynologyAccount } from 'src/types.js';
+
 /** Why connecting to Synology, or logging in to it, failed */
 export enum SynologyErrorReason {
   /** no answer: a wrong address, the NAS is off, or a firewall */
@@ -97,5 +100,119 @@ export class SynologyError extends Error {
     message: string,
   ) {
     super(message);
+  }
+}
+
+/** the time of day the albums are synced at, unless the user set another */
+export const SYNOLOGY_SYNC_TIME = '03:00';
+
+const SYNC_TIME = /^([01]\d|2[0-3]):([0-5]\d)$/;
+
+export const isSynologySyncTime = (value: string) => SYNC_TIME.test(value);
+
+/** The last time, at or before now, the time of day came round: in the server's own time zone */
+export const getLastScheduled = (time: string, now: Date) => {
+  const [, hours, minutes] = SYNC_TIME.exec(time) ?? SYNC_TIME.exec(SYNOLOGY_SYNC_TIME)!;
+  const date = new Date(now);
+  date.setHours(Number(hours), Number(minutes), 0, 0);
+  if (date > now) {
+    date.setDate(date.getDate() - 1);
+  }
+  return date;
+};
+
+export const getNextScheduled = (time: string, now: Date) => {
+  const date = getLastScheduled(time, now);
+  date.setDate(date.getDate() + 1);
+  return date;
+};
+
+/**
+ * Whether the account's daily sync is due: its time came round since it was bound, its schedule changed, and a sync
+ * was last asked for. A server that was off then syncs once when it is back.
+ */
+export const isSynologySyncDue = (account: SynologyAccount, now: Date) => {
+  if (account.autoSync === false) {
+    return false;
+  }
+
+  const scheduled = getLastScheduled(account.syncTime ?? SYNOLOGY_SYNC_TIME, now).getTime();
+  const last = Math.max(
+    ...[account.boundAt, account.scheduledAt, account.syncQueuedAt, account.lastSync?.startedAt]
+      .filter((value): value is string => !!value)
+      .map((value) => Date.parse(value) || 0),
+  );
+  return last < scheduled;
+};
+
+/**
+ * The path of a Synology Photos item from its folder's, relative to the Photos folder the folders are in: folder
+ * `/2023/Trip` and file `a.jpg` are `2023/Trip/a.jpg`. NFC, as Synology and macOS may write the same name differently
+ */
+export const toSynologyPath = (folder: string, filename: string) =>
+  [...folder.split('/').filter(Boolean), filename].join('/').normalize('NFC');
+
+type IndexedAsset = { asset: SynologyLibraryAsset; path: string; lowerPath: string };
+
+/**
+ * The photos of the user's external libraries, by file name, to find a Synology Photos item among: the one whose path
+ * ends in the item's path, the Photos folder being mounted wherever the library has it
+ */
+export class SynologyPathIndex {
+  private byName = new Map<string, IndexedAsset[]>();
+
+  add(asset: SynologyLibraryAsset) {
+    const path = asset.originalPath.normalize('NFC');
+    const lowerPath = path.toLowerCase();
+    const name = lowerPath.slice(lowerPath.lastIndexOf('/') + 1);
+    const list = this.byName.get(name);
+    const entry = { asset, path, lowerPath };
+    if (list) {
+      list.push(entry);
+    } else {
+      this.byName.set(name, [entry]);
+    }
+  }
+
+  get size() {
+    let size = 0;
+    for (const list of this.byName.values()) {
+      size += list.length;
+    }
+    return size;
+  }
+
+  /**
+   * The photo at the Synology path, matched at a folder boundary: exactly, or else ignoring case, as a share may be
+   * mounted case-insensitively. Of several, one of the same size, online, at the shortest path. A photo directly in
+   * the Photos folder is only taken when its size is the same, as only its name is to go by
+   */
+  find(relativePath: string, size?: number): SynologyLibraryAsset | undefined {
+    const lowerRelative = relativePath.toLowerCase();
+    const candidates = this.byName.get(lowerRelative.slice(lowerRelative.lastIndexOf('/') + 1));
+    if (!candidates) {
+      return;
+    }
+
+    const suffix = `/${relativePath}`;
+    let found = candidates.filter(({ path }) => path.endsWith(suffix));
+    if (found.length === 0) {
+      const lowerSuffix = `/${lowerRelative}`;
+      found = candidates.filter(({ lowerPath }) => lowerPath.endsWith(lowerSuffix));
+    }
+
+    const sameSize = (entry: IndexedAsset) => !!size && entry.asset.fileSizeInByte === size;
+    if (!relativePath.includes('/') && size) {
+      found = found.filter((entry) => sameSize(entry) || entry.asset.fileSizeInByte === null);
+    }
+
+    found.sort(
+      (a, b) =>
+        Number(sameSize(b)) - Number(sameSize(a)) ||
+        Number(a.asset.isOffline) - Number(b.asset.isOffline) ||
+        a.path.length - b.path.length ||
+        a.path.localeCompare(b.path),
+    );
+    return found[0]?.asset;
   }
 }

@@ -6,6 +6,7 @@ import {
   SynologyAccountBindDto,
   SynologyAccountResponseDto,
   SynologyAccountTestResponseDto,
+  SynologySyncScheduleDto,
 } from 'src/dtos/synology.dto.js';
 import { ApiTag, Permission } from 'src/enum.js';
 import { Auth, Authenticated } from 'src/middleware/auth.guard.js';
@@ -55,6 +56,33 @@ export class SynologyController {
   })
   testSynologyAccount(@Auth() auth: AuthDto): Promise<SynologyAccountTestResponseDto> {
     return this.service.testAccount(auth);
+  }
+
+  @Post('sync')
+  @Authenticated({ permission: Permission.UserPreferenceUpdate })
+  @HttpCode(HttpStatus.OK)
+  @Endpoint({
+    summary: 'Sync my Synology albums',
+    description:
+      'Sync the albums of the bound account now, in the background: each becomes an album of the user, with the photos found in their external libraries. Nothing on Synology is changed.',
+    history: history(),
+  })
+  syncSynologyAccount(@Auth() auth: AuthDto): Promise<SynologyAccountResponseDto> {
+    return this.service.syncAccount(auth);
+  }
+
+  @Put('schedule')
+  @Authenticated({ permission: Permission.UserPreferenceUpdate })
+  @Endpoint({
+    summary: 'Schedule my Synology album sync',
+    description: "Whether the albums are synced every day, and at what time of day, in the server's time zone.",
+    history: history(),
+  })
+  updateSynologySyncSchedule(
+    @Auth() auth: AuthDto,
+    @Body() dto: SynologySyncScheduleDto,
+  ): Promise<SynologyAccountResponseDto> {
+    return this.service.updateSchedule(auth, dto);
   }
 
   @Delete()
