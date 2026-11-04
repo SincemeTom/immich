@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[2]
 HERE = Path(__file__).resolve().parent
 MASTER = Image.open(HERE / "icon-1024.png").convert("RGB")
 # the light grey behind the petals, for the adaptive icon's background layer
-BACKGROUND = (237, 236, 234)
+BACKGROUND = (229, 229, 226)
 
 IOS = ROOT / "mobile/ios/Runner/Assets.xcassets/AppIcon.appiconset"
 RES = ROOT / "mobile/android/app/src/main/res"

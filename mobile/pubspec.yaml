@@ -152,7 +152,7 @@ flutter:
 # (iOS, Android legacy, adaptive and themed); these settings are only for `flutter_launcher_icons`, if run
 flutter_launcher_icons:
   image_path_android: '../design/pixcellar/icon-1024.png'
-  adaptive_icon_background: '#EDECEA'
+  adaptive_icon_background: '#E5E5E2'
   adaptive_icon_foreground: 'android/app/src/main/res/drawable-xxxhdpi/ic_launcher_foreground.png'
   image_path_ios: '../design/pixcellar/icon-1024.png'
   android: 'ic_launcher'
