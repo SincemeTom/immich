@@ -40,6 +40,7 @@ import { EmailRepository } from 'src/repositories/email.repository.js';
 import { EventRepository } from 'src/repositories/event.repository.js';
 import { IntegrityRepository } from 'src/repositories/integrity.repository.js';
 import { JobRepository } from 'src/repositories/job.repository.js';
+import { KeychainRepository } from 'src/repositories/keychain.repository.js';
 import { LibraryRepository } from 'src/repositories/library.repository.js';
 import { LoggingRepository } from 'src/repositories/logging.repository.js';
 import { MachineLearningRepository } from 'src/repositories/machine-learning.repository.js';
@@ -61,6 +62,8 @@ import { StackRepository } from 'src/repositories/stack.repository.js';
 import { StorageRepository } from 'src/repositories/storage.repository.js';
 import { SyncCheckpointRepository } from 'src/repositories/sync-checkpoint.repository.js';
 import { SyncRepository } from 'src/repositories/sync.repository.js';
+import { SynologyAlbumRepository } from 'src/repositories/synology-album.repository.js';
+import { SynologyRepository } from 'src/repositories/synology.repository.js';
 import { SystemMetadataRepository } from 'src/repositories/system-metadata.repository.js';
 import { TagRepository } from 'src/repositories/tag.repository.js';
 import { TelemetryRepository } from 'src/repositories/telemetry.repository.js';
@@ -505,6 +508,7 @@ const newRealRepository = <T extends BaseServiceDeps[number]>(key: T, db: Kysely
     case StackRepository:
     case SyncRepository:
     case SyncCheckpointRepository:
+    case SynologyAlbumRepository:
     case SystemMetadataRepository:
     case UserRepository:
     case VersionHistoryRepository:
@@ -574,6 +578,9 @@ const newMockRepository = <T>(key: ClassConstructor<T>) => {
     case SessionRepository:
     case SyncRepository:
     case SyncCheckpointRepository:
+    case KeychainRepository:
+    case SynologyAlbumRepository:
+    case SynologyRepository:
     case SystemMetadataRepository:
     case UserRepository:
     case VersionHistoryRepository:

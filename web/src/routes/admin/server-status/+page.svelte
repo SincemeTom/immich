@@ -1,7 +1,13 @@
 <script lang="ts">
   import AdminPageLayout from '$lib/components/layouts/AdminPageLayout.svelte';
   import ServerStatisticsPanel from './ServerStatisticsPanel.svelte';
-  import { getServerStatistics, type ServerStatsResponseDto } from '@immich/sdk';
+  import ServerStorageDetails from './ServerStorageDetails.svelte';
+  import {
+    getServerStatistics,
+    getStorageDetails,
+    type ServerStatsResponseDto,
+    type ServerStorageDetailsResponseDto,
+  } from '@immich/sdk';
   import { Container } from '@immich/ui';
   import { onMount } from 'svelte';
   import type { PageData } from './$types';
@@ -21,19 +27,40 @@
     return data.statsPromise;
   });
 
+  let storage = $state<ServerStorageDetailsResponseDto | undefined>(undefined);
+
   const updateStatistics = async () => {
     stats = await getServerStatistics();
   };
 
-  onMount(() => {
-    const interval = setInterval(() => void updateStatistics(), 5000);
+  // what the disk and the shares hold: the shares are read by the server every minute
+  const updateStorage = async () => {
+    try {
+      storage = await getStorageDetails();
+    } catch {
+      // left as it was: the statistics above still show
+    }
+  };
 
-    return () => clearInterval(interval);
+  onMount(() => {
+    void updateStorage();
+    const interval = setInterval(() => void updateStatistics(), 5000);
+    const storageInterval = setInterval(() => void updateStorage(), 30_000);
+
+    return () => {
+      clearInterval(interval);
+      clearInterval(storageInterval);
+    };
   });
 </script>
 
 <AdminPageLayout breadcrumbs={[{ title: data.meta.title }]}>
   <Container size="large" center>
-    <ServerStatisticsPanel {statsPromise} users={data.users} />
+    <div class="flex flex-col gap-8">
+      {#if storage}
+        <ServerStorageDetails details={storage} />
+      {/if}
+      <ServerStatisticsPanel {statsPromise} users={data.users} />
+    </div>
   </Container>
 </AdminPageLayout>

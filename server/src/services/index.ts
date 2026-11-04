@@ -43,6 +43,7 @@ import { StorageLocationService } from 'src/services/storage-location.service.js
 import { StorageTemplateService } from 'src/services/storage-template.service.js';
 import { StorageService } from 'src/services/storage.service.js';
 import { SyncService } from 'src/services/sync.service.js';
+import { SynologyService } from 'src/services/synology.service.js';
 import { SystemConfigService } from 'src/services/system-config.service.js';
 import { SystemMetadataService } from 'src/services/system-metadata.service.js';
 import { TagService } from 'src/services/tag.service.js';
@@ -103,6 +104,7 @@ export const services = [
   StorageService,
   StorageTemplateService,
   SyncService,
+  SynologyService,
   SystemConfigService,
   SystemMetadataService,
   TagService,

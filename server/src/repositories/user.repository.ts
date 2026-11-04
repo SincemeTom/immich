@@ -284,6 +284,43 @@ export class UserRepository {
       .execute();
   }
 
+  /**
+   * What a user's photos take: those uploaded, as the quota counts them (the trash too); and those of their external
+   * libraries, still there (not in the trash, which offline photos go to, nor of a library being deleted)
+   */
+  @GenerateSql({ params: [DummyValue.UUID] })
+  async getUsage(id: string): Promise<{ uploads: number; external: number }> {
+    const result = await this.db
+      .selectFrom('asset')
+      .innerJoin('asset_exif', 'asset_exif.assetId', 'asset.id')
+      .leftJoin('library', 'library.id', 'asset.libraryId')
+      .select((eb) => [
+        eb.fn
+          .coalesce(
+            eb.fn.sum<number>('asset_exif.fileSizeInByte').filterWhere('asset.libraryId', 'is', null),
+            eb.lit(0),
+          )
+          .as('uploads'),
+        eb.fn
+          .coalesce(
+            eb.fn
+              .sum<number>('asset_exif.fileSizeInByte')
+              .filterWhere((eb) =>
+                eb.and([
+                  eb('asset.libraryId', 'is not', null),
+                  eb('asset.deletedAt', 'is', null),
+                  eb('library.deletedAt', 'is', null),
+                ]),
+              ),
+            eb.lit(0),
+          )
+          .as('external'),
+      ])
+      .where('asset.ownerId', '=', asUuid(id))
+      .executeTakeFirstOrThrow();
+    return { uploads: Number(result.uploads), external: Number(result.external) };
+  }
+
   @GenerateSql()
   async getCount(): Promise<number> {
     const result = await this.db
