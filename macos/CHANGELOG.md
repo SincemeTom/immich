@@ -2,7 +2,7 @@
 
 Immich macOS 原生版（非官方）的各个版本。版本号是 `<上游 Immich 版本>-mac.<序号>`，每个版本对应一个 git 标签，发布流程见 [RELEASING.md](RELEASING.md)。这个版本基于上游 Immich 修改，改动的验证记录在 [verification/](verification/README.md)。
 
-## v3.3.5-mac.8（未发布）
+## v3.3.5-mac.8（2026-11-04）
 
 基于上游 v3.3.5。
 
