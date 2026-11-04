@@ -228,4 +228,54 @@ void main() {
       verifyNever(() => exifRepository.clearLocation(any()));
     });
   });
+
+  group('AssetService stack members', () {
+    test('a new cover is set on the server, then here', () async {
+      when(() => apiRepository.setStackPrimary('stack', 'b')).thenAnswer((_) async {});
+      when(() => remoteRepository.setStackPrimary('stack', 'b')).thenAnswer((_) async {});
+
+      await sut.setStackPrimary('stack', 'b');
+
+      verifyInOrder([
+        () => apiRepository.setStackPrimary('stack', 'b'),
+        () => remoteRepository.setStackPrimary('stack', 'b'),
+      ]);
+    });
+
+    test('a cover the server refuses is not set here', () async {
+      when(() => apiRepository.setStackPrimary('stack', 'b')).thenThrow(Exception('offline'));
+
+      await expectLater(sut.setStackPrimary('stack', 'b'), throwsException);
+
+      verifyNever(() => remoteRepository.setStackPrimary(any(), any()));
+    });
+
+    test('an asset is taken out on the server, then here', () async {
+      when(() => apiRepository.removeFromStack('stack', 'c')).thenAnswer((_) async {});
+      when(() => remoteRepository.removeFromStack('c')).thenAnswer((_) async {});
+
+      await sut.removeFromStack('stack', 'c');
+
+      verifyInOrder([() => apiRepository.removeFromStack('stack', 'c'), () => remoteRepository.removeFromStack('c')]);
+    });
+
+    test('keeping one trashes the others, then unstacks', () async {
+      when(() => apiRepository.delete(any(), any())).thenAnswer((_) async {});
+      when(() => remoteRepository.trash(any())).thenAnswer((_) async {});
+      when(() => remoteRepository.unStack(any())).thenAnswer((_) async {});
+      when(() => apiRepository.unStack(any())).thenAnswer((_) async {});
+
+      final trashed = await sut.keepOnlyInStack(
+        const StackResponse(id: 'stack', primaryAssetId: 'a', assetIds: ['a', 'b', 'c']),
+        'b',
+      );
+
+      expect(trashed, 2);
+      verifyInOrder([
+        () => apiRepository.delete(['a', 'c'], false),
+        () => remoteRepository.trash(['a', 'c']),
+        () => apiRepository.unStack(['stack']),
+      ]);
+    });
+  });
 }

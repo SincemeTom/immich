@@ -4,6 +4,7 @@ import 'package:immich_mobile/domain/models/asset_edit.model.dart';
 import 'package:immich_mobile/domain/models/events.model.dart';
 import 'package:immich_mobile/domain/models/exif.model.dart';
 import 'package:immich_mobile/domain/models/inferred_location.model.dart';
+import 'package:immich_mobile/domain/models/stack.model.dart';
 import 'package:immich_mobile/domain/models/store.model.dart';
 import 'package:immich_mobile/domain/utils/event_stream.dart';
 import 'package:immich_mobile/entities/store.entity.dart';
@@ -137,6 +138,28 @@ class AssetService {
 
     await _remoteRepository.unStack(stackIds);
     await _apiRepository.unStack(stackIds);
+  }
+
+  Stream<StackResponse?> watchStack(String stackId) => _remoteRepository.watchStack(stackId);
+
+  /// Makes [assetId] the cover of its stack; the server's automatic stacking then leaves it as it is
+  Future<void> setStackPrimary(String stackId, String assetId) async {
+    await _apiRepository.setStackPrimary(stackId, assetId);
+    await _remoteRepository.setStackPrimary(stackId, assetId);
+  }
+
+  /// Takes [assetId], not the cover, out of its stack
+  Future<void> removeFromStack(String stackId, String assetId) async {
+    await _apiRepository.removeFromStack(stackId, assetId);
+    await _remoteRepository.removeFromStack(assetId);
+  }
+
+  /// Keeps [assetId] and moves the rest of its stack to the trash, then unstacks it. Returns how many were trashed
+  Future<int> keepOnlyInStack(StackResponse stack, String assetId) async {
+    final others = stack.assetIds.where((id) => id != assetId).toList(growable: false);
+    await trash(others);
+    await unstack([stack.id]);
+    return others.length;
   }
 
   Future<void> update(

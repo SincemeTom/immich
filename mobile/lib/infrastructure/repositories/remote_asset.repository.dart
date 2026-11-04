@@ -189,6 +189,40 @@ class RemoteAssetRepository extends DatabaseAccessor<Drift> with $RemoteAssetRep
     });
   }
 
+  /// The stack with its cover and the assets in it that are not in the trash; null once it is gone
+  Stream<StackResponse?> watchStack(String stackId) {
+    final query =
+        _db.select(_db.stackEntity).join([
+            innerJoin(_db.remoteAssetEntity, _db.remoteAssetEntity.stackId.equalsExp(_db.stackEntity.id)),
+          ])
+          ..where(_db.stackEntity.id.equals(stackId) & _db.remoteAssetEntity.deletedAt.isNull())
+          ..orderBy([OrderingTerm.desc(_db.remoteAssetEntity.createdAt)]);
+
+    return query.watch().map((rows) {
+      if (rows.isEmpty) {
+        return null;
+      }
+      final stack = rows.first.readTable(_db.stackEntity);
+      return StackResponse(
+        id: stack.id,
+        primaryAssetId: stack.primaryAssetId,
+        assetIds: rows.map((row) => row.readTable(_db.remoteAssetEntity).id).toList(growable: false),
+      );
+    });
+  }
+
+  Future<void> setStackPrimary(String stackId, String primaryAssetId) {
+    return (_db.update(
+      _db.stackEntity,
+    )..where((row) => row.id.equals(stackId))).write(StackEntityCompanion(primaryAssetId: Value(primaryAssetId)));
+  }
+
+  Future<void> removeFromStack(String assetId) {
+    return (_db.update(
+      _db.remoteAssetEntity,
+    )..where((row) => row.id.equals(assetId))).write(const RemoteAssetEntityCompanion(stackId: Value(null)));
+  }
+
   Future<void> unStack(List<String> stackIds) {
     return _db.transaction(() async {
       await _db.batch((batch) {

@@ -2291,6 +2291,7 @@
   "source": "GitHub源代码",
   "stack": "堆叠",
   "stack_action_prompt": "{count}个已堆叠",
+  "stack_cover_updated": "已更换堆叠封面",
   "stack_created": "堆叠已创建",
   "stack_duplicates": "堆叠重复照片",
   "stack_selected_photos": "堆叠选定的照片",

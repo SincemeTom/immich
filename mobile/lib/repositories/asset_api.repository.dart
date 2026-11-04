@@ -53,6 +53,14 @@ class AssetApiRepository extends ApiRepository {
     return _stacksApi.deleteStacks(BulkIdsDto(ids: ids));
   }
 
+  Future<void> setStackPrimary(String stackId, String primaryAssetId) {
+    return _stacksApi.updateStack(stackId, StackUpdateDto(primaryAssetId: Optional.present(primaryAssetId)));
+  }
+
+  Future<void> removeFromStack(String stackId, String assetId) {
+    return _stacksApi.removeAssetFromStack(assetId, stackId);
+  }
+
   api.AssetVisibility _mapVisibility(AssetVisibility visibility) => switch (visibility) {
     AssetVisibility.timeline => api.AssetVisibility.timeline,
     AssetVisibility.hidden => api.AssetVisibility.hidden,

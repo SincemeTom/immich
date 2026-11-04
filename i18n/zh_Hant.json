@@ -2211,6 +2211,7 @@
   "source": "來源",
   "stack": "堆疊",
   "stack_action_prompt": "已堆疊了{count} 個項目",
+  "stack_cover_updated": "已更換堆疊封面",
   "stack_duplicates": "堆疊重複項目",
   "stack_selected_photos": "堆疊選取的相片",
   "stacked_assets_count": "已堆疊 {count, plural, one {# 個檔案} other {# 個檔案}}",
