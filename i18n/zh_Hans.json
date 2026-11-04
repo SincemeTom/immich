@@ -698,6 +698,7 @@
   "auto_stack_similarity_description": "照片要多相似才堆叠。推荐：几秒内拍的同一场景；宽松：构图有些变化也算。看几组效果，不满意就用“重新堆叠”换个设置",
   "auto_stack_similarity_loose": "宽松",
   "auto_stack_similarity_strict": "严格（几乎一样）",
+  "auto_stack_unsupported": "当前服务器不支持自动堆叠，需要 Pixcellar 服务器。",
   "automatic_endpoint_switching_subtitle": "在可用时通过指定的 Wi-Fi 进行本地连接，其他位置则使用替代网络连接",
   "automatic_endpoint_switching_title": "自动切换 URL",
   "autoplay_slideshow": "自动播放幻灯片",

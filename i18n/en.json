@@ -699,6 +699,7 @@
   "auto_stack_similarity_description": "How alike photos must be. Recommended stacks shots of the same scene seconds apart; looser also takes in small changes of framing. Check a few stacks, and use \"Stack again\" to try another setting",
   "auto_stack_similarity_loose": "Looser",
   "auto_stack_similarity_strict": "Very similar only",
+  "auto_stack_unsupported": "This server does not stack photos automatically. It comes with the Pixcellar server.",
   "automatic_endpoint_switching_subtitle": "Connect locally over designated Wi-Fi when available and use alternative connections elsewhere",
   "automatic_endpoint_switching_title": "Automatic URL switching",
   "autoplay_slideshow": "Autoplay slideshow",
