@@ -78,6 +78,5 @@
   "tailwindCSS.experimental.configFile": {
     "web/src/app.css": "web/src/**"
   },
-  "vitest.maximumConfigs": 10,
-  "cmake.sourceDirectory": "/Users/petyrwang/Documents/immich/mobile/android/app"
+  "vitest.maximumConfigs": 10
 }
