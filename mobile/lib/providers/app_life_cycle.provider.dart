@@ -221,7 +221,14 @@ class AppLifeCycleNotifier extends StateNotifier<AppLifeCycleEnum> {
 
   Future<void> _performPause() {
     if (_ref.read(authProvider).isAuthenticated) {
-      _ref.read(backupProvider.notifier).stopForegroundBackup(reason: "the app being sent to the background");
+      final backup = _ref.read(backupProvider.notifier);
+      final handOff = CurrentPlatform.isIOS && _ref.read(appConfigProvider).backup.enabled;
+      final currentUser = handOff ? Store.tryGet(StoreKey.currentUser) : null;
+      if (currentUser != null) {
+        unawaited(backup.handOffToBackground(currentUser.id));
+      } else {
+        backup.stopForegroundBackup(reason: "the app being sent to the background");
+      }
 
       _ref.read(websocketProvider.notifier).disconnect();
     }

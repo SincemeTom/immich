@@ -7,6 +7,7 @@ import 'package:drift/native.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:immich_mobile/constants/constants.dart';
 import 'package:immich_mobile/data/db/main/database.dart';
 import 'package:immich_mobile/domain/models/asset/base_asset.model.dart';
 import 'package:immich_mobile/domain/models/store.model.dart';
@@ -458,6 +459,59 @@ void main() {
 
       verify(() => mockAssetService.stackEditedUpload(asset.id, 'still', 'sha')).called(1);
       verifyNoMoreInteractions(mockAssetService);
+    });
+  });
+
+  group('uploadBackupCandidates', () {
+    final inSession = LocalAssetStub.image1;
+    final waiting = LocalAssetStub.image2;
+    late List<UploadTask> enqueued;
+
+    setUp(() {
+      registerFallbackValue(<UploadTask>[]);
+      enqueued = [];
+      for (final asset in [inSession, waiting]) {
+        final entity = MockAssetEntity();
+        when(() => entity.isLivePhoto).thenReturn(false);
+        when(() => mockStorageRepository.getAssetEntityForAsset(asset)).thenAnswer((_) async => entity);
+        when(() => mockStorageRepository.getFileForAsset(asset.id)).thenAnswer((_) async => File('/path/to/file.jpg'));
+        when(() => mockAssetMediaRepository.getOriginalFilename(asset.id)).thenAnswer((_) async => null);
+      }
+      when(() => mockStorageRepository.clearCache()).thenAnswer((_) async {});
+      when(() => mockBackupRepository.getCandidates('user-1')).thenAnswer((_) async => [inSession, waiting]);
+      when(() => mockUploadRepository.enqueueBackgroundAll(any())).thenAnswer((invocation) async {
+        final tasks = invocation.positionalArguments.first as List<UploadTask>;
+        enqueued.addAll(tasks);
+        return [for (final _ in tasks) true];
+      });
+      when(() => mockUploadRepository.getActiveTasks(any())).thenAnswer((_) async => []);
+    });
+
+    test('queues what is not in the background session yet, keeping its files', () async {
+      when(() => mockUploadRepository.getActiveTasks(kBackupGroup)).thenAnswer(
+        (_) async => [UploadTask(taskId: inSession.id, url: 'http://test-server.com/assets', filename: 'file.jpg')],
+      );
+
+      expect(await sut.uploadBackupCandidates('user-1'), 1);
+
+      expect(enqueued.map((task) => task.taskId), [waiting.id]);
+      verifyNever(() => mockStorageRepository.clearCache());
+    });
+
+    test('clears the temporary files when nothing uses them', () async {
+      expect(await sut.uploadBackupCandidates('user-1'), 2);
+
+      verify(() => mockStorageRepository.clearCache()).called(1);
+    });
+
+    test('stops queuing at the deadline', () async {
+      final queued = await sut.uploadBackupCandidates(
+        'user-1',
+        deadline: DateTime.now().subtract(const Duration(seconds: 1)),
+      );
+
+      expect(queued, 0);
+      expect(enqueued, isEmpty);
     });
   });
 }

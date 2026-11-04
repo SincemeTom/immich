@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:immich_mobile/constants/constants.dart';
 import 'package:immich_mobile/domain/models/asset/asset_metadata.model.dart';
 import 'package:immich_mobile/domain/models/asset/base_asset.model.dart' hide AssetVisibility;
 import 'package:immich_mobile/domain/models/store.model.dart';
@@ -77,6 +78,9 @@ class ForegroundUploadService {
   /// Upload runs going on (backup, manual uploads, shared files): the temporary files are only cleared when none is
   static int _activeRuns = 0;
 
+  /// Whether uploads in the app are going on (their files are in the temporary folder)
+  static bool get isUploading => _activeRuns > 0;
+
   /// The assets being uploaded. An asset's file is exported to the same temporary path every time and deleted once
   /// uploaded, so two uploads of one asset (a backup and an upload to an album) must not overlap
   static final Map<String, Completer<void>> _assetsInFlight = {};
@@ -85,9 +89,21 @@ class ForegroundUploadService {
   Future<void> _startRun() async {
     _activeRuns++;
     if (_activeRuns == 1) {
-      _clearingCache = _storageRepository.clearCache();
+      _clearingCache = _clearCacheUnlessBackgroundUploads();
     }
     await _clearingCache;
+  }
+
+  /// The uploads iOS carries on in the background read their files from the temporary folder too
+  Future<void> _clearCacheUnlessBackgroundUploads() async {
+    if (CurrentPlatform.isIOS) {
+      for (final group in const [kBackupGroup, kBackupLivePhotoGroup]) {
+        if ((await _uploadRepository.getActiveTasks(group)).isNotEmpty) {
+          return;
+        }
+      }
+    }
+    await _storageRepository.clearCache();
   }
 
   static Future<void>? _clearingCache;

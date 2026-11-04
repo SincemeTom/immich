@@ -23,6 +23,7 @@ import 'package:immich_mobile/providers/infrastructure/storage.provider.dart';
 import 'package:immich_mobile/repositories/asset_media.repository.dart';
 import 'package:immich_mobile/repositories/upload.repository.dart';
 import 'package:immich_mobile/services/api.service.dart';
+import 'package:immich_mobile/services/foreground_upload.service.dart';
 import 'package:immich_mobile/utils/debug_print.dart';
 import 'package:logging/logging.dart';
 import 'package:openapi/api.dart' as api;
@@ -144,37 +145,59 @@ class BackgroundUploadService {
     return _uploadRepository.getActiveTasks(group);
   }
 
+  /// The backup uploads queued or running in the background session
+  Future<List<Task>> getActiveBackupTasks() async => [
+    for (final group in const [kBackupGroup, kBackupLivePhotoGroup]) ...await _uploadRepository.getActiveTasks(group),
+  ];
+
+  /// Takes uploads out of the background session, for the app to do them
+  Future<void> cancelTasks(Iterable<String> taskIds) => _uploadRepository.cancelTasks(taskIds);
+
+  static bool isBackupTask(Task task) => task.group == kBackupGroup || task.group == kBackupLivePhotoGroup;
+
   /// Start background upload using iOS URLSession
   ///
   /// Finds backup candidates, builds upload tasks, and enqueues them
-  /// for background processing.
-  Future<void> uploadBackupCandidates(String userId) async {
-    await _storageRepository.clearCache();
+  /// for background processing. Each task is queued as soon as its file is ready, until [deadline] (the time iOS
+  /// leaves before suspending the app)
+  ///
+  /// Returns the number of tasks queued
+  Future<int> uploadBackupCandidates(String userId, {DateTime? deadline}) async {
+    final inSession = {for (final task in await getActiveBackupTasks()) task.taskId};
+    // the uploads in the app and in the session read their files from the temporary folder
+    if (!ForegroundUploadService.isUploading && inSession.isEmpty) {
+      await _storageRepository.clearCache();
+    }
     shouldAbortQueuingTasks = false;
 
     final candidates = await _backupRepository.getCandidates(userId);
     if (candidates.isEmpty) {
       _logger.info("No new backup candidates found, finishing background upload");
-      return;
+      return 0;
     }
 
     _logger.info("Found ${candidates.length} backup candidates for background tasks");
 
     const batchSize = 100;
-    final batch = candidates.take(batchSize).toList();
-    final List<UploadTask> tasks = [];
-
-    for (final asset in batch) {
-      final task = await getUploadTask(asset);
-      if (task != null) {
-        tasks.add(task);
+    var queued = 0;
+    for (final asset in candidates.take(batchSize)) {
+      if (shouldAbortQueuingTasks || (deadline != null && DateTime.now().isAfter(deadline))) {
+        break;
       }
+      // a task is known by its asset: queuing it again would mix the two up
+      if (inSession.contains(asset.id)) {
+        continue;
+      }
+      final task = await getUploadTask(asset);
+      if (task == null || shouldAbortQueuingTasks) {
+        continue;
+      }
+      await enqueueTasks([task]);
+      queued++;
     }
 
-    if (tasks.isNotEmpty && !shouldAbortQueuingTasks) {
-      _logger.info("Enqueuing ${tasks.length} background upload tasks");
-      await enqueueTasks(tasks);
-    }
+    _logger.info("Enqueued $queued background upload tasks");
+    return queued;
   }
 
   /// Cancel all ongoing background uploads and reset the upload queue
@@ -183,7 +206,9 @@ class BackgroundUploadService {
   Future<int> cancel() async {
     shouldAbortQueuingTasks = true;
 
-    await _storageRepository.clearCache();
+    if (!ForegroundUploadService.isUploading) {
+      await _storageRepository.clearCache();
+    }
     await _uploadRepository.reset(kBackupGroup);
     await _uploadRepository.deleteDatabaseRecords(kBackupGroup);
 

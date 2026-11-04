@@ -1,11 +1,15 @@
 import 'dart:async';
 
+import 'package:background_downloader/background_downloader.dart';
 import 'package:flutter/foundation.dart';
 import 'package:freezed_annotation/freezed_annotation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:immich_mobile/constants/constants.dart';
 import 'package:immich_mobile/domain/models/album/local_album.model.dart';
 import 'package:immich_mobile/domain/models/asset/base_asset.model.dart';
+import 'package:immich_mobile/extensions/platform_extensions.dart';
+import 'package:immich_mobile/platform/background_time.dart';
+import 'package:immich_mobile/providers/background_sync.provider.dart';
 import 'package:immich_mobile/providers/infrastructure/db.provider.dart';
 import 'package:immich_mobile/providers/user.provider.dart';
 import 'package:immich_mobile/services/background_upload.service.dart';
@@ -48,27 +52,35 @@ abstract class BackupState with _$BackupState {
   int get errorCount => uploadItems.values.where((item) => item.isFailed == true).length;
 }
 
-final backupProvider = StateNotifierProvider<BackupNotifier, BackupState>((ref) {
-  return BackupNotifier(
-    ref.watch(foregroundUploadServiceProvider),
-    ref.watch(backgroundUploadServiceProvider),
-    UploadSpeedManager(),
-  );
-});
+final StateNotifierProvider<BackupNotifier, BackupState> backupProvider =
+    StateNotifierProvider<BackupNotifier, BackupState>((ref) {
+      return BackupNotifier(
+        ref.watch(foregroundUploadServiceProvider),
+        ref.watch(backgroundUploadServiceProvider),
+        UploadSpeedManager(),
+        syncRemote: () => ref.read(backgroundSyncProvider).syncRemote(),
+      );
+    });
 
 class BackupNotifier extends StateNotifier<BackupState> {
-  BackupNotifier(this._foregroundUploadService, this._backgroundUploadService, this._uploadSpeedManager)
-    : super(
-        const BackupState(
-          totalCount: 0,
-          backupCount: 0,
-          remainderCount: 0,
-          processingCount: 0,
-          isSyncing: false,
-          uploadItems: {},
-          error: BackupError.none,
-        ),
-      );
+  BackupNotifier(
+    this._foregroundUploadService,
+    this._backgroundUploadService,
+    this._uploadSpeedManager, {
+    this._syncRemote,
+    bool? isIOS,
+  }) : _isIOS = isIOS ?? CurrentPlatform.isIOS,
+       super(
+         const BackupState(
+           totalCount: 0,
+           backupCount: 0,
+           remainderCount: 0,
+           processingCount: 0,
+           isSyncing: false,
+           uploadItems: {},
+           error: BackupError.none,
+         ),
+       );
 
   final ForegroundUploadService _foregroundUploadService;
   final BackgroundUploadService _backgroundUploadService;
@@ -77,6 +89,24 @@ class BackupNotifier extends StateNotifier<BackupState> {
 
   /// The upload run going on, cancelled or not
   Future<void>? _run;
+
+  /// The backup being handed to the background session as the app leaves
+  Future<void>? _handOff;
+
+  final Future<bool> Function()? _syncRemote;
+  final bool _isIOS;
+
+  /// How long the app keeps queuing uploads for the background session once it left the screen (iOS gives about 30s)
+  @visibleForTesting
+  static Duration handOffTime = const Duration(seconds: 20);
+
+  /// How long the uploads in the background session may go without news before the app takes them over (they send
+  /// some at least every 2.5 seconds while they move; a Wi-Fi only upload on mobile data never starts)
+  @visibleForTesting
+  static Duration backgroundStallTime = const Duration(seconds: 60);
+
+  @visibleForTesting
+  static Duration backgroundPollInterval = const Duration(seconds: 2);
 
   final _logger = Logger("BackupNotifier");
 
@@ -142,6 +172,23 @@ class BackupNotifier extends StateNotifier<BackupState> {
     if (previous != null) {
       await previous.catchError((_) {});
     }
+    final handOff = _handOff;
+    if (handOff != null) {
+      _backgroundUploadService.shouldAbortQueuingTasks = true;
+      await handOff.catchError((_) {});
+    }
+    if (cancelToken.isCompleted) {
+      return;
+    }
+
+    // What went on in the background session while the app was away carries on there, rather than starting over
+    if (_isIOS && await _followBackgroundUploads(userId, cancelToken)) {
+      if (cancelToken.isCompleted) {
+        return;
+      }
+      // the assets uploaded there are only known as backed up once the server says so
+      await _syncRemote?.call().catchError((_) => false);
+    }
     if (cancelToken.isCompleted) {
       return;
     }
@@ -193,6 +240,133 @@ class BackupNotifier extends StateNotifier<BackupState> {
     }
   }
 
+  /// iOS suspends the app soon after it leaves the screen, which stops its uploads: what is left goes on in the
+  /// background session, as much as can be prepared in the time iOS gives
+  Future<void> handOffToBackground(String userId) {
+    stopForegroundBackup(reason: "the app being sent to the background");
+    final handOff = BackgroundTime.run(() async {
+      final previous = _run;
+      if (previous != null) {
+        await previous.catchError((_) {});
+      }
+      // back on screen meanwhile
+      if (_cancelToken != null || !mounted) {
+        return;
+      }
+      final queued = await _backgroundUploadService.uploadBackupCandidates(
+        userId,
+        deadline: DateTime.now().add(handOffTime),
+      );
+      _logger.info("Handed $queued uploads over to the background");
+    });
+    _handOff = handOff;
+    return handOff.whenComplete(() {
+      if (identical(_handOff, handOff)) {
+        _handOff = null;
+      }
+    });
+  }
+
+  /// Shows the uploads going on in the background session until they are over
+  ///
+  /// Returns whether any of them completed
+  Future<bool> _followBackgroundUploads(String userId, Completer<void> cancelToken) async {
+    var tasks = await _backgroundUploadService.getActiveBackupTasks();
+    if (tasks.isEmpty || cancelToken.isCompleted) {
+      return false;
+    }
+    _logger.info("Following ${tasks.length} uploads going on in the background");
+    await getBackupStatus(userId);
+
+    bool isCurrent() => mounted && identical(_cancelToken, cancelToken);
+    var lastNews = DateTime.now();
+    var completed = false;
+    final subscriptions = [
+      _backgroundUploadService.taskProgressStream.listen((update) {
+        if (!BackgroundUploadService.isBackupTask(update.task)) {
+          return;
+        }
+        lastNews = DateTime.now();
+        if (isCurrent() && update.progress >= 0 && update.progress <= 1) {
+          _handleBackgroundProgress(update);
+        }
+      }),
+      _backgroundUploadService.taskStatusStream.listen((update) {
+        if (!BackgroundUploadService.isBackupTask(update.task)) {
+          return;
+        }
+        lastNews = DateTime.now();
+        if (!isCurrent()) {
+          return;
+        }
+        final id = update.task.taskId;
+        switch (update.status) {
+          case TaskStatus.complete:
+            completed = true;
+            _uploadSpeedManager.removeTask(id);
+            Future.delayed(const Duration(milliseconds: 1000), () => _removeUploadItem(id));
+          case TaskStatus.failed || TaskStatus.notFound:
+            _handleForegroundBackupError(id, update.exception?.description ?? update.status.name);
+          case TaskStatus.canceled:
+            _uploadSpeedManager.removeTask(id);
+            _removeUploadItem(id);
+          default:
+            break;
+        }
+      }),
+    ];
+
+    try {
+      while (true) {
+        await Future.any([cancelToken.future, Future<void>.delayed(backgroundPollInterval)]);
+        if (cancelToken.isCompleted) {
+          break;
+        }
+        tasks = await _backgroundUploadService.getActiveBackupTasks();
+        if (tasks.isEmpty || cancelToken.isCompleted) {
+          break;
+        }
+        if (DateTime.now().difference(lastNews) > backgroundStallTime) {
+          _logger.warning("The ${tasks.length} uploads in the background are not moving, the app takes them over");
+          await _backgroundUploadService.cancelTasks(tasks.map((task) => task.taskId));
+          break;
+        }
+      }
+    } finally {
+      for (final subscription in subscriptions) {
+        unawaited(subscription.cancel());
+      }
+    }
+    return completed;
+  }
+
+  void _handleBackgroundProgress(TaskProgressUpdate update) {
+    final id = update.task.taskId;
+    final fileSize = update.hasExpectedFileSize ? update.expectedFileSize : (state.uploadItems[id]?.fileSize ?? 0);
+    state = state.copyWith(
+      uploadItems: {
+        ...state.uploadItems,
+        id: UploadStatus(
+          taskId: id,
+          filename: update.task.displayName,
+          progress: update.progress,
+          fileSize: fileSize,
+          networkSpeedAsString: update.hasNetworkSpeed
+              ? update.networkSpeedAsString
+              : (state.uploadItems[id]?.networkSpeedAsString ?? ''),
+        ),
+      },
+    );
+  }
+
+  /// Stops the backup, in the app and in the background session
+  Future<void> stopBackup({required String reason}) async {
+    stopForegroundBackup(reason: reason);
+    if (_isIOS) {
+      await _backgroundUploadService.cancel();
+    }
+  }
+
   void stopForegroundBackup({required String reason}) {
     if (_cancelToken != null) {
       _logger.info("Foreground backup cancelled: $reason");
@@ -232,6 +406,9 @@ class BackupNotifier extends StateNotifier<BackupState> {
             progress: progress,
             fileSize: totalBytes,
             networkSpeedAsString: networkSpeedAsString,
+            // tried again after failing in the background
+            isFailed: null,
+            error: null,
           ),
         },
       );
@@ -315,7 +492,8 @@ class BackupNotifier extends StateNotifier<BackupState> {
         return;
       }
       _logger.info("No pending tasks, starting new upload");
-      return _backgroundUploadService.uploadBackupCandidates(userId);
+      await _backgroundUploadService.uploadBackupCandidates(userId);
+      return;
     }
 
     _logger.info("Resuming upload ${tasks.length} assets");
