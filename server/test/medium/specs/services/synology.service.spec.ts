@@ -1,4 +1,5 @@
 import { Kysely } from 'kysely';
+import type { AuthDto } from 'src/dtos/auth.dto.js';
 import type { SynologyResponse } from 'src/repositories/synology.repository.js';
 import type { SynologyAccount } from 'src/types.js';
 import { AlbumUserRole, AssetVisibility, JobStatus, SystemMetadataKey } from 'src/enum.js';
@@ -208,6 +209,13 @@ const getReport = async (ctx: Context, userId: string) => {
   return value!.users[userId].lastSync!;
 };
 
+const getUnmatched = (ctx: Context, userId: string) =>
+  ctx.database
+    .selectFrom('synology_unmatched')
+    .select(['synologyAlbumId', 'reason', 'path', 'mine'])
+    .where('userId', '=', userId)
+    .execute();
+
 /** an album of one photo, shared with these members */
 const album7 = (members: Member[]): Album => ({
   id: 7,
@@ -253,7 +261,7 @@ describe(SynologyService.name, () => {
         matched: 2,
         others: 1,
         added: 2,
-        unmatchedPaths: ['2023/Trip/gone.jpg'],
+        unmatched: 2,
       }),
     );
   });
@@ -594,9 +602,7 @@ describe(SynologyService.name, () => {
     const assetIds = await getAssetIds(ctx, album.id);
     expect(assetIds).toContain(bobs.id);
     expect(assetIds).not.toContain(copy.id);
-    await expect(getReport(ctx, user.id)).resolves.toEqual(
-      expect.objectContaining({ othersMatched: 1, othersAmbiguous: 1 }),
-    );
+    await expect(getReport(ctx, user.id)).resolves.toEqual(expect.objectContaining({ othersMatched: 1, ambiguous: 1 }));
   });
 
   it("should keep a member's photos when their account cannot log in", async () => {
@@ -646,17 +652,127 @@ describe(SynologyService.name, () => {
     await expect(getAlbums(ctx, user.id)).resolves.toEqual([]);
   });
 
+  it("should find the account's own photo by name, size and time when its path is not found", async () => {
+    const { sut, ctx, synology } = setup();
+    const { user } = await newAccount(ctx);
+    const uploaded = await ctx.newAsset({
+      ownerId: user.id,
+      originalPath: '/data/upload/x/IMG_1.jpg',
+      originalFileName: 'IMG_1.jpg',
+      localDateTime: new Date('2023-05-01T10:00:00.000Z'),
+    });
+    await ctx.newExif({ assetId: uploaded.asset.id, fileSizeInByte: 300 });
+    const other = await ctx.newAsset({
+      ownerId: user.id,
+      originalPath: '/data/upload/x/IMG_2.jpg',
+      originalFileName: 'IMG_2.jpg',
+      localDateTime: new Date('2023-05-01T10:00:00.000Z'),
+    });
+    await ctx.newExif({ assetId: other.asset.id, fileSizeInByte: 300 });
+    synology.albums = [
+      {
+        id: 7,
+        name: 'Trip',
+        items: [
+          { id: 10, filename: 'IMG_1.jpg', folder: 1, filesize: 300, time: at },
+          // without its size and time, a name is not enough
+          { id: 11, filename: 'IMG_2.jpg', folder: 1 },
+        ],
+      },
+    ];
+
+    await sut.handleAlbumSync({ id: user.id });
+
+    const [album] = await getAlbums(ctx, user.id);
+    await expect(getAssetIds(ctx, album.id)).resolves.toEqual([uploaded.asset.id]);
+    await expect(getReport(ctx, user.id)).resolves.toEqual(
+      expect.objectContaining({ items: 2, matched: 1, matchedByName: 1, unmatched: 1 }),
+    );
+    await expect(getUnmatched(ctx, user.id)).resolves.toEqual([
+      { synologyAlbumId: 7, reason: 'notFound', path: '2023/Trip/IMG_2.jpg', mine: true },
+    ]);
+  });
+
+  it('should list the albums and photos it did not match, anew each sync', async () => {
+    const { sut, ctx, synology } = setup();
+    const { user, newPhoto } = await newAccount(ctx);
+    await newPhoto('2023/Trip/a.jpg');
+    synology.albums = [
+      {
+        id: 7,
+        name: 'Trip',
+        items: [
+          { id: 10, filename: 'a.jpg', folder: 1 },
+          { id: 11, filename: 'gone.jpg', folder: 1 },
+          { id: 12, filename: 'x.jpg', folder: 50, owner: 99 },
+        ],
+      },
+      { id: 8, name: 'Empty', items: [{ id: 20, filename: 'none.jpg', folder: 2 }] },
+      { id: 9, name: 'Broken', items: [{ id: 30, filename: 'a.jpg', folder: 1 }] },
+    ];
+    const call = ctx.getMock(SynologyRepository).call.getMockImplementation()!;
+    ctx
+      .getMock(SynologyRepository)
+      .call.mockImplementation((connection, api, method, version, params, ...rest) =>
+        api === 'SYNO.Foto.Browse.Item' && params?.album_id === 9
+          ? Promise.resolve({ success: false, error: { code: 120 } })
+          : call(connection, api, method, version, params, ...rest),
+      );
+
+    await sut.handleAlbumSync({ id: user.id });
+
+    const unmatched = await getUnmatched(ctx, user.id);
+    expect(unmatched).toHaveLength(5);
+    expect(unmatched).toEqual(
+      expect.arrayContaining([
+        { synologyAlbumId: 7, reason: 'notFound', path: '2023/Trip/gone.jpg', mine: true },
+        { synologyAlbumId: 7, reason: 'ownerWaiting', path: 'x.jpg', mine: false },
+        { synologyAlbumId: 8, reason: 'albumEmpty', path: null, mine: true },
+        { synologyAlbumId: 8, reason: 'notFound', path: '2024/none.jpg', mine: true },
+        { synologyAlbumId: 9, reason: 'albumFailed', path: null, mine: true },
+      ]),
+    );
+    await expect(getReport(ctx, user.id)).resolves.toEqual(expect.objectContaining({ unmatched: 5 }));
+    const auth = { user: { id: user.id } } as AuthDto;
+    await expect(sut.getUnmatched(auth)).resolves.toHaveLength(5);
+
+    synology.albums = synology.albums.slice(0, 1);
+    synology.albums[0].items = synology.albums[0].items.slice(0, 2);
+    await sut.handleAlbumSync({ id: user.id });
+
+    await expect(getUnmatched(ctx, user.id)).resolves.toEqual([
+      { synologyAlbumId: 7, reason: 'notFound', path: '2023/Trip/gone.jpg', mine: true },
+    ]);
+
+    synology.failLogin.add('me');
+    await sut.handleAlbumSync({ id: user.id });
+
+    await expect(getUnmatched(ctx, user.id)).resolves.toEqual([]);
+    await expect(sut.getUnmatched(auth)).resolves.toEqual([]);
+  });
+
   it('should forget the albums with the user', async () => {
     const { sut, ctx, synology } = setup();
     const { user, newPhoto } = await newAccount(ctx);
     await newPhoto('2023/Trip/a.jpg');
-    synology.albums = [{ id: 7, name: 'Trip', items: [{ id: 10, filename: 'a.jpg', folder: 1 }] }];
+    synology.albums = [
+      {
+        id: 7,
+        name: 'Trip',
+        items: [
+          { id: 10, filename: 'a.jpg', folder: 1 },
+          { id: 11, filename: 'gone.jpg', folder: 1 },
+        ],
+      },
+    ];
     await sut.handleAlbumSync({ id: user.id });
+    await expect(getUnmatched(ctx, user.id)).resolves.toHaveLength(1);
 
     await ctx.get(UserRepository).delete({ id: user.id }, true);
 
     await expect(
       ctx.database.selectFrom('synology_album').selectAll().where('userId', '=', user.id).execute(),
     ).resolves.toEqual([]);
+    await expect(getUnmatched(ctx, user.id)).resolves.toEqual([]);
   });
 });

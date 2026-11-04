@@ -7,6 +7,7 @@ import {
   SynologyAccountResponseDto,
   SynologyAccountTestResponseDto,
   SynologySyncScheduleDto,
+  SynologyUnmatchedDto,
 } from 'src/dtos/synology.dto.js';
 import { ApiTag, Permission } from 'src/enum.js';
 import { Auth, Authenticated } from 'src/middleware/auth.guard.js';
@@ -29,6 +30,18 @@ export class SynologyController {
   })
   getSynologyAccount(@Auth() auth: AuthDto): Promise<SynologyAccountResponseDto> {
     return this.service.getAccount(auth);
+  }
+
+  @Get('unmatched')
+  @Authenticated({ permission: Permission.UserPreferenceRead })
+  @Endpoint({
+    summary: 'List what my last Synology sync did not match',
+    description:
+      'The albums the last sync did not create or could not read, and the photos it did not find, found more than once, or whose owners are not in Immich yet.',
+    history: history(),
+  })
+  getSynologyUnmatched(@Auth() auth: AuthDto): Promise<SynologyUnmatchedDto[]> {
+    return this.service.getUnmatched(auth);
   }
 
   @Put()

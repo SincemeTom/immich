@@ -28,6 +28,7 @@
   import { onMount } from 'svelte';
   import { t } from 'svelte-i18n';
   import { fade } from 'svelte/transition';
+  import SynologyUnmatchedList from './SynologyUnmatchedList.svelte';
 
   let account = $state<SynologyAccountResponseDto>();
   let loadError = $state(false);
@@ -329,6 +330,11 @@
                     },
                   })}
                 </Text>
+                {#if report.matchedByName > 0}
+                  <Text size="small" color="muted">
+                    {$t('synology_sync_by_name', { values: { count: report.matchedByName } })}
+                  </Text>
+                {/if}
                 {#if report.albumsEmpty > 0}
                   <Text size="small" color="muted">
                     {$t('synology_sync_empty', { values: { count: report.albumsEmpty } })}
@@ -341,9 +347,9 @@
                     })}
                   </Text>
                 {/if}
-                {#if report.othersAmbiguous > 0}
+                {#if report.ambiguous > 0}
                   <Text size="small" color="muted" data-testid="synology-ambiguous">
-                    {$t('synology_sync_others_ambiguous', { values: { count: report.othersAmbiguous } })}
+                    {$t('synology_sync_ambiguous', { values: { count: report.ambiguous } })}
                   </Text>
                 {/if}
                 {#if report.membersAdded + report.membersUpdated + report.membersRemoved > 0}
@@ -369,17 +375,11 @@
                     >
                   </Alert>
                 {/if}
-                {#if report.unmatchedPaths.length > 0}
-                  <details class="text-sm">
-                    <summary class="cursor-pointer">
-                      {$t('synology_sync_unmatched')} ({report.items - report.matched})
-                    </summary>
-                    <ul class="ms-4 mt-1 font-mono text-xs break-all">
-                      {#each report.unmatchedPaths as path (path)}
-                        <li>{path}</li>
-                      {/each}
-                    </ul>
-                  </details>
+                {#if report.unmatched > 0}
+                  <!-- read again for each sync -->
+                  {#key report.finishedAt}
+                    <SynologyUnmatchedList count={report.unmatched} />
+                  {/key}
                 {/if}
               {:else}
                 <Alert color="danger" size="small" title={reasonText(report.errorReason)}>

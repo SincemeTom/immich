@@ -9,6 +9,7 @@ import {
   SynologyAccountResponseDto,
   SynologyAccountTestResponseDto,
   SynologySyncScheduleDto,
+  SynologyUnmatchedDto,
 } from 'src/dtos/synology.dto.js';
 import { AlbumUserRole, CronJob, ImmichWorker, JobName, JobStatus, QueueName, SystemMetadataKey } from 'src/enum.js';
 import { BaseService } from 'src/services/base.service.js';
@@ -22,6 +23,7 @@ import {
   SynologyErrorReason,
   SynologyNameIndex,
   SynologyPathIndex,
+  SynologyUnmatchedReason,
   getAuthErrorReason,
   getNextScheduled,
   isSynologySyncDue,
@@ -35,8 +37,6 @@ export const SYNOLOGY_KEYCHAIN_SERVICE = 'Immich Synology';
 /** The name of the session on Synology, and of this server in the account's trusted devices */
 const SESSION = 'Immich';
 const PAGE = 500;
-/** the paths of photos not found that a sync report keeps */
-const UNMATCHED_PATHS = 20;
 /** a sync asked for longer ago than this, and not run, was lost (a queue emptied) */
 const PENDING_FOR = 6 * 60 * 60 * 1000;
 
@@ -97,6 +97,18 @@ type SynologyMember = {
   names?: SynologyNameIndex;
 };
 
+/** A user's photos to look for Synology's in, indexed once a sync needs them */
+type Lookup = { userId: string; paths?: SynologyPathIndex; names?: SynologyNameIndex };
+
+/** An album, or a photo of it, that a sync could not match */
+type Unmatched = {
+  synologyAlbumId: number;
+  albumName: string;
+  reason: SynologyUnmatchedReason;
+  path: string | null;
+  mine: boolean;
+};
+
 /** What one sync works with: the account, logged in, and what it read so far */
 type SyncContext = {
   userId: string;
@@ -107,13 +119,15 @@ type SyncContext = {
   accounts: Record<string, SynologyAccount>;
   report: SynologySyncReport;
   folders: Map<number, string | null>;
-  index?: SynologyPathIndex;
+  /** the user's own photos */
+  self: Lookup;
   members: Map<number, SynologyMember>;
   /** the Synology Photos users not found in Immich */
   waiting: Set<number>;
   added: Set<string>;
   removed: Set<string>;
   coverRemoved: boolean;
+  unmatched: Unmatched[];
 };
 
 /** An album of the account, and its photos: none when they could not be read */
@@ -128,6 +142,13 @@ type Matched = {
   /** the users whose photos could not all be looked for: theirs are not removed */
   unsure: Set<string>;
 };
+
+const toUnmatched = (
+  album: SynologyAlbum,
+  reason: SynologyUnmatchedReason,
+  path: string | null = null,
+  mine = true,
+): Unmatched => ({ synologyAlbumId: album.id, albumName: album.name, reason, path, mine });
 
 /**
  * Each user binds their own Synology account, which the album sync reads Synology Photos with. Binding logs in
@@ -288,6 +309,25 @@ export class SynologyService extends BaseService {
     await this.removeAccount(auth.user.id);
   }
 
+  /** What the last sync could not match: albums, and photos */
+  async getUnmatched(auth: AuthDto): Promise<SynologyUnmatchedDto[]> {
+    this.requireSupport();
+    const account = await this.getUserAccount(auth.user.id);
+    // the list goes with the account's last report
+    if (!account?.lastSync?.success) {
+      return [];
+    }
+
+    const rows = await this.synologyAlbumRepository.getUnmatched(auth.user.id);
+    return rows.map(({ synologyAlbumId, albumName, reason, path, mine }) => ({
+      albumId: synologyAlbumId,
+      albumName,
+      reason: reason as SynologyUnmatchedReason,
+      path: path ?? undefined,
+      mine,
+    }));
+  }
+
   /** Syncs the albums now, in the background */
   async syncAccount(auth: AuthDto): Promise<SynologyAccountResponseDto> {
     this.requireSupport();
@@ -358,18 +398,20 @@ export class SynologyService extends BaseService {
       albumsFailed: 0,
       items: 0,
       matched: 0,
+      matchedByName: 0,
       others: 0,
       othersMatched: 0,
       othersWaiting: 0,
-      othersAmbiguous: 0,
+      ambiguous: 0,
       membersAdded: 0,
       membersUpdated: 0,
       membersRemoved: 0,
       added: 0,
       removed: 0,
-      unmatchedPaths: [],
       membersWaiting: 0,
+      unmatched: 0,
     };
+    const unmatched: Unmatched[] = [];
 
     let failure: Failed | undefined;
     let secret: Secret | null = null;
@@ -389,7 +431,7 @@ export class SynologyService extends BaseService {
 
     if (!failure && secret) {
       const result = await this.withSession(account, account.account, secret, (session) =>
-        this.syncAlbums(id, account, session, report),
+        this.syncAlbums(id, account, session, report, unmatched),
       );
       if (result.success) {
         await this.keepSecret(id, secret, result.secret);
@@ -403,6 +445,7 @@ export class SynologyService extends BaseService {
       report.errorReason = failure.reason;
       report.message = failure.message;
     }
+    report.unmatched = failure ? 0 : unmatched.length;
     report.finishedAt = new Date().toISOString();
 
     // read again, as the sync took a while; the account may have been unbound, or another bound meanwhile
@@ -411,6 +454,8 @@ export class SynologyService extends BaseService {
     if (current && current.url === account.url && current.photosUserId === account.photosUserId) {
       current.lastSync = report;
       await this.saveAccounts(accounts);
+      // the list goes with the report: none when the sync failed
+      await this.synologyAlbumRepository.setUnmatched(id, failure ? [] : unmatched);
     }
 
     if (failure) {
@@ -421,7 +466,8 @@ export class SynologyService extends BaseService {
     this.logger.log(
       `Synced the Synology albums of user ${id}: ${report.albums} albums (${report.albumsCreated} created, ` +
         `${report.albumsUpdated} changed, ${report.albumsRemoved} removed), ${report.matched} of ${report.items} ` +
-        `photos found, ${report.othersMatched} of ${report.others} added by others, ${report.added} added, ` +
+        `photos found (${report.matchedByName} by name), ${report.othersMatched} of ${report.others} added by others, ` +
+        `${report.added} added, ${report.unmatched} not matched, ` +
         `${report.removed} removed; ${report.membersAdded} members added, ${report.membersUpdated} changed, ` +
         `${report.membersRemoved} removed`,
     );
@@ -439,7 +485,13 @@ export class SynologyService extends BaseService {
     );
   }
 
-  private async syncAlbums(userId: string, account: SynologyAccount, session: Session, report: SynologySyncReport) {
+  private async syncAlbums(
+    userId: string,
+    account: SynologyAccount,
+    session: Session,
+    report: SynologySyncReport,
+    unmatched: Unmatched[],
+  ) {
     const ctx: SyncContext = {
       userId,
       connection: account,
@@ -450,11 +502,13 @@ export class SynologyService extends BaseService {
       accounts: await this.getAccounts(),
       report,
       folders: new Map(),
+      self: { userId },
       members: new Map(),
       waiting: new Set(),
       added: new Set(),
       removed: new Set(),
       coverRemoved: false,
+      unmatched,
     };
 
     const listed = await this.list<SynologyAlbum>(ctx.connection, ctx.sid, 'SYNO.Foto.Browse.Album', 'list', 2, {
@@ -471,6 +525,7 @@ export class SynologyService extends BaseService {
         read.push({ album, items: await this.listItems(ctx, album) });
       } catch (error) {
         report.albumsFailed++;
+        unmatched.push(toUnmatched(album, SynologyUnmatchedReason.AlbumFailed));
         this.logger.warn(`Could not read Synology album ${album.id} of user ${userId}: ${error}`);
         read.push({ album });
       }
@@ -493,7 +548,7 @@ export class SynologyService extends BaseService {
       }
 
       const present = row ? await this.synologyAlbumRepository.getAlbumAssetIds(row.albumId) : new Set<string>();
-      const matched = await this.matchItems(ctx, items, present);
+      const matched = await this.matchItems(ctx, album, items, present);
       const coverItemId = album.additional?.thumbnail?.unit_id;
       const coverAssetId = coverItemId === undefined ? undefined : matched.byItem.get(coverItemId);
 
@@ -505,6 +560,7 @@ export class SynologyService extends BaseService {
       const { assetIds } = matched;
       if (assetIds.length === 0) {
         report.albumsEmpty++;
+        unmatched.push(toUnmatched(album, SynologyUnmatchedReason.AlbumEmpty));
         continue;
       }
 
@@ -837,10 +893,16 @@ export class SynologyService extends BaseService {
   }
 
   /**
-   * The photos of an album found in Immich: the account's own by their paths in the user's external libraries; those
-   * others added in their own libraries, once they are in Immich
+   * The photos of an album found in Immich: the account's own in the user's photos; those others added in their own
+   * photos, once they are in Immich. Those not found, found more than once, or whose owners are not in Immich yet are
+   * listed
    */
-  private async matchItems(ctx: SyncContext, items: SynologyItem[], present: Set<string>): Promise<Matched> {
+  private async matchItems(
+    ctx: SyncContext,
+    album: SynologyAlbum,
+    items: SynologyItem[],
+    present: Set<string>,
+  ): Promise<Matched> {
     const { report } = ctx;
     const matched: Matched = { assetIds: [], byItem: new Map(), complete: true, unsure: new Set() };
     const seen = new Set<string>();
@@ -853,78 +915,88 @@ export class SynologyService extends BaseService {
       seen.add(assetId);
       matched.assetIds.push(assetId);
     };
+    const list = (reason: SynologyUnmatchedReason, path: string, mine: boolean) => {
+      ctx.unmatched.push(toUnmatched(album, reason, path, mine));
+    };
 
     for (const item of items) {
-      if (item.owner_user_id !== undefined && item.owner_user_id !== ctx.photosUserId) {
+      const mine = item.owner_user_id === undefined || item.owner_user_id === ctx.photosUserId;
+      let lookup: Lookup;
+      let folder: string | null;
+
+      if (mine) {
+        report.items++;
+        folder = item.folder_id === undefined ? null : await this.getFolder(ctx, item.folder_id);
+        if (folder === null && item.folder_id !== undefined) {
+          matched.complete = false;
+        }
+        lookup = ctx.self;
+      } else {
         report.others++;
-        const member = ctx.members.get(item.owner_user_id);
+        const member = ctx.members.get(item.owner_user_id!);
         if (!member?.userId) {
           report.othersWaiting++;
-          ctx.waiting.add(item.owner_user_id);
+          ctx.waiting.add(item.owner_user_id!);
+          list(SynologyUnmatchedReason.OwnerWaiting, item.filename, false);
           continue;
         }
 
         if (member.unsure) {
           matched.unsure.add(member.userId);
         }
-
-        const assetId = await this.findMemberAsset(ctx, member, item, present);
-        if (assetId) {
-          report.othersMatched++;
-          add(item.id, assetId);
-        }
-        continue;
-      }
-
-      report.items++;
-      const folder = item.folder_id === undefined ? null : await this.getFolder(ctx, item.folder_id);
-      if (folder === null && item.folder_id !== undefined) {
-        matched.complete = false;
+        folder = (item.folder_id === undefined ? undefined : member.folders.get(item.folder_id)) ?? null;
+        lookup = member as Lookup;
       }
 
       const path = folder === null ? item.filename : toSynologyPath(folder, item.filename);
-      const index = await this.getPathIndex(ctx);
-      const asset = folder === null ? undefined : index.find(path, item.filesize);
-      if (!asset) {
-        if (report.unmatchedPaths.length < UNMATCHED_PATHS) {
-          report.unmatchedPaths.push(path);
-        }
+      const found = await this.findAsset(lookup, folder === null ? undefined : path, item, present);
+      if (!found.assetId) {
+        list(SynologyUnmatchedReason.NotFound, path, mine);
         continue;
       }
 
-      report.matched++;
-      add(item.id, asset.id);
+      if (found.count > 1) {
+        report.ambiguous++;
+        list(SynologyUnmatchedReason.Ambiguous, path, mine);
+      }
+      if (mine) {
+        report.matched++;
+        report.matchedByName += Number(found.byName);
+      } else {
+        report.othersMatched++;
+      }
+      add(item.id, found.assetId);
     }
 
     return matched;
   }
 
   /**
-   * A photo another user added, in their own library only: by its path in their external libraries when their folder
-   * could be read, else by its name, size and time; several by name, size and time are counted in the report
+   * A photo in its owner's own photos: by its path in their external libraries, when its folder could be read; else
+   * by its name, size and time in all their photos, uploads too, when Synology gave its size and time
    */
-  private async findMemberAsset(ctx: SyncContext, member: SynologyMember, item: SynologyItem, present: Set<string>) {
-    const folder = item.folder_id === undefined ? undefined : member.folders.get(item.folder_id);
-    if (typeof folder === 'string') {
-      member.paths ??= await this.loadPathIndex(member.userId!);
-      const asset = member.paths.find(toSynologyPath(folder, item.filename), item.filesize);
+  private async findAsset(lookup: Lookup, path: string | undefined, item: SynologyItem, present: Set<string>) {
+    if (path !== undefined) {
+      lookup.paths ??= await this.loadPathIndex(lookup.userId);
+      const asset = lookup.paths.find(path, item.filesize);
       if (asset) {
-        return asset.id;
+        return { assetId: asset.id, byName: false, count: 1 };
       }
     }
 
-    if (!member.names) {
+    if (!item.filesize || item.time === undefined) {
+      return { byName: false, count: 0 };
+    }
+
+    if (!lookup.names) {
       const names = new SynologyNameIndex();
-      for await (const asset of this.synologyAlbumRepository.getUserAssets(member.userId!)) {
+      for await (const asset of this.synologyAlbumRepository.getUserAssets(lookup.userId)) {
         names.add(asset);
       }
-      member.names = names;
+      lookup.names = names;
     }
-    const { asset, count } = member.names.find(item, present);
-    if (count > 1) {
-      ctx.report.othersAmbiguous++;
-    }
-    return asset?.id;
+    const { asset, count } = lookup.names.find(item, present);
+    return { assetId: asset?.id, byName: true, count };
   }
 
   /** The path of a folder of the account's personal space, relative to its Photos folder; null when not readable */
@@ -949,11 +1021,6 @@ export class SynologyService extends BaseService {
     );
     const name = response.success ? (response.data?.folder?.name ?? response.data?.name) : undefined;
     return typeof name === 'string' ? name : null;
-  }
-
-  private async getPathIndex(ctx: SyncContext) {
-    ctx.index ??= await this.loadPathIndex(ctx.userId);
-    return ctx.index;
   }
 
   private async loadPathIndex(userId: string) {
@@ -984,6 +1051,7 @@ export class SynologyService extends BaseService {
 
   private async removeAccount(userId: string) {
     await this.keychainRepository.delete(SYNOLOGY_KEYCHAIN_SERVICE, userId);
+    await this.synologyAlbumRepository.setUnmatched(userId, []);
     const accounts = await this.getAccounts();
     if (!accounts[userId]) {
       return;

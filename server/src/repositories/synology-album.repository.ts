@@ -6,6 +6,7 @@ import { DummyValue, GenerateSql } from 'src/decorators.js';
 import { AssetVisibility } from 'src/enum.js';
 import { DB } from 'src/schema/index.js';
 import { SynologyAlbumTable } from 'src/schema/tables/synology-album.table.js';
+import { SynologyUnmatchedTable } from 'src/schema/tables/synology-unmatched.table.js';
 import { asUuid, dummy } from 'src/utils/database.js';
 
 /** A photo of the user's own external libraries, which a Synology album's photo may be */
@@ -25,6 +26,8 @@ export type SynologyUserAsset = SynologyLibraryAsset & {
 
 /** the photos that may be in albums: not the video part of a live photo, nor in the locked folder */
 const visible = [AssetVisibility.Timeline, AssetVisibility.Archive];
+/** rows inserted at once: 5 parameters each, well within Postgres' limit */
+const UNMATCHED_CHUNK = 2000;
 
 /** What the Synology album sync keeps: the albums it created, and the photos it added to them */
 @Injectable()
@@ -188,5 +191,31 @@ export class SynologyAlbumRepository {
       .where('albumId', '=', albumId)
       .where('userId', '=', userId)
       .execute();
+  }
+
+  /** What the user's last sync could not match, by album */
+  @GenerateSql({ params: [DummyValue.UUID] })
+  getUnmatched(userId: string) {
+    return this.db
+      .selectFrom('synology_unmatched')
+      .select(['synologyAlbumId', 'albumName', 'reason', 'path', 'mine'])
+      .where('userId', '=', userId)
+      .orderBy('albumName')
+      .orderBy('synologyAlbumId')
+      .orderBy('path')
+      .execute();
+  }
+
+  /** Replaces what the user's last sync could not match */
+  async setUnmatched(userId: string, rows: Array<Omit<Insertable<SynologyUnmatchedTable>, 'userId'>>) {
+    await this.db.transaction().execute(async (tx) => {
+      await tx.deleteFrom('synology_unmatched').where('userId', '=', userId).execute();
+      for (let i = 0; i < rows.length; i += UNMATCHED_CHUNK) {
+        await tx
+          .insertInto('synology_unmatched')
+          .values(rows.slice(i, i + UNMATCHED_CHUNK).map((row) => ({ ...row, userId })))
+          .execute();
+      }
+    });
   }
 }

@@ -1,7 +1,9 @@
 import {
   bindSynologyAccount,
   getSynologyAccount,
+  getSynologyUnmatched,
   SynologyErrorReason,
+  SynologyUnmatchedReason,
   syncSynologyAccount,
   testSynologyAccount,
   unbindSynologyAccount,
@@ -13,6 +15,7 @@ import { modalManager } from '@immich/ui';
 import '@testing-library/jest-dom';
 import { fireEvent, screen, waitFor } from '@testing-library/svelte';
 import { getAnimateMock } from '$lib/__mocks__/animate.mock';
+import { downloadBlob } from '$lib/utils';
 import { renderWithTooltips } from '$tests/helpers';
 import SynologySettings from './SynologySettings.svelte';
 
@@ -24,6 +27,12 @@ vi.mock('@immich/sdk', async (original) => ({
   unbindSynologyAccount: vi.fn(),
   syncSynologyAccount: vi.fn(),
   updateSynologySyncSchedule: vi.fn(),
+  getSynologyUnmatched: vi.fn(),
+}));
+
+vi.mock('$lib/utils', async (original) => ({
+  ...(await original<typeof import('$lib/utils')>()),
+  downloadBlob: vi.fn(),
 }));
 
 const bound: SynologyAccountResponseDto = {
@@ -49,18 +58,26 @@ const report: SynologySyncReportDto = {
   albumsFailed: 1,
   items: 13_426,
   matched: 13_400,
+  matchedByName: 120,
   others: 3049,
   othersMatched: 3044,
   othersWaiting: 5,
-  othersAmbiguous: 1,
+  ambiguous: 1,
   membersAdded: 3,
   membersUpdated: 0,
   membersRemoved: 0,
   added: 13_400,
   removed: 0,
-  unmatchedPaths: ['2023/Trip/gone.jpg'],
   membersWaiting: 2,
+  unmatched: 4,
 };
+
+const unmatched = [
+  { albumId: 8, albumName: 'Empty', reason: SynologyUnmatchedReason.AlbumEmpty, mine: true },
+  { albumId: 8, albumName: 'Empty', reason: SynologyUnmatchedReason.NotFound, path: '2024/none.jpg', mine: true },
+  { albumId: 7, albumName: 'Trip', reason: SynologyUnmatchedReason.NotFound, path: '2023/Trip/gone.jpg', mine: true },
+  { albumId: 7, albumName: 'Trip', reason: SynologyUnmatchedReason.OwnerWaiting, path: 'IMG_1.jpg', mine: false },
+];
 
 const scheduled: SynologyAccountResponseDto = {
   ...bound,
@@ -257,14 +274,63 @@ describe('SynologySettings', () => {
     expect(screen.getByTestId('synology-ambiguous')).toBeInTheDocument();
     expect(screen.getByTestId('synology-waiting-members')).toBeInTheDocument();
     expect(section).toHaveTextContent('synology_sync_failed_albums');
-    expect(section).toHaveTextContent('2023/Trip/gone.jpg');
+    expect(section).toHaveTextContent('synology_sync_by_name');
+    expect(section).toHaveTextContent('synology_sync_unmatched');
     expect(screen.getByText('synology_sync_next')).toBeInTheDocument();
+    expect(getSynologyUnmatched).not.toHaveBeenCalled();
+  });
+
+  it('should list what the last sync did not match, by album', async () => {
+    vi.mocked(getSynologyAccount).mockResolvedValue({ ...scheduled, lastSync: report });
+    vi.mocked(getSynologyUnmatched).mockResolvedValue(unmatched);
+    renderWithTooltips(SynologySettings, {});
+
+    await fireEvent.click(await screen.findByRole('button', { name: 'synology_sync_unmatched_show' }));
+
+    const list = await screen.findByTestId('synology-unmatched-list');
+    expect(list).toHaveTextContent('Empty');
+    expect(list).toHaveTextContent('synology_unmatched_albumEmpty');
+    expect(list).toHaveTextContent('2023/Trip/gone.jpg');
+    expect(list).toHaveTextContent('IMG_1.jpg');
+    expect(list).toHaveTextContent('synology_unmatched_others');
+
+    await fireEvent.click(screen.getByRole('button', { name: 'synology_sync_unmatched_hide' }));
+    expect(screen.queryByTestId('synology-unmatched-list')).not.toBeInTheDocument();
+    expect(getSynologyUnmatched).toHaveBeenCalledTimes(1);
+  });
+
+  it('should download what the last sync did not match', async () => {
+    vi.mocked(getSynologyAccount).mockResolvedValue({ ...scheduled, lastSync: report });
+    vi.mocked(getSynologyUnmatched).mockResolvedValue([
+      ...unmatched,
+      { albumId: 9, albumName: '=Trip, "B"', reason: SynologyUnmatchedReason.NotFound, path: 'a.jpg', mine: true },
+    ]);
+    renderWithTooltips(SynologySettings, {});
+
+    await fireEvent.click(await screen.findByRole('button', { name: 'synology_sync_unmatched_download' }));
+
+    await waitFor(() => expect(downloadBlob).toHaveBeenCalled());
+    const [blob, filename] = vi.mocked(downloadBlob).mock.calls[0];
+    expect(filename).toBe('synology-unmatched.csv');
+    const text = await blob.text();
+    const lines = text
+      .replace(/^\u{FEFF}/u, '')
+      .trimEnd()
+      .split('\r\n');
+    expect(lines).toEqual([
+      'album,synology_unmatched_reason,owner,path',
+      'Empty,synology_unmatched_albumEmpty,,',
+      'Empty,synology_unmatched_notFound,synology_unmatched_mine,2024/none.jpg',
+      'Trip,synology_unmatched_notFound,synology_unmatched_mine,2023/Trip/gone.jpg',
+      'Trip,synology_unmatched_ownerWaiting,synology_unmatched_others,IMG_1.jpg',
+      `"'=Trip, ""B""",synology_unmatched_notFound,synology_unmatched_mine,a.jpg`,
+    ]);
   });
 
   it('should show why the last sync failed', async () => {
     vi.mocked(getSynologyAccount).mockResolvedValue({
       ...scheduled,
-      lastSync: { ...report, success: false, errorReason: SynologyErrorReason.WrongPassword, unmatchedPaths: [] },
+      lastSync: { ...report, success: false, errorReason: SynologyErrorReason.WrongPassword, unmatched: 0 },
     });
     renderWithTooltips(SynologySettings, {});
 

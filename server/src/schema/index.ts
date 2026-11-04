@@ -84,6 +84,7 @@ import { SessionSyncCheckpointTable } from 'src/schema/tables/sync-checkpoint.ta
 import { SynologyAlbumAssetTable } from 'src/schema/tables/synology-album-asset.table.js';
 import { SynologyAlbumUserTable } from 'src/schema/tables/synology-album-user.table.js';
 import { SynologyAlbumTable } from 'src/schema/tables/synology-album.table.js';
+import { SynologyUnmatchedTable } from 'src/schema/tables/synology-unmatched.table.js';
 import { SystemMetadataTable } from 'src/schema/tables/system-metadata.table.js';
 import { TagAssetTable } from 'src/schema/tables/tag-asset.table.js';
 import { TagClosureTable } from 'src/schema/tables/tag-closure.table.js';
@@ -159,6 +160,7 @@ export class ImmichDatabase {
     SynologyAlbumTable,
     SynologyAlbumAssetTable,
     SynologyAlbumUserTable,
+    SynologyUnmatchedTable,
     SystemMetadataTable,
     TagTable,
     TagAssetTable,
@@ -295,6 +297,7 @@ export interface DB {
   synology_album: SynologyAlbumTable;
   synology_album_asset: SynologyAlbumAssetTable;
   synology_album_user: SynologyAlbumUserTable;
+  synology_unmatched: SynologyUnmatchedTable;
 
   system_metadata: SystemMetadataTable;
 

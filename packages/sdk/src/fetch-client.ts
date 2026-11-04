@@ -3338,13 +3338,17 @@ export type SynologySyncReportDto = {
     albumsRemoved: number;
     /** Albums changed: renamed, another cover, photos added or removed */
     albumsUpdated: number;
+    /** Photos, the account's or others', found by name, size and time more than once in their owners' libraries: one was taken */
+    ambiguous: number;
     errorReason?: SynologyErrorReason;
     /** When it finished */
     finishedAt: string;
     /** The account's own photos in its albums */
     items: number;
-    /** Of them, those found in the user's external libraries */
+    /** Of them, those found: by path in the user's external libraries, or else by name, size and time */
     matched: number;
+    /** Of those found, those found by name, size and time */
+    matchedByName: number;
     /** Members the albums were shared with, as Synology shares them */
     membersAdded: number;
     /** Members Synology no longer shares the albums with: removed */
@@ -3357,8 +3361,6 @@ export type SynologySyncReportDto = {
     message?: string;
     /** Photos others added to the albums */
     others: number;
-    /** Of those found by name, size and time, how many were so several times in their owners' libraries: one was taken */
-    othersAmbiguous: number;
     /** Of them, those found in their owners' own libraries, and added */
     othersMatched: number;
     /** Of them, those whose owners are not in Immich yet */
@@ -3369,8 +3371,8 @@ export type SynologySyncReportDto = {
     startedAt: string;
     /** Whether it could log in and read the albums */
     success: boolean;
-    /** The first photos not found, as paths in Synology Photos */
-    unmatchedPaths: string[];
+    /** How many albums and photos are in the list of those not matched */
+    unmatched: number;
 };
 export type SynologyAccountResponseDto = {
     /** Synology account name */
@@ -3430,6 +3432,17 @@ export type SynologySyncScheduleDto = {
     autoSync: boolean;
     /** The server's local time of day to sync them at, HH:MM */
     syncTime: string;
+};
+export type SynologyUnmatchedDto = {
+    /** The Synology album */
+    albumId: number;
+    /** The Synology album's name */
+    albumName: string;
+    /** Whether the photo is the account's own, not one another user added */
+    mine: boolean;
+    /** The photo, as its path in Synology Photos, or only its name when its folder could not be read */
+    path?: string;
+    reason: SynologyUnmatchedReason;
 };
 export type SystemConfigTemplateStorageOptionDto = {
     /** Available day format options for storage template */
@@ -7895,6 +7908,17 @@ export function testSynologyAccount(opts?: Oazapfts.RequestOpts) {
     }));
 }
 /**
+ * List what my last Synology sync did not match
+ */
+export function getSynologyUnmatched(opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchJson<{
+        status: 200;
+        data: SynologyUnmatchedDto[];
+    }>("/synology/account/unmatched", {
+        ...opts
+    }));
+}
+/**
  * Get system configuration
  */
 export function getConfig(opts?: Oazapfts.RequestOpts) {
@@ -9315,6 +9339,13 @@ export enum SynologyErrorReason {
     AlreadyBound = "alreadyBound",
     Keychain = "keychain",
     Other = "other"
+}
+export enum SynologyUnmatchedReason {
+    NotFound = "notFound",
+    Ambiguous = "ambiguous",
+    OwnerWaiting = "ownerWaiting",
+    AlbumEmpty = "albumEmpty",
+    AlbumFailed = "albumFailed"
 }
 export enum AssetOrderBy {
     TakenAt = "takenAt",

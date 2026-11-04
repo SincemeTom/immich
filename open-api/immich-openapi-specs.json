@@ -16317,6 +16317,55 @@
         "x-immich-state": "Alpha"
       }
     },
+    "/synology/account/unmatched": {
+      "get": {
+        "description": "The albums the last sync did not create or could not read, and the photos it did not find, found more than once, or whose owners are not in Immich yet.",
+        "operationId": "getSynologyUnmatched",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SynologyUnmatchedDto"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "cookie": []
+          },
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "List what my last Synology sync did not match",
+        "tags": [
+          "Synology"
+        ],
+        "x-immich-history": [
+          {
+            "version": "v3.3.5",
+            "state": "Added"
+          },
+          {
+            "version": "v3.3.5",
+            "state": "Alpha"
+          }
+        ],
+        "x-immich-permission": "userPreference.read",
+        "x-immich-state": "Alpha"
+      }
+    },
     "/system-config": {
       "get": {
         "deprecated": true,
@@ -34217,6 +34266,12 @@
             "minimum": -9007199254740991,
             "type": "integer"
           },
+          "ambiguous": {
+            "description": "Photos, the account's or others', found by name, size and time more than once in their owners' libraries: one was taken",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
           "errorReason": {
             "$ref": "#/components/schemas/SynologyErrorReason"
           },
@@ -34231,7 +34286,13 @@
             "type": "integer"
           },
           "matched": {
-            "description": "Of them, those found in the user's external libraries",
+            "description": "Of them, those found: by path in the user's external libraries, or else by name, size and time",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "matchedByName": {
+            "description": "Of those found, those found by name, size and time",
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
@@ -34270,12 +34331,6 @@
             "minimum": -9007199254740991,
             "type": "integer"
           },
-          "othersAmbiguous": {
-            "description": "Of those found by name, size and time, how many were so several times in their owners' libraries: one was taken",
-            "maximum": 9007199254740991,
-            "minimum": -9007199254740991,
-            "type": "integer"
-          },
           "othersMatched": {
             "description": "Of them, those found in their owners' own libraries, and added",
             "maximum": 9007199254740991,
@@ -34302,12 +34357,11 @@
             "description": "Whether it could log in and read the albums",
             "type": "boolean"
           },
-          "unmatchedPaths": {
-            "description": "The first photos not found, as paths in Synology Photos",
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
+          "unmatched": {
+            "description": "How many albums and photos are in the list of those not matched",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
           }
         },
         "required": [
@@ -34318,21 +34372,22 @@
           "albumsFailed",
           "albumsRemoved",
           "albumsUpdated",
+          "ambiguous",
           "finishedAt",
           "items",
           "matched",
+          "matchedByName",
           "membersAdded",
           "membersRemoved",
           "membersUpdated",
           "membersWaiting",
           "others",
-          "othersAmbiguous",
           "othersMatched",
           "othersWaiting",
           "removed",
           "startedAt",
           "success",
-          "unmatchedPaths"
+          "unmatched"
         ],
         "type": "object"
       },
@@ -34352,6 +34407,49 @@
           "syncTime"
         ],
         "type": "object"
+      },
+      "SynologyUnmatchedDto": {
+        "properties": {
+          "albumId": {
+            "description": "The Synology album",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "albumName": {
+            "description": "The Synology album's name",
+            "type": "string"
+          },
+          "mine": {
+            "description": "Whether the photo is the account's own, not one another user added",
+            "type": "boolean"
+          },
+          "path": {
+            "description": "The photo, as its path in Synology Photos, or only its name when its folder could not be read",
+            "type": "string"
+          },
+          "reason": {
+            "$ref": "#/components/schemas/SynologyUnmatchedReason"
+          }
+        },
+        "required": [
+          "albumId",
+          "albumName",
+          "mine",
+          "reason"
+        ],
+        "type": "object"
+      },
+      "SynologyUnmatchedReason": {
+        "description": "Why: a photo not found in its owner's library, found more than once, or whose owner is not in Immich yet; an album not created as none of its photos were found, or whose photos Synology did not list",
+        "enum": [
+          "notFound",
+          "ambiguous",
+          "ownerWaiting",
+          "albumEmpty",
+          "albumFailed"
+        ],
+        "type": "string"
       },
       "SystemConfigTemplateStorageOptionDto": {
         "properties": {

@@ -35,9 +35,22 @@ export async function up(db: Kysely<any>): Promise<void> {
 );`.execute(db);
   await sql`CREATE INDEX "synology_album_user_albumId_idx" ON "synology_album_user" ("albumId");`.execute(db);
   await sql`CREATE INDEX "synology_album_user_userId_idx" ON "synology_album_user" ("userId");`.execute(db);
+  await sql`CREATE TABLE "synology_unmatched" (
+  "id" uuid NOT NULL DEFAULT uuid_generate_v4(),
+  "userId" uuid NOT NULL,
+  "synologyAlbumId" integer NOT NULL,
+  "albumName" character varying NOT NULL,
+  "reason" character varying NOT NULL,
+  "path" character varying,
+  "mine" boolean NOT NULL DEFAULT true,
+  CONSTRAINT "synology_unmatched_userId_fkey" FOREIGN KEY ("userId") REFERENCES "user" ("id") ON UPDATE CASCADE ON DELETE CASCADE,
+  CONSTRAINT "synology_unmatched_pkey" PRIMARY KEY ("id")
+);`.execute(db);
+  await sql`CREATE INDEX "synology_unmatched_userId_idx" ON "synology_unmatched" ("userId");`.execute(db);
 }
 
 export async function down(db: Kysely<any>): Promise<void> {
+  await sql`DROP TABLE "synology_unmatched";`.execute(db);
   await sql`DROP TABLE "synology_album_user";`.execute(db);
   await sql`DROP TABLE "synology_album_asset";`.execute(db);
   await sql`DROP TABLE "synology_album";`.execute(db);

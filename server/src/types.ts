@@ -645,15 +645,16 @@ export type SynologySyncReport = {
   albumsEmpty: number;
   /** albums whose photos Synology did not list: left as they were */
   albumsFailed: number;
-  /** the account's own photos in its albums, and how many of them were found in the user's external libraries */
+  /** the account's own photos in its albums, and how many of them were found: by path in the user's external libraries, or else by name, size and time in all their photos */
   items: number;
   matched: number;
+  matchedByName: number;
   /** photos others added to the account's albums; those found in their owners' own libraries; those whose owners are not in Immich yet */
   others: number;
   othersMatched: number;
   othersWaiting: number;
-  /** of those found by name, size and time, how many were so several times in their owners' libraries: one was taken */
-  othersAmbiguous: number;
+  /** photos, the account's or others', found by name, size and time more than once in their owners' libraries: one was taken */
+  ambiguous: number;
   /** members the albums were shared with, whose access changed, who were removed */
   membersAdded: number;
   membersUpdated: number;
@@ -663,8 +664,8 @@ export type SynologySyncReport = {
   /** photos added to albums, and removed from them */
   added: number;
   removed: number;
-  /** the first of the account's photos not found, as paths in Synology Photos */
-  unmatchedPaths: string[];
+  /** how many albums and photos are in the list of those not matched */
+  unmatched: number;
 };
 
 export type UserPreferences = {

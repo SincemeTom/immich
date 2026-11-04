@@ -32,6 +32,20 @@ export enum SynologyErrorReason {
   Other = 'other',
 }
 
+/** Why a Synology album, or a photo of it, is in the list of those the last sync could not match */
+export enum SynologyUnmatchedReason {
+  /** the photo was not found in its owner's library */
+  NotFound = 'notFound',
+  /** found by name, size and time more than once in its owner's library: one was taken */
+  Ambiguous = 'ambiguous',
+  /** its owner is not in Immich yet */
+  OwnerWaiting = 'ownerWaiting',
+  /** none of the album's photos were found: not created */
+  AlbumEmpty = 'albumEmpty',
+  /** Synology did not list the album's photos: left as it was */
+  AlbumFailed = 'albumFailed',
+}
+
 /** SYNO.API.Auth login's error codes (DSM Login Web API Guide) */
 const AUTH_ERRORS: Record<number, SynologyErrorReason> = {
   400: SynologyErrorReason.WrongPassword,

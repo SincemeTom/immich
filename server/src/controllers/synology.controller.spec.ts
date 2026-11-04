@@ -24,6 +24,13 @@ describe(SynologyController.name, () => {
     });
   });
 
+  describe('GET /synology/account/unmatched', () => {
+    it('should be an authenticated route', async () => {
+      await request(ctx.getHttpServer()).get('/synology/account/unmatched');
+      expect(ctx.authenticate).toHaveBeenCalled();
+    });
+  });
+
   describe('PUT /synology/account', () => {
     it('should be an authenticated route', async () => {
       await request(ctx.getHttpServer()).put('/synology/account').send({});

@@ -70,7 +70,7 @@
 - [x] 同步相册（2026-11-04）：自己的相册建成 Immich 相册，照片按路径从自己的外部图库里找；跟着群晖改名、换封面、增减照片、删相册，只动同步建的相册和加的照片；每天定时（默认 03:00，可改）和立即同步，账号设置里显示报告（[verification/synology-album-sync.md](verification/synology-album-sync.md)）。还差在正式服用真实账号同步一次，看命中率
 - [x] 别人加进我相册的照片（2026-11-04）：代他加进来，只在他自己的库里找，绑定了账号的按路径、否则按文件名 + 大小 + 时间；对上多张、等主人加入的进报告（[verification/synology-album-sharing.md](verification/synology-album-sharing.md)）。还差在正式服用真实账号同步一次
 - [x] 群晖上的共享关系（2026-11-04）：对应上的成员按 查看 / 下载 / 上传 → 仅查看 / 可下载 / 可编辑 共享，跟着群晖改角色、取消共享；只动同步加的成员，手动加的不动；对应不上的报告里只写人数（[verification/synology-album-sharing.md](verification/synology-album-sharing.md)）
-- [ ] 对不上的照片和相册列出来，不静默丢掉
+- [x] 对不上的照片和相册列出来，不静默丢掉（2026-11-04）：没找到、对上多张、主人不在 Immich 里的照片，没建、读不到的相册，每次同步整份记下，网页上按相册查看、下载 CSV；自己的照片按路径找不到时，再按文件名 + 大小 + 时间在自己的全部照片里找（[verification/synology-unmatched.md](verification/synology-unmatched.md)）
 - [ ] 端到端验证：你的 49 个相册，在挂着真实外部图库的正式服上做（开发机只有测试照片）
 
 不做：人物名字、收藏、评分、标签不从群晖同步，在 Immich 里重建。

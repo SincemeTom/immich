@@ -1,6 +1,6 @@
 import { createZodDto } from 'nestjs-zod';
 import z from 'zod';
-import { SynologyErrorReason, isSynologySyncTime, toSynologyUrl } from 'src/utils/synology.js';
+import { SynologyErrorReason, SynologyUnmatchedReason, isSynologySyncTime, toSynologyUrl } from 'src/utils/synology.js';
 
 const SynologyErrorReasonSchema = z
   .enum(SynologyErrorReason)
@@ -49,14 +49,17 @@ const SynologySyncReportSchema = z
     albumsEmpty: z.int().describe('Albums none of whose photos were found in the external libraries: not created'),
     albumsFailed: z.int().describe('Albums whose photos Synology did not list: left as they were'),
     items: z.int().describe("The account's own photos in its albums"),
-    matched: z.int().describe("Of them, those found in the user's external libraries"),
+    matched: z
+      .int()
+      .describe("Of them, those found: by path in the user's external libraries, or else by name, size and time"),
+    matchedByName: z.int().describe('Of those found, those found by name, size and time'),
     others: z.int().describe('Photos others added to the albums'),
     othersMatched: z.int().describe("Of them, those found in their owners' own libraries, and added"),
     othersWaiting: z.int().describe('Of them, those whose owners are not in Immich yet'),
-    othersAmbiguous: z
+    ambiguous: z
       .int()
       .describe(
-        "Of those found by name, size and time, how many were so several times in their owners' libraries: one was taken",
+        "Photos, the account's or others', found by name, size and time more than once in their owners' libraries: one was taken",
       ),
     membersAdded: z.int().describe('Members the albums were shared with, as Synology shares them'),
     membersUpdated: z.int().describe("Members whose access changed, as Synology's did"),
@@ -68,9 +71,29 @@ const SynologySyncReportSchema = z
       ),
     added: z.int().describe('Photos added to albums'),
     removed: z.int().describe('Photos removed from albums'),
-    unmatchedPaths: z.array(z.string()).describe('The first photos not found, as paths in Synology Photos'),
+    unmatched: z.int().describe('How many albums and photos are in the list of those not matched'),
   })
   .meta({ id: 'SynologySyncReportDto' });
+
+const SynologyUnmatchedReasonSchema = z
+  .enum(SynologyUnmatchedReason)
+  .describe(
+    "Why: a photo not found in its owner's library, found more than once, or whose owner is not in Immich yet; an album not created as none of its photos were found, or whose photos Synology did not list",
+  )
+  .meta({ id: 'SynologyUnmatchedReason' });
+
+const SynologyUnmatchedSchema = z
+  .object({
+    albumId: z.int().describe('The Synology album'),
+    albumName: z.string().describe("The Synology album's name"),
+    reason: SynologyUnmatchedReasonSchema,
+    path: z
+      .string()
+      .optional()
+      .describe('The photo, as its path in Synology Photos, or only its name when its folder could not be read'),
+    mine: z.boolean().describe("Whether the photo is the account's own, not one another user added"),
+  })
+  .meta({ id: 'SynologyUnmatchedDto' });
 
 const SynologyAccountResponseSchema = z
   .object({
@@ -117,3 +140,4 @@ export class SynologyAccountBindDto extends createZodDto(SynologyAccountBindSche
 export class SynologyAccountResponseDto extends createZodDto(SynologyAccountResponseSchema) {}
 export class SynologyAccountTestResponseDto extends createZodDto(SynologyAccountTestResponseSchema) {}
 export class SynologySyncScheduleDto extends createZodDto(SynologySyncScheduleSchema) {}
+export class SynologyUnmatchedDto extends createZodDto(SynologyUnmatchedSchema) {}

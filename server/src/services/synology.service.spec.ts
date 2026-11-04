@@ -4,7 +4,7 @@ import type { SynologyResponse } from 'src/repositories/synology.repository.js';
 import type { SynologyAccount, SynologySyncReport } from 'src/types.js';
 import { CronJob, JobName, JobStatus, SystemMetadataKey } from 'src/enum.js';
 import { SYNOLOGY_KEYCHAIN_SERVICE, SynologyService } from 'src/services/synology.service.js';
-import { SynologyError, SynologyErrorReason } from 'src/utils/synology.js';
+import { SynologyError, SynologyErrorReason, SynologyUnmatchedReason } from 'src/utils/synology.js';
 import { mockEnvData } from 'test/repositories/config.repository.mock.js';
 import { factory } from 'test/small.factory.js';
 import { ServiceMocks, newTestService } from 'test/utils.js';
@@ -102,6 +102,7 @@ describe(SynologyService.name, () => {
     mocks.keychain.delete.mockImplementation((service, account) =>
       Promise.resolve(keychain.delete(`${service}/${account}`)),
     );
+    mocks.synologyAlbum.setUnmatched.mockResolvedValue();
     mocks.synology.call.mockImplementation((_connection, api, method, _version, params = {}) => {
       const reply = replies[`${api} ${method}`];
       if (!reply) {
@@ -504,6 +505,7 @@ describe(SynologyService.name, () => {
 
       expect(accounts).toEqual({ 'user-2': bound({ account: 'bob', photosUserId: 2 }) });
       expect(keychain.size).toBe(0);
+      expect(mocks.synologyAlbum.setUnmatched).toHaveBeenCalledWith('user-1', []);
     });
 
     it('should do nothing when none is bound', async () => {
@@ -519,6 +521,35 @@ describe(SynologyService.name, () => {
 
       await expect(sut.unbindAccount(auth)).rejects.toThrow('locked');
       expect(accounts['user-1']).toEqual(bound());
+    });
+  });
+
+  describe('getUnmatched', () => {
+    it('should list what the last sync did not match', async () => {
+      accounts['user-1'] = bound({ lastSync: report() });
+      mocks.synologyAlbum.getUnmatched.mockResolvedValue([
+        { synologyAlbumId: 7, albumName: 'Trip', reason: 'albumEmpty', path: null, mine: true },
+        { synologyAlbumId: 7, albumName: 'Trip', reason: 'notFound', path: '2023/Trip/a.jpg', mine: false },
+      ]);
+
+      await expect(sut.getUnmatched(auth)).resolves.toEqual([
+        { albumId: 7, albumName: 'Trip', reason: SynologyUnmatchedReason.AlbumEmpty, path: undefined, mine: true },
+        {
+          albumId: 7,
+          albumName: 'Trip',
+          reason: SynologyUnmatchedReason.NotFound,
+          path: '2023/Trip/a.jpg',
+          mine: false,
+        },
+      ]);
+      expect(mocks.synologyAlbum.getUnmatched).toHaveBeenCalledWith('user-1');
+    });
+
+    it('should list nothing without a successful sync', async () => {
+      accounts['user-1'] = bound({ lastSync: { ...report(), success: false } });
+
+      await expect(sut.getUnmatched(auth)).resolves.toEqual([]);
+      expect(mocks.synologyAlbum.getUnmatched).not.toHaveBeenCalled();
     });
   });
 
@@ -699,6 +730,7 @@ describe(SynologyService.name, () => {
       );
       expect(mocks.synologyAlbum.getAll).not.toHaveBeenCalled();
       expect(mocks.album.create).not.toHaveBeenCalled();
+      expect(mocks.synologyAlbum.setUnmatched).toHaveBeenCalledWith('user-1', []);
     });
 
     it('should report the password gone from the Keychain', async () => {
@@ -790,15 +822,16 @@ const report = (): SynologySyncReport => ({
   albumsFailed: 0,
   items: 2,
   matched: 2,
+  matchedByName: 0,
   others: 0,
   othersMatched: 0,
   othersWaiting: 0,
-  othersAmbiguous: 0,
+  ambiguous: 0,
   membersAdded: 0,
   membersUpdated: 0,
   membersRemoved: 0,
   added: 2,
   removed: 0,
-  unmatchedPaths: [],
   membersWaiting: 0,
+  unmatched: 0,
 });
