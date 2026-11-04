@@ -466,10 +466,20 @@ void main() {
     final inSession = LocalAssetStub.image1;
     final waiting = LocalAssetStub.image2;
     late List<UploadTask> enqueued;
+    late int Function() tempUsage;
+    final measureTempUsage = BackgroundUploadService.measureTempUsage;
+    final listSessionFiles = BackgroundUploadService.listSessionFiles;
 
     setUp(() {
       registerFallbackValue(<UploadTask>[]);
       enqueued = [];
+      tempUsage = () => 0;
+      BackgroundUploadService.measureTempUsage = () async => tempUsage();
+      BackgroundUploadService.listSessionFiles = () async => {};
+      addTearDown(() {
+        BackgroundUploadService.measureTempUsage = measureTempUsage;
+        BackgroundUploadService.listSessionFiles = listSessionFiles;
+      });
       for (final asset in [inSession, waiting]) {
         final entity = MockAssetEntity();
         when(() => entity.isLivePhoto).thenReturn(false);
@@ -512,6 +522,60 @@ void main() {
 
       expect(queued, 0);
       expect(enqueued, isEmpty);
+    });
+
+    test('queues one upload however large, into an empty session', () async {
+      tempUsage = () => 10 * 1024 * 1024 * 1024;
+
+      expect(await sut.uploadBackupCandidates('user-1', limitBytes: 1024), 1);
+
+      expect(enqueued.map((task) => task.taskId), [inSession.id]);
+    });
+
+    test('stops once the files take the room set', () async {
+      tempUsage = () => enqueued.length * 600;
+
+      expect(await sut.uploadBackupCandidates('user-1', limitBytes: 1000), 2);
+
+      tempUsage = () => enqueued.length * 1000;
+      enqueued.clear();
+      expect(await sut.uploadBackupCandidates('user-1', limitBytes: 1000), 1);
+    });
+
+    test('queues nothing while the session fills the room set', () async {
+      when(() => mockUploadRepository.getActiveTasks(kBackupGroup)).thenAnswer(
+        (_) async => [UploadTask(taskId: 'other', url: 'http://test-server.com/assets', filename: 'file.jpg')],
+      );
+      tempUsage = () => 2000;
+
+      expect(await sut.uploadBackupCandidates('user-1', limitBytes: 1000), 0);
+
+      expect(enqueued, isEmpty);
+      verifyNever(() => mockBackupRepository.getCandidates(any()));
+    });
+
+    test('leaves out the assets to skip and tells about each export', () async {
+      final preparing = <String>[];
+      final prepared = <(String, bool)>[];
+
+      final queued = await sut.uploadBackupCandidates(
+        'user-1',
+        skip: {inSession.id},
+        onPreparing: (asset) => preparing.add(asset.id),
+        onPrepared: (asset, queued) => prepared.add((asset.id, queued)),
+      );
+
+      expect(queued, 1);
+      expect(enqueued.map((task) => task.taskId), [waiting.id]);
+      expect(preparing, [waiting.id]);
+      expect(prepared, [(waiting.id, true)]);
+    });
+
+    test('stops before the next export when told to', () async {
+      final queued = await sut.uploadBackupCandidates('user-1', shouldStop: () => enqueued.isNotEmpty);
+
+      expect(queued, 1);
+      expect(enqueued.map((task) => task.taskId), [inSession.id]);
     });
   });
 }

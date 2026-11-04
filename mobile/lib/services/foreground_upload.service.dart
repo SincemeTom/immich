@@ -112,6 +112,9 @@ class ForegroundUploadService {
     return _backupRepository.getAllCounts(userId);
   }
 
+  /// Whether the network is one uploads needing Wi-Fi may use
+  Future<bool> isOnWifi() async => (await _connectivityApi.getCapabilities()).isUnmetered;
+
   Future<List<LocalAsset>> getBackupCandidates(String userId, {bool onlyHashed = true}) {
     return _backupRepository.getCandidates(userId, onlyHashed: onlyHashed);
   }

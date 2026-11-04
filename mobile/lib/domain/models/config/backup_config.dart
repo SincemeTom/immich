@@ -12,5 +12,11 @@ abstract class BackupConfig with _$BackupConfig {
     @Default(false) bool requireCharging,
     @Default(30) int triggerDelay,
     @Default(false) bool syncAlbums,
+
+    /// iOS: how much room the files handed to the background session for upload may take, in MB
+    @Default(BackupConfig.defaultQueueSizeMb) int queueSizeMb,
   }) = _BackupConfig;
+
+  static const defaultQueueSizeMb = 2048;
+  static const queueSizeOptionsMb = [512, 1024, 2048, 5120, 10240];
 }

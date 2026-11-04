@@ -99,14 +99,7 @@ class BackgroundWorkerBgService extends BackgroundWorkerFlutterApi {
           workerManagerPatch.init(dynamicSpawning: true),
           _ref?.read(authServiceProvider).setOpenApiServiceEndpoint(),
           // Initialize the file downloader
-          FileDownloader().configure(
-            globalConfig: [
-              // maxConcurrent: 6, maxConcurrentByHost(server):6, maxConcurrentByGroup: 3
-              (Config.holdingQueue, (6, 6, 3)),
-              // On Android, if files are larger than 256MB, run in foreground service
-              (Config.runInForegroundIfFileLargerThan, 256),
-            ],
-          ),
+          FileDownloader().configure(globalConfig: fileDownloaderGlobalConfig),
           FileDownloader().trackTasksInGroup(kDownloadGroupLivePhoto, markDownloadedComplete: false),
           FileDownloader().trackTasks(),
         ].nonNulls,

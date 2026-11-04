@@ -53,10 +53,6 @@ class UploadRepository {
     return FileDownloader().allTasks(group: group);
   }
 
-  Future<bool> cancelTasks(Iterable<String> taskIds) {
-    return FileDownloader().cancelTasksWithIds(taskIds);
-  }
-
   Future<void> start() {
     return FileDownloader().start();
   }

@@ -110,12 +110,7 @@ Future<void> initApp() async {
   initializeTimeZones();
 
   // Initialize the file downloader
-  await FileDownloader().configure(
-    // maxConcurrent: 6, maxConcurrentByHost(server):6, maxConcurrentByGroup: 3
-
-    // On Android, if files are larger than 256MB, run in foreground service
-    globalConfig: [(Config.holdingQueue, (6, 6, 3)), (Config.runInForegroundIfFileLargerThan, 256)],
-  );
+  await FileDownloader().configure(globalConfig: fileDownloaderGlobalConfig);
 
   await FileDownloader().trackTasksInGroup(kDownloadGroupLivePhoto, markDownloadedComplete: false);
 
