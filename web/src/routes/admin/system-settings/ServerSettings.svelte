@@ -40,6 +40,15 @@
           bind:checked={configToEdit.server.publicUsers}
         />
 
+        {#if featureFlagsManager.value.networkShares}
+          <SettingSwitch
+            title={$t('admin.server_storage_includes_network_shares')}
+            subtitle={$t('admin.server_storage_includes_network_shares_description')}
+            {disabled}
+            bind:checked={configToEdit.server.storageIncludesNetworkShares}
+          />
+        {/if}
+
         <div class="ms-4">
           <SettingButtonsRow bind:configToEdit keys={['server']} {disabled} />
         </div>

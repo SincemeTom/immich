@@ -2,6 +2,7 @@ import { ShallowDehydrateObject } from 'kysely';
 import { Mocked } from 'vitest';
 import type { NetworkShare, NetworkShareErrorReason } from 'src/utils/network-share.js';
 import type { StorageLocationState, StorageLocations } from 'src/utils/storage-location.js';
+import type { NetworkShareSpaces } from 'src/utils/storage-space.js';
 import { VECTOR_EXTENSIONS } from 'src/constants.js';
 import { AssetFile } from 'src/database.js';
 import { UploadFieldName } from 'src/dtos/asset-media.dto.js';
@@ -593,6 +594,8 @@ export interface SystemMetadata extends Record<SystemMetadataKey, Record<string,
   [SystemMetadataKey.NetworkShareErrors]: {
     errors: Record<string, { reason: NetworkShareErrorReason; message: string }>;
   };
+  /** the space of the shares that answered the last minute check: what the server's storage counts */
+  [SystemMetadataKey.NetworkShareSpace]: NetworkShareSpaces;
   [SystemMetadataKey.StorageLocations]: StorageLocations;
   [SystemMetadataKey.StorageLocationState]: StorageLocationState;
 }

@@ -38,6 +38,7 @@
 | 删除外部库、卸载共享后，其他成员立即看不到；重新挂载后恢复 | [m1-external-library-member-feedback.md](verification/m1-external-library-member-feedback.md) |
 | 照片在 NAS 上时编辑保存不再误报失败 | [m1-edit-nfs-timeout.md](verification/m1-edit-nfs-timeout.md) |
 | 服务器统计可以计入外部库的用量（默认关闭，配额只算上传的） | [CHANGELOG.md](CHANGELOG.md)（mac.5） |
+| 服务器总量包括网络共享（同一个存储卷只算一次，没连上的不算）；左下角显示自己的用量（上传 + 外部图库），上限是配额或服务器总量；管理后台列出本机和每个共享 | [m1-storage-space.md](verification/m1-storage-space.md) |
 
 ## 4. 照片整理
 

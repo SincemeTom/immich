@@ -384,6 +384,7 @@ export enum SystemMetadataKey {
   IntegrityChecksumCheckpoint = 'integrity-checksum-checkpoint',
   NetworkShares = 'network-shares',
   NetworkShareErrors = 'network-share-errors',
+  NetworkShareSpace = 'network-share-space',
   StorageLocations = 'storage-locations',
   StorageLocationState = 'storage-location-state',
   RawPreviews = 'raw-previews',

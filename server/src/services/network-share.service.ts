@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import type { NetworkShareSpaces } from 'src/utils/storage-space.js';
 import { OnEvent } from 'src/decorators.js';
 import {
   NetworkShareCreateDto,
@@ -77,6 +78,7 @@ export class NetworkShareService extends BaseService {
       const mounts = await this.getMounts();
       const errors = await this.getErrors();
       const available: Record<string, boolean> = {};
+      const mountPaths: Record<string, string> = {};
       let changed = false;
       for (const share of shares) {
         available[share.id] = false;
@@ -85,6 +87,7 @@ export class NetworkShareService extends BaseService {
         }
 
         const mountPath = await this.getMountPath(share);
+        mountPaths[share.id] = mountPath;
         if (mounts.has(mountPath)) {
           const health = await this.checkMounted(share, mountPath);
           if (health !== 'remount') {
@@ -112,11 +115,31 @@ export class NetworkShareService extends BaseService {
       if (changed) {
         await this.systemMetadataRepository.set(SystemMetadataKey.NetworkShareErrors, { errors });
       }
+      await this.recordSpace(available, mountPaths);
       // folders kept on the shares (StorageLocationService) pause what uses them while they can't be
       await this.eventRepository.emit('NetworkSharesChecked', { available });
     } finally {
       this.checking = false;
     }
+  }
+
+  /**
+   * The space of the shares that answered, for the server's storage: read here, after reading their folders answered,
+   * as df may answer from a cache after the NAS has gone, and as reading a share that hangs would hold up a request
+   */
+  private async recordSpace(available: Record<string, boolean>, mountPaths: Record<string, string>) {
+    const shares: NetworkShareSpaces['shares'] = {};
+    for (const [id, ok] of Object.entries(available)) {
+      const space = ok ? await this.getSpace(mountPaths[id]) : undefined;
+      if (space) {
+        shares[id] = space;
+      }
+    }
+    await this.systemMetadataRepository.set(SystemMetadataKey.NetworkShareSpace, {
+      checkedAt: new Date().toISOString(),
+      mountPaths,
+      shares,
+    });
   }
 
   /**
@@ -534,15 +557,15 @@ export class NetworkShareService extends BaseService {
     }
   }
 
-  /** Size and free space, from df: which also tells whether the NAS answers */
+  /** Size, used and free space, from df: which also tells whether the NAS answers */
   private async getSpace(mountPath: string) {
     const result = await this.run('/bin/df', ['-k', '-P', mountPath], STAT_TIMEOUT);
     // "host:/export 1024-blocks used available capacity% /mount/point", where the paths may hold spaces
-    const match = result.code === 0 ? /\s(\d+)\s+\d+\s+(\d+)\s+\d+%\s/.exec(result.stdout) : null;
+    const match = result.code === 0 ? /\s(\d+)\s+(\d+)\s+(\d+)\s+\d+%\s/.exec(result.stdout) : null;
     if (!match) {
       return;
     }
-    return { total: Number(match[1]) * 1024, available: Number(match[2]) * 1024 };
+    return { total: Number(match[1]) * 1024, used: Number(match[2]) * 1024, available: Number(match[3]) * 1024 };
   }
 
   private run(command: string, args: string[], timeout: number) {
