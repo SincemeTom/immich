@@ -3431,6 +3431,8 @@ export type TrashResponseDto = {
 };
 export type UserUpdateMeDto = {
     avatarColor?: (UserAvatarColor) | null;
+    /** Current password, required to change the email or the password of a user who has one */
+    currentPassword?: string;
     /** User email */
     email?: string;
     /** User name */
