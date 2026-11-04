@@ -66,4 +66,4 @@
 
 不做：人物名字、收藏、评分、标签不从群晖同步，在 Immich 里重建。
 
-开工前：之前从真机拿到的群晖相册信息（49 个相册、接口细节）没有留在仓库里，开工时重新拉一次，并存到 `verification/`。
+开工前的探测已完成（2026-11-04）：接口、字段和对同步的影响见 [verification/synology-probe.md](verification/synology-probe.md)。

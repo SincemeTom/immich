@@ -62,6 +62,12 @@
 |---|---|---|---|
 | M2 | VideoToolbox 转码（分支 `mac/feat/videotoolbox`） | [m2-videotoolbox.md](m2-videotoolbox.md) | 通过：端到端 17/17（真实 iPhone HDR、实况照片、2.7K 无人机视频及 10 种衍生格式），亮度、方向、帧数与软件一致；CPU 用量降 83%；长的高码率 H.264 单个转得慢约 1 倍。原生安装默认打开，一次转 2 个 |
 
+## 群晖照片相册同步
+
+| 编号 | 验证项 | 文件 | 结论 |
+|---|---|---|---|
+| 探测 | 同步要读的接口和数据（只读，真实的 49 个相册） | [synology-probe.md](synology-probe.md) | 需要的信息都能读到；时间要和 `localDateTime` 比并留 1 秒余量；群晖 `view` / `download` / `upload` 对应仅查看 / 可下载 / 可编辑；NAS 上的绝对路径接口不给，要用户填写 |
+
 ## 风险跟踪
 
 | 风险 | 状态 | 结论文件 |
