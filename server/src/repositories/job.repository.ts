@@ -314,6 +314,10 @@ export class JobRepository {
       case JobName.DatabaseBackup: {
         return { deduplication: { id: JobName.DatabaseBackup } };
       }
+      case JobName.SynologyAlbumSync: {
+        // a sync asked for while one waits or runs is the same sync
+        return { deduplication: { id: `${JobName.SynologyAlbumSync}/${item.data.id}` } };
+      }
       default: {
         return null;
       }

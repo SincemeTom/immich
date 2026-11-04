@@ -41,6 +41,7 @@ import { SessionController } from 'src/controllers/session.controller.js';
 import { SharedLinkController } from 'src/controllers/shared-link.controller.js';
 import { StackController } from 'src/controllers/stack.controller.js';
 import { SyncController } from 'src/controllers/sync.controller.js';
+import { SynologyController } from 'src/controllers/synology.controller.js';
 import { SystemConfigController } from 'src/controllers/system-config.controller.js';
 import { SystemMetadataController } from 'src/controllers/system-metadata.controller.js';
 import { TagController } from 'src/controllers/tag.controller.js';
@@ -94,6 +95,7 @@ export const controllers = [
   SharedLinkController,
   StackController,
   SyncController,
+  SynologyController,
   SystemConfigController,
   SystemMetadataController,
   TagController,

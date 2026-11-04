@@ -3323,6 +3323,127 @@ export type SyncStreamDto = {
     /** Sync request types */
     types: SyncRequestType[];
 };
+export type SynologySyncReportDto = {
+    /** Photos added to albums */
+    added: number;
+    /** The Synology albums of the account */
+    albums: number;
+    /** Albums created in Immich */
+    albumsCreated: number;
+    /** Albums none of whose photos were found in the external libraries: not created */
+    albumsEmpty: number;
+    /** Albums whose photos Synology did not list: left as they were */
+    albumsFailed: number;
+    /** Albums the sync created and Synology no longer has: removed, not their photos */
+    albumsRemoved: number;
+    /** Albums changed: renamed, another cover, photos added or removed */
+    albumsUpdated: number;
+    /** Photos, the account's or others', found by name, size and time more than once in their owners' libraries: one was taken */
+    ambiguous: number;
+    errorReason?: SynologyErrorReason;
+    /** When it finished */
+    finishedAt: string;
+    /** The account's own photos in its albums */
+    items: number;
+    /** Of them, those found: by path in the user's external libraries, or else by name, size and time */
+    matched: number;
+    /** Of those found, those found by name, size and time */
+    matchedByName: number;
+    /** Members the albums were shared with, as Synology shares them */
+    membersAdded: number;
+    /** Members Synology no longer shares the albums with: removed */
+    membersRemoved: number;
+    /** Members whose access changed, as Synology's did */
+    membersUpdated: number;
+    /** How many Synology users the albums are shared with, or who added photos to them, are not in Immich yet: they are to log in with Synology SSO, or bind their Synology account */
+    membersWaiting: number;
+    /** The error, as Synology or the system reported it */
+    message?: string;
+    /** Photos others added to the albums */
+    others: number;
+    /** Of them, those found in their owners' own libraries, and added */
+    othersMatched: number;
+    /** Of them, those whose owners are not in Immich yet */
+    othersWaiting: number;
+    /** Photos removed from albums */
+    removed: number;
+    /** When the sync started */
+    startedAt: string;
+    /** Whether it could log in and read the albums */
+    success: boolean;
+    /** How many albums and photos are in the list of those not matched */
+    unmatched: number;
+};
+export type SynologyAccountResponseDto = {
+    /** Synology account name */
+    account?: string;
+    /** How many albums of its own the account had then */
+    albumCount?: number;
+    /** Whether the albums are synced every day */
+    autoSync?: boolean;
+    /** Whether the user bound a Synology account */
+    bound: boolean;
+    /** When the account was bound */
+    boundAt?: string;
+    /** When the server last logged in with it */
+    checkedAt?: string;
+    errorReason?: SynologyErrorReason;
+    /** What the last sync did */
+    lastSync?: SynologySyncReportDto;
+    /** The last error, as Synology or the system reported it */
+    message?: string;
+    /** The name Synology Photos has for the account */
+    name?: string;
+    /** When they are synced next, if every day */
+    nextSyncAt?: string;
+    /** Whether a sync waits or runs */
+    syncPending?: boolean;
+    /** The server's local time of day the albums are synced at, HH:MM */
+    syncTime?: string;
+    /** Address of the Synology */
+    url?: string;
+    /** Whether the Synology's HTTPS certificate is checked */
+    verifyCertificate?: boolean;
+};
+export type SynologyAccountBindDto = {
+    /** Synology account name */
+    account: string;
+    /** 2-step verification code, when Synology asks for one; this server is then trusted, without codes */
+    otpCode?: string;
+    /** Password of the account. Left out, the one in the Keychain is used, if the address and account stay */
+    password?: string;
+    /** Address of the Synology, such as https://nas.example.com:5001; HTTPS without a scheme */
+    url: string;
+    /** Check the Synology's HTTPS certificate; turn off for a self-signed one */
+    verifyCertificate?: boolean;
+};
+export type SynologyAccountTestResponseDto = {
+    account: SynologyAccountResponseDto;
+    /** How many albums of its own the account has */
+    albumCount?: number;
+    errorReason?: SynologyErrorReason;
+    /** The error, as Synology or the system reported it */
+    message?: string;
+    /** Whether the server could log in and read Synology Photos */
+    success: boolean;
+};
+export type SynologySyncScheduleDto = {
+    /** Sync the albums every day */
+    autoSync: boolean;
+    /** The server's local time of day to sync them at, HH:MM */
+    syncTime: string;
+};
+export type SynologyUnmatchedDto = {
+    /** The Synology album */
+    albumId: number;
+    /** The Synology album's name */
+    albumName: string;
+    /** Whether the photo is the account's own, not one another user added */
+    mine: boolean;
+    /** The photo, as its path in Synology Photos, or only its name when its folder could not be read */
+    path?: string;
+    reason: SynologyUnmatchedReason;
+};
 export type SystemConfigTemplateStorageOptionDto = {
     /** Available day format options for storage template */
     dayOptions: string[];
@@ -7713,6 +7834,91 @@ export function getSyncStream({ syncStreamDto }: {
     })));
 }
 /**
+ * Unbind my Synology account
+ */
+export function unbindSynologyAccount(opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchText("/synology/account", {
+        ...opts,
+        method: "DELETE"
+    }));
+}
+/**
+ * Retrieve my Synology account
+ */
+export function getSynologyAccount(opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchJson<{
+        status: 200;
+        data: SynologyAccountResponseDto;
+    }>("/synology/account", {
+        ...opts
+    }));
+}
+/**
+ * Bind my Synology account
+ */
+export function bindSynologyAccount({ synologyAccountBindDto }: {
+    synologyAccountBindDto: SynologyAccountBindDto;
+}, opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchJson<{
+        status: 200;
+        data: SynologyAccountTestResponseDto;
+    }>("/synology/account", oazapfts.json({
+        ...opts,
+        method: "PUT",
+        body: synologyAccountBindDto
+    })));
+}
+/**
+ * Schedule my Synology album sync
+ */
+export function updateSynologySyncSchedule({ synologySyncScheduleDto }: {
+    synologySyncScheduleDto: SynologySyncScheduleDto;
+}, opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchJson<{
+        status: 200;
+        data: SynologyAccountResponseDto;
+    }>("/synology/account/schedule", oazapfts.json({
+        ...opts,
+        method: "PUT",
+        body: synologySyncScheduleDto
+    })));
+}
+/**
+ * Sync my Synology albums
+ */
+export function syncSynologyAccount(opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchJson<{
+        status: 200;
+        data: SynologyAccountResponseDto;
+    }>("/synology/account/sync", {
+        ...opts,
+        method: "POST"
+    }));
+}
+/**
+ * Test my Synology account
+ */
+export function testSynologyAccount(opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchJson<{
+        status: 200;
+        data: SynologyAccountTestResponseDto;
+    }>("/synology/account/test", {
+        ...opts,
+        method: "POST"
+    }));
+}
+/**
+ * List what my last Synology sync did not match
+ */
+export function getSynologyUnmatched(opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchJson<{
+        status: 200;
+        data: SynologyUnmatchedDto[];
+    }>("/synology/account/unmatched", {
+        ...opts
+    }));
+}
+/**
  * Get system configuration
  */
 export function getConfig(opts?: Oazapfts.RequestOpts) {
@@ -8953,6 +9159,7 @@ export enum JobName {
     LibrarySyncFilesQueueAll = "LibrarySyncFilesQueueAll",
     LibrarySyncFiles = "LibrarySyncFiles",
     LibraryScanQueueAll = "LibraryScanQueueAll",
+    SynologyAlbumSync = "SynologyAlbumSync",
     HlsSessionCleanup = "HlsSessionCleanup",
     MemoryCleanup = "MemoryCleanup",
     MemoryGenerate = "MemoryGenerate",
@@ -9115,6 +9322,30 @@ export enum SyncRequestType {
     AssetFacesV2 = "AssetFacesV2",
     AssetFacesV3 = "AssetFacesV3",
     UserMetadataV1 = "UserMetadataV1"
+}
+export enum SynologyErrorReason {
+    Unreachable = "unreachable",
+    Certificate = "certificate",
+    NotSynology = "notSynology",
+    NoPhotos = "noPhotos",
+    WrongPassword = "wrongPassword",
+    Disabled = "disabled",
+    Denied = "denied",
+    OtpRequired = "otpRequired",
+    OtpWrong = "otpWrong",
+    OtpEnforced = "otpEnforced",
+    Blocked = "blocked",
+    PasswordExpired = "passwordExpired",
+    AlreadyBound = "alreadyBound",
+    Keychain = "keychain",
+    Other = "other"
+}
+export enum SynologyUnmatchedReason {
+    NotFound = "notFound",
+    Ambiguous = "ambiguous",
+    OwnerWaiting = "ownerWaiting",
+    AlbumEmpty = "albumEmpty",
+    AlbumFailed = "albumFailed"
 }
 export enum AssetOrderBy {
     TakenAt = "takenAt",

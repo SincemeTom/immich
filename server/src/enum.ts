@@ -388,6 +388,7 @@ export enum SystemMetadataKey {
   StorageLocationState = 'storage-location-state',
   RawPreviews = 'raw-previews',
   LocationInference = 'location-inference',
+  SynologyAccounts = 'synology-accounts',
 }
 
 export enum UserMetadataKey {
@@ -929,6 +930,8 @@ export enum JobName {
   LibrarySyncFiles = 'LibrarySyncFiles',
   LibraryScanQueueAll = 'LibraryScanQueueAll',
 
+  SynologyAlbumSync = 'SynologyAlbumSync',
+
   HlsSessionCleanup = 'HlsSessionCleanup',
 
   MemoryCleanup = 'MemoryCleanup',
@@ -1265,6 +1268,7 @@ export enum CronJob {
   LibraryScan = 'LibraryScan',
   NetworkShareCheck = 'NetworkShareCheck',
   NightlyJobs = 'NightlyJobs',
+  SynologyAlbumSync = 'SynologyAlbumSync',
   VersionCheck = 'VersionCheck',
 }
 
@@ -1297,6 +1301,7 @@ export enum ApiTag {
   Map = 'Map',
   NetworkShares = 'Network shares (admin)',
   StorageLocations = 'Storage locations (admin)',
+  Synology = 'Synology',
   Memories = 'Memories',
   Notifications = 'Notifications',
   NotificationsAdmin = 'Notifications (admin)',

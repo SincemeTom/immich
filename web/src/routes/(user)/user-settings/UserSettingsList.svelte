@@ -5,6 +5,7 @@
   import DownloadSettings from './DownloadSettings.svelte';
   import FeatureSettings from './FeatureSettings.svelte';
   import NotificationsSettings from './NotificationsSettings.svelte';
+  import SynologySettings from './SynologySettings.svelte';
   import UserPurchaseSettings from './UserPurchaseSettings.svelte';
   import UserUsageStatistic from './UserUsageStatistic.svelte';
   import { OpenQueryParam, QueryParameter } from '$lib/constants';
@@ -24,6 +25,7 @@
     mdiFormTextboxPassword,
     mdiKeyOutline,
     mdiLockSmart,
+    mdiNas,
     mdiServerOutline,
     mdiTwoFactorAuthentication,
   } from '@mdi/js';
@@ -109,6 +111,17 @@
 >
   <AutoStackSettings />
 </SettingAccordion>
+
+{#if featureFlagsManager.value.networkShares}
+  <SettingAccordion
+    icon={mdiNas}
+    key="synology"
+    title={$t('synology_photos')}
+    subtitle={$t('synology_setting_description')}
+  >
+    <SynologySettings />
+  </SettingAccordion>
+{/if}
 
 <SettingAccordion
   icon={mdiBellOutline}

@@ -27,6 +27,7 @@ import { EmailRepository } from 'src/repositories/email.repository.js';
 import { EventRepository } from 'src/repositories/event.repository.js';
 import { IntegrityRepository } from 'src/repositories/integrity.repository.js';
 import { JobRepository } from 'src/repositories/job.repository.js';
+import { KeychainRepository } from 'src/repositories/keychain.repository.js';
 import { LibraryRepository } from 'src/repositories/library.repository.js';
 import { LoggingRepository } from 'src/repositories/logging.repository.js';
 import { MachineLearningRepository } from 'src/repositories/machine-learning.repository.js';
@@ -52,6 +53,8 @@ import { StackRepository } from 'src/repositories/stack.repository.js';
 import { StorageRepository } from 'src/repositories/storage.repository.js';
 import { SyncCheckpointRepository } from 'src/repositories/sync-checkpoint.repository.js';
 import { SyncRepository } from 'src/repositories/sync.repository.js';
+import { SynologyAlbumRepository } from 'src/repositories/synology-album.repository.js';
+import { SynologyRepository } from 'src/repositories/synology.repository.js';
 import { SystemMetadataRepository } from 'src/repositories/system-metadata.repository.js';
 import { TagRepository } from 'src/repositories/tag.repository.js';
 import { TelemetryRepository } from 'src/repositories/telemetry.repository.js';
@@ -97,6 +100,7 @@ export const BASE_SERVICE_DEPENDENCIES = [
   EventRepository,
   IntegrityRepository,
   JobRepository,
+  KeychainRepository,
   LibraryRepository,
   MachineLearningRepository,
   MapRepository,
@@ -121,6 +125,8 @@ export const BASE_SERVICE_DEPENDENCIES = [
   StorageRepository,
   SyncRepository,
   SyncCheckpointRepository,
+  SynologyAlbumRepository,
+  SynologyRepository,
   SystemMetadataRepository,
   TagRepository,
   TelemetryRepository,
@@ -161,6 +167,7 @@ export class BaseService {
     protected eventRepository: EventRepository,
     protected integrityRepository: IntegrityRepository,
     protected jobRepository: JobRepository,
+    protected keychainRepository: KeychainRepository,
     protected libraryRepository: LibraryRepository,
     protected machineLearningRepository: MachineLearningRepository,
     protected mapRepository: MapRepository,
@@ -185,6 +192,8 @@ export class BaseService {
     protected storageRepository: StorageRepository,
     protected syncRepository: SyncRepository,
     protected syncCheckpointRepository: SyncCheckpointRepository,
+    protected synologyAlbumRepository: SynologyAlbumRepository,
+    protected synologyRepository: SynologyRepository,
     protected systemMetadataRepository: SystemMetadataRepository,
     protected tagRepository: TagRepository,
     protected telemetryRepository: TelemetryRepository,
@@ -234,6 +243,7 @@ export class BaseService {
       ctx.eventRepository,
       ctx.integrityRepository,
       ctx.jobRepository,
+      ctx.keychainRepository,
       ctx.libraryRepository,
       ctx.machineLearningRepository,
       ctx.mapRepository,
@@ -258,6 +268,8 @@ export class BaseService {
       ctx.storageRepository,
       ctx.syncRepository,
       ctx.syncCheckpointRepository,
+      ctx.synologyAlbumRepository,
+      ctx.synologyRepository,
       ctx.systemMetadataRepository,
       ctx.tagRepository,
       ctx.telemetryRepository,
