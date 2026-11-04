@@ -66,7 +66,7 @@
 
 | 编号 | 验证项 | 文件 | 结论 |
 |---|---|---|---|
-| 探测 | 同步要读的接口和数据（只读，真实的 49 个相册） | [synology-probe.md](synology-probe.md) | 需要的信息都能读到；时间要和 `localDateTime` 比并留 1 秒余量；群晖 `view` / `download` / `upload` 对应仅查看 / 可下载 / 可编辑；NAS 上的绝对路径接口不给，要用户填写 |
+| 探测 | 同步要读的接口和数据（只读，真实的 49 个相册） | [synology-probe.md](synology-probe.md) | 需要的信息都能读到；时间要和 `localDateTime` 比并留 1 秒余量；群晖 `view` / `download` / `upload` 对应仅查看 / 可下载 / 可编辑；路径用相对路径和用户自己的外部图库对照，不用填前缀；命中率要在正式服上看 |
 
 ## 风险跟踪
 
