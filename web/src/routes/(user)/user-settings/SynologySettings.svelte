@@ -336,7 +336,30 @@
                 {/if}
                 {#if report.others > 0}
                   <Text size="small" color="muted">
-                    {$t('synology_sync_others', { values: { count: report.others } })}
+                    {$t('synology_sync_others', {
+                      values: { count: report.others, matched: report.othersMatched, waiting: report.othersWaiting },
+                    })}
+                  </Text>
+                {/if}
+                {#if report.othersAmbiguous > 0}
+                  <Text size="small" color="muted" data-testid="synology-ambiguous">
+                    {$t('synology_sync_others_ambiguous', { values: { count: report.othersAmbiguous } })}
+                  </Text>
+                {/if}
+                {#if report.membersAdded + report.membersUpdated + report.membersRemoved > 0}
+                  <Text size="small" color="muted">
+                    {$t('synology_sync_members', {
+                      values: {
+                        added: report.membersAdded,
+                        updated: report.membersUpdated,
+                        removed: report.membersRemoved,
+                      },
+                    })}
+                  </Text>
+                {/if}
+                {#if report.membersWaiting > 0}
+                  <Text size="small" color="muted" data-testid="synology-waiting-members">
+                    {$t('synology_sync_waiting_members', { values: { count: report.membersWaiting } })}
                   </Text>
                 {/if}
                 {#if report.albumsFailed > 0}

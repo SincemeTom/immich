@@ -25,9 +25,20 @@ export async function up(db: Kysely<any>): Promise<void> {
 );`.execute(db);
   await sql`CREATE INDEX "synology_album_asset_albumId_idx" ON "synology_album_asset" ("albumId");`.execute(db);
   await sql`CREATE INDEX "synology_album_asset_assetId_idx" ON "synology_album_asset" ("assetId");`.execute(db);
+  await sql`CREATE TABLE "synology_album_user" (
+  "albumId" uuid NOT NULL,
+  "userId" uuid NOT NULL,
+  "role" character varying NOT NULL,
+  CONSTRAINT "synology_album_user_albumId_fkey" FOREIGN KEY ("albumId") REFERENCES "synology_album" ("albumId") ON UPDATE CASCADE ON DELETE CASCADE,
+  CONSTRAINT "synology_album_user_userId_fkey" FOREIGN KEY ("userId") REFERENCES "user" ("id") ON UPDATE CASCADE ON DELETE CASCADE,
+  CONSTRAINT "synology_album_user_pkey" PRIMARY KEY ("albumId", "userId")
+);`.execute(db);
+  await sql`CREATE INDEX "synology_album_user_albumId_idx" ON "synology_album_user" ("albumId");`.execute(db);
+  await sql`CREATE INDEX "synology_album_user_userId_idx" ON "synology_album_user" ("userId");`.execute(db);
 }
 
 export async function down(db: Kysely<any>): Promise<void> {
+  await sql`DROP TABLE "synology_album_user";`.execute(db);
   await sql`DROP TABLE "synology_album_asset";`.execute(db);
   await sql`DROP TABLE "synology_album";`.execute(db);
 }

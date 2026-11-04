@@ -3345,10 +3345,24 @@ export type SynologySyncReportDto = {
     items: number;
     /** Of them, those found in the user's external libraries */
     matched: number;
+    /** Members the albums were shared with, as Synology shares them */
+    membersAdded: number;
+    /** Members Synology no longer shares the albums with: removed */
+    membersRemoved: number;
+    /** Members whose access changed, as Synology's did */
+    membersUpdated: number;
+    /** How many Synology users the albums are shared with, or who added photos to them, are not in Immich yet: they are to log in with Synology SSO, or bind their Synology account */
+    membersWaiting: number;
     /** The error, as Synology or the system reported it */
     message?: string;
-    /** Photos others added to the albums: not synced yet */
+    /** Photos others added to the albums */
     others: number;
+    /** Of those found by name, size and time, how many were so several times in their owners' libraries: one was taken */
+    othersAmbiguous: number;
+    /** Of them, those found in their owners' own libraries, and added */
+    othersMatched: number;
+    /** Of them, those whose owners are not in Immich yet */
+    othersWaiting: number;
     /** Photos removed from albums */
     removed: number;
     /** When the sync started */

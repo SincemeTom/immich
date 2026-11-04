@@ -1,5 +1,7 @@
-import type { SynologyLibraryAsset } from 'src/repositories/synology-album.repository.js';
+import type { SynologyLibraryAsset, SynologyUserAsset } from 'src/repositories/synology-album.repository.js';
 import type { SynologyAccount } from 'src/types.js';
+import { AlbumUserRole } from 'src/enum.js';
+import { type AlbumUserAccess, toAlbumUserAccess } from 'src/utils/album-access.js';
 
 /** Why connecting to Synology, or logging in to it, failed */
 export enum SynologyErrorReason {
@@ -144,6 +146,70 @@ export const isSynologySyncDue = (account: SynologyAccount, now: Date) => {
   );
   return last < scheduled;
 };
+
+/**
+ * What a member of a Synology album may do there, as an Immich album member: view only, download the originals too,
+ * or add photos (and download). None for a role Synology may add
+ */
+export const toSynologyAlbumAccess = (role?: string): AlbumUserAccess | undefined => {
+  switch (role) {
+    case 'view': {
+      return toAlbumUserAccess(AlbumUserRole.Viewer, { allowDownload: false });
+    }
+    case 'download': {
+      return toAlbumUserAccess(AlbumUserRole.Viewer, { allowDownload: true });
+    }
+    case 'upload': {
+      return toAlbumUserAccess(AlbumUserRole.Editor, { isManager: false });
+    }
+    default: {
+      return;
+    }
+  }
+};
+
+/** Synology gives a photo's time as its local time encoded as UTC, as Immich's localDateTime: in seconds */
+const SAME_TIME = 1;
+
+/**
+ * Another user's photos, by file name, to find a photo they added to a Synology album among when its path cannot be
+ * read: the one of the same name (ignoring case), size and time, to the second as Synology rounds it
+ */
+export class SynologyNameIndex {
+  private byName = new Map<string, SynologyUserAsset[]>();
+
+  add(asset: SynologyUserAsset) {
+    const name = asset.originalFileName.normalize('NFC').toLowerCase();
+    const list = this.byName.get(name);
+    if (list) {
+      list.push(asset);
+    } else {
+      this.byName.set(name, [asset]);
+    }
+  }
+
+  /**
+   * The photo, and how many were the same: of several, the one already in the album, then one online, of an external
+   * library, at the shortest path. They are copies of the same file, as name, size and time are the same
+   */
+  find(item: { filename: string; filesize?: number; time?: number }, preferred?: Set<string>) {
+    const candidates = (this.byName.get(item.filename.normalize('NFC').toLowerCase()) ?? []).filter(
+      (asset) =>
+        (!item.filesize || asset.fileSizeInByte === item.filesize) &&
+        (item.time === undefined || Math.abs(asset.localDateTime.getTime() / 1000 - item.time) <= SAME_TIME),
+    );
+
+    candidates.sort(
+      (a, b) =>
+        Number(!!preferred?.has(b.id)) - Number(!!preferred?.has(a.id)) ||
+        Number(a.isOffline) - Number(b.isOffline) ||
+        Number(!a.libraryId) - Number(!b.libraryId) ||
+        a.originalPath.length - b.originalPath.length ||
+        a.originalPath.localeCompare(b.originalPath),
+    );
+    return { asset: candidates[0] as SynologyUserAsset | undefined, count: candidates.length };
+  }
+}
 
 /**
  * The path of a Synology Photos item from its folder's, relative to the Photos folder the folders are in: folder

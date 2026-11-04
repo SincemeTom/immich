@@ -68,8 +68,8 @@
 - [x] 用户设置里绑定群晖（2026-11-04）：账号设置 → 群晖照片，填地址、账号、密码，先登录验证再保存；密码存 macOS 钥匙串；测试连接、解除绑定；两步验证只需输一次验证码（[verification/synology-account.md](verification/synology-account.md)）。还差在正式服用真实账号绑定一次
 - [ ] SSO 能否代替密码：`macos/scripts/synology_sso_probe.py` 试授权码换群晖会话、token 调群晖照片，能拿到会话就隔天用 `--recheck` 看还能不能用。能用且隔夜有效，再加“用 SSO 授权”的绑定方式；否则只用密码
 - [x] 同步相册（2026-11-04）：自己的相册建成 Immich 相册，照片按路径从自己的外部图库里找；跟着群晖改名、换封面、增减照片、删相册，只动同步建的相册和加的照片；每天定时（默认 03:00，可改）和立即同步，账号设置里显示报告（[verification/synology-album-sync.md](verification/synology-album-sync.md)）。还差在正式服用真实账号同步一次，看命中率
-- [ ] 别人加进我相册的照片：代他加进来（规则见上面“别人加进我相册的照片”）
-- [ ] 群晖上的共享关系：所有者和被共享人都已绑定时，在 Immich 里按对应权限共享（对应五档权限）
+- [x] 别人加进我相册的照片（2026-11-04）：代他加进来，只在他自己的库里找，绑定了账号的按路径、否则按文件名 + 大小 + 时间；对上多张、等主人加入的进报告（[verification/synology-album-sharing.md](verification/synology-album-sharing.md)）。还差在正式服用真实账号同步一次
+- [x] 群晖上的共享关系（2026-11-04）：对应上的成员按 查看 / 下载 / 上传 → 仅查看 / 可下载 / 可编辑 共享，跟着群晖改角色、取消共享；只动同步加的成员，手动加的不动；对应不上的报告里只写人数（[verification/synology-album-sharing.md](verification/synology-album-sharing.md)）
 - [ ] 对不上的照片和相册列出来，不静默丢掉
 - [ ] 端到端验证：你的 49 个相册，在挂着真实外部图库的正式服上做（开发机只有测试照片）
 

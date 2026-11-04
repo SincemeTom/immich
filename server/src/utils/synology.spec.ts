@@ -1,7 +1,9 @@
-import type { SynologyLibraryAsset } from 'src/repositories/synology-album.repository.js';
+import type { SynologyLibraryAsset, SynologyUserAsset } from 'src/repositories/synology-album.repository.js';
 import type { SynologyAccount } from 'src/types.js';
+import { AlbumUserRole } from 'src/enum.js';
 import {
   SynologyErrorReason,
+  SynologyNameIndex,
   SynologyPathIndex,
   getAuthErrorReason,
   getConnectionErrorReason,
@@ -9,6 +11,7 @@ import {
   getNextScheduled,
   isSynologySyncDue,
   isSynologySyncTime,
+  toSynologyAlbumAccess,
   toSynologyPath,
   toSynologyUrl,
 } from 'src/utils/synology.js';
@@ -190,5 +193,77 @@ describe('isSynologySyncDue', () => {
 
     expect(isSynologySyncDue(queued, new Date(2026, 10, 2, 3, 1))).toBe(false);
     expect(isSynologySyncDue(queued, new Date(2026, 10, 3, 3, 0))).toBe(true);
+  });
+});
+
+const userAsset = (id: string, overrides: Partial<SynologyUserAsset> = {}): SynologyUserAsset => ({
+  id,
+  originalPath: `/mnt/Photos/${id}`,
+  originalFileName: 'IMG_1.jpg',
+  isOffline: false,
+  fileSizeInByte: 100,
+  libraryId: 'library',
+  localDateTime: new Date('2023-05-01T10:00:00.000Z'),
+  ...overrides,
+});
+
+const nameIndex = (...assets: SynologyUserAsset[]) => {
+  const value = new SynologyNameIndex();
+  for (const item of assets) {
+    value.add(item);
+  }
+  return value;
+};
+
+const time = new Date('2023-05-01T10:00:00.000Z').getTime() / 1000;
+
+describe('toSynologyAlbumAccess', () => {
+  it('should map the roles of Synology to view only, download, and edit', () => {
+    expect(toSynologyAlbumAccess('view')).toEqual({
+      role: AlbumUserRole.Viewer,
+      allowDownload: false,
+      isManager: false,
+    });
+    expect(toSynologyAlbumAccess('download')).toEqual({
+      role: AlbumUserRole.Viewer,
+      allowDownload: true,
+      isManager: false,
+    });
+    expect(toSynologyAlbumAccess('upload')).toEqual({
+      role: AlbumUserRole.Editor,
+      allowDownload: true,
+      isManager: false,
+    });
+  });
+
+  it('should not map a role it does not know', () => {
+    expect(toSynologyAlbumAccess('manage')).toBeUndefined();
+    expect(toSynologyAlbumAccess()).toBeUndefined();
+  });
+});
+
+describe(SynologyNameIndex.name, () => {
+  it('should find a photo of the same name, size and time, to the second', () => {
+    const sut = nameIndex(userAsset('a'));
+
+    expect(sut.find({ filename: 'img_1.JPG', filesize: 100, time: time + 1 })).toEqual({
+      asset: expect.objectContaining({ id: 'a' }),
+      count: 1,
+    });
+    expect(sut.find({ filename: 'IMG_1.jpg', filesize: 100, time: time - 2 }).asset).toBeUndefined();
+    expect(sut.find({ filename: 'IMG_1.jpg', filesize: 101, time }).asset).toBeUndefined();
+    expect(sut.find({ filename: 'IMG_2.jpg', filesize: 100, time }).asset).toBeUndefined();
+  });
+
+  it('should prefer the copy already in the album, then one online, of an external library', () => {
+    const sut = nameIndex(
+      userAsset('upload', { libraryId: null, originalPath: '/u/a' }),
+      userAsset('offline', { isOffline: true }),
+      userAsset('external'),
+    );
+    const item = { filename: 'IMG_1.jpg', filesize: 100, time };
+
+    expect(sut.find(item)).toEqual({ asset: expect.objectContaining({ id: 'external' }), count: 3 });
+    expect(sut.find(item, new Set(['upload'])).asset?.id).toBe('upload');
   });
 });

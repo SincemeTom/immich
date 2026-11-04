@@ -82,6 +82,7 @@ import { StackAuditTable } from 'src/schema/tables/stack-audit.table.js';
 import { StackTable } from 'src/schema/tables/stack.table.js';
 import { SessionSyncCheckpointTable } from 'src/schema/tables/sync-checkpoint.table.js';
 import { SynologyAlbumAssetTable } from 'src/schema/tables/synology-album-asset.table.js';
+import { SynologyAlbumUserTable } from 'src/schema/tables/synology-album-user.table.js';
 import { SynologyAlbumTable } from 'src/schema/tables/synology-album.table.js';
 import { SystemMetadataTable } from 'src/schema/tables/system-metadata.table.js';
 import { TagAssetTable } from 'src/schema/tables/tag-asset.table.js';
@@ -157,6 +158,7 @@ export class ImmichDatabase {
     SessionSyncCheckpointTable,
     SynologyAlbumTable,
     SynologyAlbumAssetTable,
+    SynologyAlbumUserTable,
     SystemMetadataTable,
     TagTable,
     TagAssetTable,
@@ -292,6 +294,7 @@ export interface DB {
 
   synology_album: SynologyAlbumTable;
   synology_album_asset: SynologyAlbumAssetTable;
+  synology_album_user: SynologyAlbumUserTable;
 
   system_metadata: SystemMetadataTable;
 

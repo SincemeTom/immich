@@ -1,7 +1,8 @@
 import { Kysely } from 'kysely';
 import type { SynologyResponse } from 'src/repositories/synology.repository.js';
 import type { SynologyAccount } from 'src/types.js';
-import { AssetVisibility, JobStatus, SystemMetadataKey } from 'src/enum.js';
+import { AlbumUserRole, AssetVisibility, JobStatus, SystemMetadataKey } from 'src/enum.js';
+import { AlbumUserRepository } from 'src/repositories/album-user.repository.js';
 import { AlbumRepository } from 'src/repositories/album.repository.js';
 import { AssetJobRepository } from 'src/repositories/asset-job.repository.js';
 import { ConfigRepository } from 'src/repositories/config.repository.js';
@@ -25,13 +26,23 @@ let defaultDatabase: Kysely<DB>;
 const url = 'https://nas.example.com:5001';
 const ok = <T>(data: T): SynologyResponse<T> => ({ success: true, data });
 
-type Album = { id: number; name: string; cover?: number; items: Item[] };
-type Item = { id: number; filename: string; folder: number; filesize?: number; owner?: number };
+type Member = { id: number; name: string; role: string };
+type Album = { id: number; name: string; cover?: number; items: Item[]; members?: Member[] };
+type Item = { id: number; filename: string; folder: number; filesize?: number; owner?: number; time?: number };
+
+const sidOf = (account: string) => `sid-${account}`;
 
 const setup = () => {
   const { sut, ctx } = newMediumService(SynologyService, {
     database: defaultDatabase,
-    real: [AlbumRepository, AssetJobRepository, SynologyAlbumRepository, SystemMetadataRepository, UserRepository],
+    real: [
+      AlbumRepository,
+      AlbumUserRepository,
+      AssetJobRepository,
+      SynologyAlbumRepository,
+      SystemMetadataRepository,
+      UserRepository,
+    ],
     mock: [ConfigRepository, EventRepository, JobRepository, KeychainRepository, LoggingRepository, SynologyRepository],
   });
 
@@ -45,47 +56,69 @@ const setup = () => {
   ctx.getMock(EventRepository).emit.mockResolvedValue();
   ctx.getMock(JobRepository).queueAll.mockResolvedValue();
 
-  /** what Synology has: its albums, and its folders by ID */
-  const synology = { albums: [] as Album[], folders: { 1: '/2023/Trip', 2: '/2024' } as Record<number, string> };
-  ctx.getMock(SynologyRepository).call.mockImplementation((_connection, api, method, _version, params = {}) => {
+  /** what Synology has: its albums, its folders by ID and whose they are, its accounts and their Photos user IDs */
+  const synology = {
+    albums: [] as Album[],
+    folders: { 1: ['me', '/2023/Trip'], 2: ['me', '/2024'] } as Record<number, [string, string]>,
+    users: { me: 1 } as Record<string, number>,
+    failLogin: new Set<string>(),
+  };
+  ctx.getMock(SynologyRepository).call.mockImplementation((_connection, api, method, _version, params = {}, sid) => {
     const reply = (() => {
       switch (`${api} ${method}`) {
         case 'SYNO.API.Info query': {
           return ok({ 'SYNO.API.Auth': { maxVersion: 7 }, 'SYNO.Foto.Browse.Album': {}, 'SYNO.Foto.UserInfo': {} });
         }
         case 'SYNO.API.Auth login': {
-          return ok({ sid: 'sid' });
+          const account = params.account as string;
+          return synology.failLogin.has(account)
+            ? { success: false, error: { code: 400 } }
+            : ok({ sid: sidOf(account) });
         }
         case 'SYNO.API.Auth logout': {
           return ok({});
         }
         case 'SYNO.Foto.UserInfo me': {
-          return ok({ id: 1, name: 'me' });
+          const account = Object.keys(synology.users).find((name) => sidOf(name) === sid);
+          return ok({ id: synology.users[account!], name: account });
         }
         case 'SYNO.Foto.Browse.Album list': {
           return ok({
-            list: synology.albums.map(({ id, name, cover }) => ({
+            list: synology.albums.map(({ id, name, cover, members = [] }) => ({
               id,
               name,
               owner_user_id: 1,
-              additional: { thumbnail: { unit_id: cover } },
+              shared: members.length > 0,
+              additional: {
+                thumbnail: { unit_id: cover },
+                sharing_info: {
+                  permission: members.map(({ id, name, role }) => ({
+                    db_id: id,
+                    id: 1000 + id,
+                    name,
+                    role,
+                    type: 'user',
+                  })),
+                },
+              },
             })),
           });
         }
         case 'SYNO.Foto.Browse.Item list': {
           const album = synology.albums.find(({ id }) => id === params.album_id);
-          const list = (album?.items ?? []).map(({ id, filename, folder, filesize, owner }) => ({
+          const list = (album?.items ?? []).map(({ id, filename, folder, filesize, owner, time }) => ({
             id,
             filename,
             folder_id: folder,
             filesize,
             owner_user_id: owner ?? 1,
+            time,
           }));
           return ok({ list: list.slice(Number(params.offset), Number(params.offset) + Number(params.limit)) });
         }
         case 'SYNO.Foto.Browse.Folder get': {
-          const name = synology.folders[params.id as number];
-          return name ? ok({ folder: { name } }) : { success: false, error: { code: 642 } };
+          const [owner, name] = synology.folders[params.id as number] ?? [];
+          return name && sid === sidOf(owner) ? ok({ folder: { name } }) : { success: false, error: { code: 642 } };
         }
       }
       throw new Error(`unexpected call ${api} ${method}`);
@@ -102,32 +135,40 @@ beforeAll(async () => {
 
 type Context = ReturnType<typeof setup>['ctx'];
 
-const newAccount = async (ctx: Context) => {
-  const { user } = await ctx.newUser();
+/** A user with an external library of their Synology Photos folder: bound to a Synology account unless told not */
+const newAccount = async (
+  ctx: Context,
+  { account = 'me', photosUserId = 1, bound = true, oauthId = null as string | null } = {},
+) => {
+  const { user } = await ctx.newUser({ oauthId });
   const library = await ctx.get(LibraryRepository).create({
     name: 'NAS',
     ownerId: user.id,
-    importPaths: ['/mnt/nas/home/Photos'],
+    importPaths: [`/mnt/nas/${account}/Photos`],
     exclusionPatterns: [],
   });
-  const account: SynologyAccount = {
-    url,
-    verifyCertificate: true,
-    account: 'me',
-    photosUserId: 1,
-    boundAt: '2026-11-01T00:00:00.000Z',
-    checkedAt: '2026-11-01T00:00:00.000Z',
-  };
-  const metadata = ctx.get(SystemMetadataRepository);
-  const current = await metadata.get(SystemMetadataKey.SynologyAccounts);
-  await metadata.set(SystemMetadataKey.SynologyAccounts, { users: { ...current?.users, [user.id]: account } });
+  if (bound) {
+    const value: SynologyAccount = {
+      url,
+      verifyCertificate: true,
+      account,
+      photosUserId,
+      boundAt: '2026-11-01T00:00:00.000Z',
+      checkedAt: '2026-11-01T00:00:00.000Z',
+    };
+    const metadata = ctx.get(SystemMetadataRepository);
+    const current = await metadata.get(SystemMetadataKey.SynologyAccounts);
+    await metadata.set(SystemMetadataKey.SynologyAccounts, { users: { ...current?.users, [user.id]: value } });
+  }
 
-  const newPhoto = async (path: string, fileSizeInByte = 100) => {
+  const newPhoto = async (path: string, fileSizeInByte = 100, localDateTime = new Date('2023-05-01T10:00:00.000Z')) => {
     const { asset } = await ctx.newAsset({
       ownerId: user.id,
       libraryId: library.id,
       isExternal: true,
-      originalPath: `/mnt/nas/home/Photos/${path}`,
+      originalPath: `/mnt/nas/${account}/Photos/${path}`,
+      originalFileName: path.split('/').pop(),
+      localDateTime,
     });
     await ctx.newExif({ assetId: asset.id, fileSizeInByte });
     return asset;
@@ -135,6 +176,18 @@ const newAccount = async (ctx: Context) => {
 
   return { user, library, newPhoto };
 };
+
+const getMembers = (ctx: Context, albumId: string) =>
+  ctx.database
+    .selectFrom('album_user')
+    .select(['userId', 'role', 'allowDownload'])
+    .where('albumId', '=', albumId)
+    .where('role', '!=', AlbumUserRole.Owner)
+    .orderBy('userId')
+    .execute();
+
+/** the time Synology gives the photos of the tests: their local time, encoded as UTC, in seconds */
+const at = new Date('2023-05-01T10:00:00.000Z').getTime() / 1000;
 
 const getAlbums = (ctx: Context, userId: string) =>
   ctx.database
@@ -154,6 +207,14 @@ const getReport = async (ctx: Context, userId: string) => {
   const value = await ctx.get(SystemMetadataRepository).get(SystemMetadataKey.SynologyAccounts);
   return value!.users[userId].lastSync!;
 };
+
+/** an album of one photo, shared with these members */
+const album7 = (members: Member[]): Album => ({
+  id: 7,
+  name: 'Trip',
+  items: [{ id: 10, filename: 'a.jpg', folder: 1 }],
+  members,
+});
 
 describe(SynologyService.name, () => {
   it('should create an album of the photos found in the external library', async () => {
@@ -367,6 +428,222 @@ describe(SynologyService.name, () => {
     const [album] = await getAlbums(ctx, user.id);
     await expect(getAssetIds(ctx, album.id)).resolves.toHaveLength(1);
     await expect(getReport(ctx, user.id)).resolves.toEqual(expect.objectContaining({ albumsFailed: 1, removed: 0 }));
+  });
+
+  it('should share the album as Synology does, with the members found in Immich', async () => {
+    const { sut, ctx, synology } = setup();
+    const { user, newPhoto } = await newAccount(ctx);
+    await newPhoto('2023/Trip/a.jpg');
+    const { user: bob } = await newAccount(ctx, { account: 'bob11', photosUserId: 11 });
+    const { user: carol } = await newAccount(ctx, { account: 'carol12', bound: false, oauthId: 'Carol12' });
+    // only by a bound account or Synology SSO: not by name
+    await ctx.newUser({ name: 'dave13', email: 'dave13@example.com' });
+    synology.albums = [
+      {
+        id: 7,
+        name: 'Trip',
+        items: [{ id: 10, filename: 'a.jpg', folder: 1 }],
+        members: [
+          { id: 11, name: 'someone', role: 'upload' },
+          { id: 12, name: 'carol12', role: 'download' },
+          { id: 13, name: 'dave13', role: 'view' },
+        ],
+      },
+    ];
+
+    await sut.handleAlbumSync({ id: user.id });
+
+    const [album] = await getAlbums(ctx, user.id);
+    await expect(getMembers(ctx, album.id)).resolves.toEqual(
+      [
+        { userId: bob.id, role: AlbumUserRole.Editor, allowDownload: true },
+        { userId: carol.id, role: AlbumUserRole.Viewer, allowDownload: true },
+      ].toSorted((a, b) => a.userId.localeCompare(b.userId)),
+    );
+    await expect(getReport(ctx, user.id)).resolves.toEqual(
+      expect.objectContaining({ membersAdded: 2, membersWaiting: 1 }),
+    );
+  });
+
+  it("should follow Synology's sharing, and leave the members shared with by hand", async () => {
+    const { sut, ctx, synology } = setup();
+    const { user, newPhoto } = await newAccount(ctx);
+    await newPhoto('2023/Trip/a.jpg');
+    const { user: bob } = await newAccount(ctx, { account: 'bob21', photosUserId: 21 });
+    const { user: carol } = await newAccount(ctx, { account: 'carol22', photosUserId: 22 });
+    const { user: eve } = await ctx.newUser();
+    synology.albums = [
+      album7([
+        { id: 21, name: 'bob21', role: 'upload' },
+        { id: 22, name: 'carol22', role: 'view' },
+      ]),
+    ];
+    await sut.handleAlbumSync({ id: user.id });
+    const [album] = await getAlbums(ctx, user.id);
+    // the owner shares with eve, and takes carol out
+    await ctx.get(AlbumUserRepository).create({ albumId: album.id, userId: eve.id, role: AlbumUserRole.Viewer });
+    await ctx.get(AlbumUserRepository).delete({ albumId: album.id, userId: carol.id });
+
+    synology.albums = [
+      album7([
+        { id: 21, name: 'bob21', role: 'view' },
+        { id: 22, name: 'carol22', role: 'download' },
+      ]),
+    ];
+    await sut.handleAlbumSync({ id: user.id });
+
+    const members = await getMembers(ctx, album.id);
+    expect(members).toEqual(
+      expect.arrayContaining([
+        { userId: bob.id, role: AlbumUserRole.Viewer, allowDownload: false },
+        { userId: eve.id, role: AlbumUserRole.Viewer, allowDownload: false },
+      ]),
+    );
+    expect(members.map(({ userId }) => userId)).not.toContain(carol.id);
+    await expect(getReport(ctx, user.id)).resolves.toEqual(
+      expect.objectContaining({ membersAdded: 0, membersUpdated: 1, albumsUpdated: 1 }),
+    );
+
+    synology.albums = [album7([])];
+    await sut.handleAlbumSync({ id: user.id });
+
+    await expect(getMembers(ctx, album.id)).resolves.toEqual([
+      { userId: eve.id, role: AlbumUserRole.Viewer, allowDownload: false },
+    ]);
+    await expect(getReport(ctx, user.id)).resolves.toEqual(expect.objectContaining({ membersRemoved: 1 }));
+  });
+
+  it('should add the photos others added, from their own libraries only', async () => {
+    const { sut, ctx, synology } = setup();
+    const { user, newPhoto } = await newAccount(ctx);
+    const mine = await newPhoto('2023/Trip/a.jpg');
+    const bob = await newAccount(ctx, { account: 'bob31', photosUserId: 31 });
+    const carol = await newAccount(ctx, { account: 'carol32', bound: false, oauthId: 'carol32' });
+    synology.users.bob31 = 31;
+    synology.folders[50] = ['bob31', '/2022'];
+    synology.folders[51] = ['carol32', '/Phone'];
+    const bobs = await bob.newPhoto('2022/x.jpg', 300);
+    await bob.newPhoto('2021/x.jpg', 300);
+    const carols = await carol.newPhoto('Phone/y.jpg', 200);
+    await carol.newPhoto('Other/y.jpg', 200, new Date('2023-05-01T10:00:05.000Z'));
+    // the same name, size and time in someone else's library: not taken
+    await newPhoto('elsewhere/z.jpg', 400);
+    synology.albums = [
+      {
+        id: 7,
+        name: 'Trip',
+        items: [
+          { id: 10, filename: 'a.jpg', folder: 1 },
+          { id: 11, filename: 'x.jpg', folder: 50, filesize: 300, owner: 31, time: at },
+          { id: 12, filename: 'Y.JPG', folder: 51, filesize: 200, owner: 32, time: at + 1 },
+          { id: 13, filename: 'z.jpg', folder: 52, filesize: 400, owner: 33, time: at },
+        ],
+        members: [
+          { id: 31, name: 'bob31', role: 'upload' },
+          { id: 32, name: 'carol32', role: 'upload' },
+          { id: 33, name: 'dave33', role: 'upload' },
+        ],
+      },
+    ];
+
+    await sut.handleAlbumSync({ id: user.id });
+
+    const [album] = await getAlbums(ctx, user.id);
+    await expect(getAssetIds(ctx, album.id)).resolves.toEqual([mine.id, bobs.id, carols.id].toSorted());
+    await expect(getReport(ctx, user.id)).resolves.toEqual(
+      expect.objectContaining({
+        items: 1,
+        matched: 1,
+        others: 3,
+        othersMatched: 2,
+        othersWaiting: 1,
+        added: 3,
+        membersWaiting: 1,
+      }),
+    );
+
+    synology.albums[0].items = synology.albums[0].items.filter(({ id }) => id !== 12);
+    await sut.handleAlbumSync({ id: user.id });
+
+    await expect(getAssetIds(ctx, album.id)).resolves.toEqual([mine.id, bobs.id].toSorted());
+  });
+
+  it("should find a bound member's photo by name, size and time when their folder cannot be read", async () => {
+    const { sut, ctx, synology } = setup();
+    const { user, newPhoto } = await newAccount(ctx);
+    await newPhoto('2023/Trip/a.jpg');
+    const bob = await newAccount(ctx, { account: 'bob41', photosUserId: 41 });
+    synology.users.bob41 = 41;
+    const bobs = await bob.newPhoto('Uploads/x.jpg', 300);
+    const copy = await bob.newPhoto('Uploads/2023/x.jpg', 300);
+    synology.albums = [
+      {
+        id: 7,
+        name: 'Trip',
+        items: [
+          { id: 10, filename: 'a.jpg', folder: 1 },
+          { id: 11, filename: 'x.jpg', folder: 60, filesize: 300, owner: 41, time: at },
+        ],
+        members: [{ id: 41, name: 'bob41', role: 'upload' }],
+      },
+    ];
+
+    await sut.handleAlbumSync({ id: user.id });
+
+    const [album] = await getAlbums(ctx, user.id);
+    const assetIds = await getAssetIds(ctx, album.id);
+    expect(assetIds).toContain(bobs.id);
+    expect(assetIds).not.toContain(copy.id);
+    await expect(getReport(ctx, user.id)).resolves.toEqual(
+      expect.objectContaining({ othersMatched: 1, othersAmbiguous: 1 }),
+    );
+  });
+
+  it("should keep a member's photos when their account cannot log in", async () => {
+    const { sut, ctx, synology } = setup();
+    const { user, newPhoto } = await newAccount(ctx);
+    await newPhoto('2023/Trip/a.jpg');
+    const bob = await newAccount(ctx, { account: 'bob51', photosUserId: 51 });
+    synology.users.bob51 = 51;
+    synology.folders[70] = ['bob51', '/2022'];
+    const bobs = await bob.newPhoto('2022/x.jpg', 300);
+    synology.albums = [
+      {
+        id: 7,
+        name: 'Trip',
+        items: [
+          { id: 10, filename: 'a.jpg', folder: 1 },
+          // a time that does not match: only its path finds it
+          { id: 11, filename: 'x.jpg', folder: 70, filesize: 300, owner: 51, time: at + 3600 },
+        ],
+        members: [{ id: 51, name: 'bob51', role: 'upload' }],
+      },
+    ];
+    await sut.handleAlbumSync({ id: user.id });
+    const [album] = await getAlbums(ctx, user.id);
+    await expect(getAssetIds(ctx, album.id)).resolves.toContain(bobs.id);
+
+    synology.failLogin.add('bob51');
+    await expect(sut.handleAlbumSync({ id: user.id })).resolves.toBe(JobStatus.Success);
+
+    await expect(getAssetIds(ctx, album.id)).resolves.toContain(bobs.id);
+    await expect(getReport(ctx, user.id)).resolves.toEqual(expect.objectContaining({ othersMatched: 0, removed: 0 }));
+  });
+
+  it('should not take a photo in the locked folder', async () => {
+    const { sut, ctx, synology } = setup();
+    const { user, newPhoto } = await newAccount(ctx);
+    const locked = await newPhoto('2023/Trip/a.jpg');
+    await ctx.database
+      .updateTable('asset')
+      .set({ visibility: AssetVisibility.Locked })
+      .where('id', '=', locked.id)
+      .execute();
+    synology.albums = [{ id: 7, name: 'Trip', items: [{ id: 10, filename: 'a.jpg', folder: 1 }] }];
+
+    await sut.handleAlbumSync({ id: user.id });
+
+    await expect(getAlbums(ctx, user.id)).resolves.toEqual([]);
   });
 
   it('should forget the albums with the user', async () => {

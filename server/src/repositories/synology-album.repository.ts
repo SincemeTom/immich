@@ -16,6 +16,16 @@ export type SynologyLibraryAsset = {
   fileSizeInByte: number | null;
 };
 
+/** A photo of another user, which a photo they added to a Synology album may be */
+export type SynologyUserAsset = SynologyLibraryAsset & {
+  originalFileName: string;
+  libraryId: string | null;
+  localDateTime: Date;
+};
+
+/** the photos that may be in albums: not the video part of a live photo, nor in the locked folder */
+const visible = [AssetVisibility.Timeline, AssetVisibility.Archive];
+
 /** What the Synology album sync keeps: the albums it created, and the photos it added to them */
 @Injectable()
 export class SynologyAlbumRepository {
@@ -95,7 +105,88 @@ export class SynologyAlbumRepository {
       .where('library.deletedAt', 'is', null)
       .where('asset.ownerId', '=', ownerId)
       .where('asset.deletedAt', 'is', null)
-      .where('asset.visibility', '!=', AssetVisibility.Hidden)
+      .where('asset.visibility', 'in', visible)
       .stream();
+  }
+
+  /** All the photos of a user, wherever they are, but those in the trash, the locked folder, and live photos' videos */
+  @GenerateSql({ params: [DummyValue.UUID] })
+  getUserAssets(ownerId: string): AsyncIterableIterator<SynologyUserAsset> {
+    return this.db
+      .selectFrom('asset')
+      .leftJoin('asset_exif', 'asset_exif.assetId', 'asset.id')
+      .leftJoin('library', 'library.id', 'asset.libraryId')
+      .select([
+        'asset.id',
+        'asset.originalPath',
+        'asset.originalFileName',
+        'asset.isOffline',
+        'asset.localDateTime',
+        'asset.libraryId',
+        'asset_exif.fileSizeInByte',
+      ])
+      .where('asset.ownerId', '=', ownerId)
+      .where('asset.deletedAt', 'is', null)
+      .where('asset.visibility', 'in', visible)
+      .where((eb) => eb.or([eb('asset.libraryId', 'is', null), eb('library.deletedAt', 'is', null)]))
+      .stream();
+  }
+
+  /** The users who logged in with an OAuth ID among these, whatever its case */
+  @GenerateSql({ params: [['alice']] })
+  getUsersByOAuthIds(oauthIds: string[]) {
+    if (oauthIds.length === 0) {
+      return Promise.resolve([]);
+    }
+
+    return this.db
+      .selectFrom('user')
+      .select(['id', 'oauthId'])
+      .where('deletedAt', 'is', null)
+      .where(sql<boolean>`lower("oauthId") = any(${oauthIds.map((id) => id.toLowerCase())}::text[])`)
+      .$narrowType<{ oauthId: string }>()
+      .execute();
+  }
+
+  /** The owners of photos */
+  @GenerateSql({ params: [[DummyValue.UUID]] })
+  async getAssetOwners(assetIds: string[]): Promise<Map<string, string>> {
+    if (assetIds.length === 0) {
+      return new Map();
+    }
+
+    const rows = await this.db
+      .selectFrom('asset')
+      .select(['id', 'ownerId'])
+      .where(sql<boolean>`"id" = any(${assetIds}::uuid[])`)
+      .execute();
+    return new Map(rows.map(({ id, ownerId }) => [id, ownerId]));
+  }
+
+  /** The members the sync shared an album with, and Synology's role for each when last synced */
+  @GenerateSql({ params: [DummyValue.UUID] })
+  async getMembers(albumId: string): Promise<Map<string, string>> {
+    const rows = await this.db
+      .selectFrom('synology_album_user')
+      .select(['userId', 'role'])
+      .where('albumId', '=', albumId)
+      .execute();
+    return new Map(rows.map(({ userId, role }) => [userId, role]));
+  }
+
+  async setMember(albumId: string, userId: string, role: string) {
+    await this.db
+      .insertInto('synology_album_user')
+      .values({ albumId, userId, role })
+      .onConflict((oc) => oc.columns(['albumId', 'userId']).doUpdateSet({ role }))
+      .execute();
+  }
+
+  async removeMember(albumId: string, userId: string) {
+    await this.db
+      .deleteFrom('synology_album_user')
+      .where('albumId', '=', albumId)
+      .where('userId', '=', userId)
+      .execute();
   }
 }

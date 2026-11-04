@@ -50,7 +50,22 @@ const SynologySyncReportSchema = z
     albumsFailed: z.int().describe('Albums whose photos Synology did not list: left as they were'),
     items: z.int().describe("The account's own photos in its albums"),
     matched: z.int().describe("Of them, those found in the user's external libraries"),
-    others: z.int().describe('Photos others added to the albums: not synced yet'),
+    others: z.int().describe('Photos others added to the albums'),
+    othersMatched: z.int().describe("Of them, those found in their owners' own libraries, and added"),
+    othersWaiting: z.int().describe('Of them, those whose owners are not in Immich yet'),
+    othersAmbiguous: z
+      .int()
+      .describe(
+        "Of those found by name, size and time, how many were so several times in their owners' libraries: one was taken",
+      ),
+    membersAdded: z.int().describe('Members the albums were shared with, as Synology shares them'),
+    membersUpdated: z.int().describe("Members whose access changed, as Synology's did"),
+    membersRemoved: z.int().describe('Members Synology no longer shares the albums with: removed'),
+    membersWaiting: z
+      .int()
+      .describe(
+        'How many Synology users the albums are shared with, or who added photos to them, are not in Immich yet: they are to log in with Synology SSO, or bind their Synology account',
+      ),
     added: z.int().describe('Photos added to albums'),
     removed: z.int().describe('Photos removed from albums'),
     unmatchedPaths: z.array(z.string()).describe('The first photos not found, as paths in Synology Photos'),

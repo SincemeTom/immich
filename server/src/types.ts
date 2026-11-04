@@ -648,8 +648,18 @@ export type SynologySyncReport = {
   /** the account's own photos in its albums, and how many of them were found in the user's external libraries */
   items: number;
   matched: number;
-  /** photos others added to the account's albums: not synced yet */
+  /** photos others added to the account's albums; those found in their owners' own libraries; those whose owners are not in Immich yet */
   others: number;
+  othersMatched: number;
+  othersWaiting: number;
+  /** of those found by name, size and time, how many were so several times in their owners' libraries: one was taken */
+  othersAmbiguous: number;
+  /** members the albums were shared with, whose access changed, who were removed */
+  membersAdded: number;
+  membersUpdated: number;
+  membersRemoved: number;
+  /** how many Synology users the albums are shared with, or who added photos to them, are not found in Immich yet */
+  membersWaiting: number;
   /** photos added to albums, and removed from them */
   added: number;
   removed: number;

@@ -668,6 +668,7 @@ describe(SynologyService.name, () => {
       replies['SYNO.Foto.Browse.Album list'] = ok({ list: [] });
       mocks.synologyAlbum.getAll.mockResolvedValue([]);
       mocks.user.getMetadata.mockResolvedValue([]);
+      mocks.synologyAlbum.getUsersByOAuthIds.mockResolvedValue([]);
     });
 
     it('should skip a user without an account', async () => {
@@ -790,7 +791,14 @@ const report = (): SynologySyncReport => ({
   items: 2,
   matched: 2,
   others: 0,
+  othersMatched: 0,
+  othersWaiting: 0,
+  othersAmbiguous: 0,
+  membersAdded: 0,
+  membersUpdated: 0,
+  membersRemoved: 0,
   added: 2,
   removed: 0,
   unmatchedPaths: [],
+  membersWaiting: 0,
 });

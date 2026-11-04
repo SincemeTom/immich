@@ -20,10 +20,12 @@ import {
   SYNOLOGY_SYNC_TIME,
   SynologyError,
   SynologyErrorReason,
+  SynologyNameIndex,
   SynologyPathIndex,
   getAuthErrorReason,
   getNextScheduled,
   isSynologySyncDue,
+  toSynologyAlbumAccess,
   toSynologyPath,
   toSynologyUrl,
 } from 'src/utils/synology.js';
@@ -58,13 +60,18 @@ type Connected = {
 };
 type Failed = { success: false; reason: SynologyErrorReason; message: string };
 
+type SynologyPermission = { db_id?: number; name?: string; role?: string; type?: string };
 type SynologyAlbum = {
   id: number;
   name: string;
   item_count?: number;
   owner_user_id?: number;
   passphrase?: string;
-  additional?: { thumbnail?: { unit_id?: number } };
+  shared?: boolean;
+  additional?: {
+    thumbnail?: { unit_id?: number };
+    sharing_info?: { permission?: SynologyPermission[] };
+  };
 };
 type SynologyItem = {
   id: number;
@@ -72,6 +79,22 @@ type SynologyItem = {
   filesize?: number;
   folder_id?: number;
   owner_user_id?: number;
+  /** the local time it was taken, encoded as UTC, in seconds */
+  time?: number;
+};
+
+/** Another Synology Photos user: one the account's albums are shared with, or who added photos to them */
+type SynologyMember = {
+  /** their Immich user: who logged in with Synology SSO as them, or bound their account */
+  userId?: string;
+  name?: string;
+  /** whether they bound their account: their photos' folders are read with it */
+  bound: boolean;
+  folders: Map<number, string | null>;
+  /** their folders could not be read: their photos the sync added are not removed then */
+  unsure: boolean;
+  paths?: SynologyPathIndex;
+  names?: SynologyNameIndex;
 };
 
 /** What one sync works with: the account, logged in, and what it read so far */
@@ -81,12 +104,29 @@ type SyncContext = {
   photosUserId: number;
   sid: string;
   source: string;
+  accounts: Record<string, SynologyAccount>;
   report: SynologySyncReport;
   folders: Map<number, string | null>;
   index?: SynologyPathIndex;
+  members: Map<number, SynologyMember>;
+  /** the Synology Photos users not found in Immich */
+  waiting: Set<number>;
   added: Set<string>;
   removed: Set<string>;
   coverRemoved: boolean;
+};
+
+/** An album of the account, and its photos: none when they could not be read */
+type ReadAlbum = { album: SynologyAlbum; items?: SynologyItem[] };
+
+/** The photos of an album found in Immich */
+type Matched = {
+  assetIds: string[];
+  byItem: Map<number, string>;
+  /** whether every photo of the account could be looked for: the photos the sync added are not removed otherwise */
+  complete: boolean;
+  /** the users whose photos could not all be looked for: theirs are not removed */
+  unsure: Set<string>;
 };
 
 /**
@@ -319,9 +359,16 @@ export class SynologyService extends BaseService {
       items: 0,
       matched: 0,
       others: 0,
+      othersMatched: 0,
+      othersWaiting: 0,
+      othersAmbiguous: 0,
+      membersAdded: 0,
+      membersUpdated: 0,
+      membersRemoved: 0,
       added: 0,
       removed: 0,
       unmatchedPaths: [],
+      membersWaiting: 0,
     };
 
     let failure: Failed | undefined;
@@ -374,7 +421,9 @@ export class SynologyService extends BaseService {
     this.logger.log(
       `Synced the Synology albums of user ${id}: ${report.albums} albums (${report.albumsCreated} created, ` +
         `${report.albumsUpdated} changed, ${report.albumsRemoved} removed), ${report.matched} of ${report.items} ` +
-        `photos found, ${report.added} added, ${report.removed} removed`,
+        `photos found, ${report.othersMatched} of ${report.others} added by others, ${report.added} added, ` +
+        `${report.removed} removed; ${report.membersAdded} members added, ${report.membersUpdated} changed, ` +
+        `${report.membersRemoved} removed`,
     );
     return JobStatus.Success;
   }
@@ -398,20 +447,37 @@ export class SynologyService extends BaseService {
       sid: session.sid,
       // the albums synced from another account, bound before, are left as they are
       source: `${account.url}#${account.photosUserId}`,
+      accounts: await this.getAccounts(),
       report,
       folders: new Map(),
+      members: new Map(),
+      waiting: new Set(),
       added: new Set(),
       removed: new Set(),
       coverRemoved: false,
     };
 
-    const listed = await this.list<SynologyAlbum>(ctx.connection, ctx.sid, 'SYNO.Foto.Browse.Album', 'list', 1, {
-      additional: ['thumbnail'],
+    const listed = await this.list<SynologyAlbum>(ctx.connection, ctx.sid, 'SYNO.Foto.Browse.Album', 'list', 2, {
+      additional: ['sharing_info', 'thumbnail'],
     });
     const albums = listed.filter(
       ({ owner_user_id }) => owner_user_id === undefined || owner_user_id === ctx.photosUserId,
     );
     report.albums = albums.length;
+
+    const read: ReadAlbum[] = [];
+    for (const album of albums) {
+      try {
+        read.push({ album, items: await this.listItems(ctx, album) });
+      } catch (error) {
+        report.albumsFailed++;
+        this.logger.warn(`Could not read Synology album ${album.id} of user ${userId}: ${error}`);
+        read.push({ album });
+      }
+    }
+
+    await this.findMembers(ctx, read);
+    await this.readMemberFolders(ctx, read);
 
     const rows = await this.synologyAlbumRepository.getAll(userId);
     const synced = new Map(rows.filter(({ source }) => source === ctx.source).map((row) => [row.synologyAlbumId, row]));
@@ -419,28 +485,24 @@ export class SynologyService extends BaseService {
     const userMetadata = await this.userRepository.getMetadata(userId);
     const order = getPreferences(userMetadata).albums.defaultAssetOrder;
 
-    for (const album of albums) {
+    for (const { album, items } of read) {
       const row = synced.get(album.id);
       synced.delete(album.id);
-
-      let items: SynologyItem[];
-      try {
-        items = await this.listItems(ctx, album);
-      } catch (error) {
-        report.albumsFailed++;
-        this.logger.warn(`Could not read Synology album ${album.id} of user ${userId}: ${error}`);
+      if (!items) {
         continue;
       }
 
-      const { assetIds, byItem } = await this.matchItems(ctx, items);
+      const present = row ? await this.synologyAlbumRepository.getAlbumAssetIds(row.albumId) : new Set<string>();
+      const matched = await this.matchItems(ctx, items, present);
       const coverItemId = album.additional?.thumbnail?.unit_id;
-      const coverAssetId = coverItemId === undefined ? undefined : byItem.get(coverItemId);
+      const coverAssetId = coverItemId === undefined ? undefined : matched.byItem.get(coverItemId);
 
       if (row) {
-        await this.updateAlbum(ctx, row, album, assetIds, coverItemId, coverAssetId);
+        await this.updateAlbum(ctx, row, album, matched, present, coverItemId, coverAssetId);
         continue;
       }
 
+      const { assetIds } = matched;
       if (assetIds.length === 0) {
         report.albumsEmpty++;
         continue;
@@ -467,7 +529,11 @@ export class SynologyService extends BaseService {
       }
       report.albumsCreated++;
       report.added += assetIds.length;
-      await this.eventRepository.emit('AlbumUpdate', { id: created.id, userIds: [userId], recipientIds: [] });
+
+      const members = await this.syncMembers(ctx, created.id, album, [
+        { user: { id: userId }, role: AlbumUserRole.Owner },
+      ]);
+      await this.eventRepository.emit('AlbumUpdate', { id: created.id, userIds: members.userIds, recipientIds: [] });
     }
 
     // a Synology that lists no album at all, of an account that had some, is taken for one that failed to
@@ -488,15 +554,17 @@ export class SynologyService extends BaseService {
       await this.albumRepository.updateThumbnails();
     }
 
+    report.membersWaiting = ctx.waiting.size;
     await this.inferLocations(ctx);
   }
 
-  /** Brings an album the sync created before up to date: its name, its cover, its photos */
+  /** Brings an album the sync created before up to date: its name, its cover, its photos, its members */
   private async updateAlbum(
     ctx: SyncContext,
     row: { albumId: string; name: string; thumbnailItemId: number | null },
     album: SynologyAlbum,
-    assetIds: string[],
+    { assetIds, complete, unsure }: Matched,
+    present: Set<string>,
     coverItemId: number | undefined,
     coverAssetId: string | undefined,
   ) {
@@ -506,13 +574,16 @@ export class SynologyService extends BaseService {
       return;
     }
 
-    const present = await this.synologyAlbumRepository.getAlbumAssetIds(albumId);
     const tracked = await this.synologyAlbumRepository.getAssetIds(albumId);
     const wanted = new Set(assetIds);
     // the photos missing, even those the user took out: Synology's album is the one to change
     const toAdd = assetIds.filter((id) => !present.has(id));
-    // only the photos the sync added: those the user added stay
-    const toRemove = [...tracked.difference(wanted)];
+    // only the photos the sync added, and only when it could look for them all: those the user added stay
+    let toRemove = complete ? [...tracked.difference(wanted)] : [];
+    if (toRemove.length > 0 && unsure.size > 0) {
+      const owners = await this.synologyAlbumRepository.getAssetOwners(toRemove);
+      toRemove = toRemove.filter((id) => !unsure.has(owners.get(id) ?? ''));
+    }
 
     await this.albumRepository.addAssetIds(albumId, toAdd);
     await this.synologyAlbumRepository.addAssetIds(albumId, toAdd);
@@ -544,7 +615,6 @@ export class SynologyService extends BaseService {
 
     if (Object.keys(values).length > 0) {
       await this.albumRepository.update(albumId, { id: albumId, ...values }, ctx.userId);
-      ctx.report.albumsUpdated++;
     }
 
     await this.synologyAlbumRepository.update(albumId, { name: album.name, thumbnailItemId, syncedAt: new Date() });
@@ -558,12 +628,198 @@ export class SynologyService extends BaseService {
     ctx.report.added += toAdd.length;
     ctx.report.removed += toRemove.length;
 
-    if (toAdd.length > 0 || toRemove.length > 0) {
-      await this.eventRepository.emit('AlbumUpdate', {
-        id: albumId,
-        userIds: current.albumUsers.map(({ user }) => user.id),
-        recipientIds: [],
+    const members = await this.syncMembers(ctx, albumId, album, current.albumUsers);
+    if (Object.keys(values).length > 0 || members.changed) {
+      ctx.report.albumsUpdated++;
+    }
+
+    if (toAdd.length > 0 || toRemove.length > 0 || members.changed) {
+      await this.eventRepository.emit('AlbumUpdate', { id: albumId, userIds: members.userIds, recipientIds: [] });
+    }
+  }
+
+  /**
+   * Shares an album as Synology shares it, with the members found in Immich: view only, download, or add photos. It
+   * only changes and removes the members it added; a member the owner added by hand, or took out, stays as they are
+   */
+  private async syncMembers(
+    ctx: SyncContext,
+    albumId: string,
+    album: SynologyAlbum,
+    albumUsers: Array<{ user: { id: string }; role: AlbumUserRole }>,
+  ) {
+    const present = new Map(albumUsers.map(({ user, role }) => [user.id, role]));
+    const sharing = album.additional?.sharing_info;
+    // a shared album whose sharing Synology did not give: its members are left as they are
+    if (!sharing && album.shared) {
+      return { changed: false, userIds: present.keys().toArray() };
+    }
+
+    const wanted = new Map<string, string>();
+    for (const { db_id, role, type } of sharing?.permission ?? []) {
+      if (type !== 'user' || typeof db_id !== 'number' || !role || !toSynologyAlbumAccess(role)) {
+        continue;
+      }
+
+      const member = ctx.members.get(db_id);
+      if (member?.userId) {
+        wanted.set(member.userId, role);
+      } else {
+        ctx.waiting.add(db_id);
+      }
+    }
+
+    const { report } = ctx;
+    const tracked = await this.synologyAlbumRepository.getMembers(albumId);
+    let changed = false;
+
+    for (const [memberId, role] of wanted) {
+      const last = tracked.get(memberId);
+      const current = present.get(memberId);
+      const access = toSynologyAlbumAccess(role)!;
+
+      if (last === undefined) {
+        if (current !== undefined) {
+          // shared with them by hand
+          continue;
+        }
+
+        await this.albumUserRepository.create({ albumId, userId: memberId, ...access });
+        await this.synologyAlbumRepository.setMember(albumId, memberId, role);
+        present.set(memberId, access.role);
+        report.membersAdded++;
+        changed = true;
+        continue;
+      }
+
+      // taken out in Immich: not shared again; nor changed when Synology's role did not change
+      if (current === undefined || current === AlbumUserRole.Owner || last === role) {
+        continue;
+      }
+
+      await this.albumUserRepository.update({ albumId, userId: memberId }, access);
+      await this.synologyAlbumRepository.setMember(albumId, memberId, role);
+      present.set(memberId, access.role);
+      report.membersUpdated++;
+      changed = true;
+    }
+
+    for (const memberId of tracked.keys()) {
+      if (wanted.has(memberId)) {
+        continue;
+      }
+
+      await this.synologyAlbumRepository.removeMember(albumId, memberId);
+      const current = present.get(memberId);
+      if (current === undefined || current === AlbumUserRole.Owner) {
+        continue;
+      }
+
+      await this.albumUserRepository.delete({ albumId, userId: memberId });
+      present.delete(memberId);
+      report.membersRemoved++;
+      changed = true;
+    }
+
+    return { changed, userIds: present.keys().toArray() };
+  }
+
+  /**
+   * The Immich users of the Synology Photos users the albums are shared with, or who added photos to them: who bound
+   * their Synology account here, or else who logged in with Synology SSO as them. Never by name or email
+   */
+  private async findMembers(ctx: SyncContext, read: ReadAlbum[]) {
+    const names = new Map<number, string>();
+    const ids = new Set<number>();
+    for (const { album, items } of read) {
+      for (const { db_id, name, type } of album.additional?.sharing_info?.permission ?? []) {
+        if (!(type === 'user' && typeof db_id === 'number')) {
+          continue;
+        }
+
+        ids.add(db_id);
+        if (name) {
+          names.set(db_id, name);
+        }
+      }
+      for (const { owner_user_id } of items ?? []) {
+        if (owner_user_id !== undefined) {
+          ids.add(owner_user_id);
+        }
+      }
+    }
+    ids.delete(ctx.photosUserId);
+
+    const bound = new Map<number, string>();
+    for (const [id, other] of Object.entries(ctx.accounts)) {
+      if (id !== ctx.userId && other.url === ctx.connection.url) {
+        bound.set(other.photosUserId, id);
+      }
+    }
+
+    const users = await this.synologyAlbumRepository.getUsersByOAuthIds([...new Set(names.values())]);
+    const byLogin = new Map(users.map(({ id, oauthId }) => [oauthId.toLowerCase(), id]));
+
+    for (const id of ids) {
+      const name = names.get(id);
+      const userId = bound.get(id) ?? (name ? byLogin.get(name.toLowerCase()) : undefined);
+      ctx.members.set(id, {
+        userId: userId === ctx.userId ? undefined : userId,
+        name,
+        bound: bound.has(id),
+        folders: new Map(),
+        unsure: false,
       });
+    }
+  }
+
+  /**
+   * The folders of the photos others added, read with their own Synology account when they bound it: the account
+   * the album belongs to cannot read them
+   */
+  private async readMemberFolders(ctx: SyncContext, read: ReadAlbum[]) {
+    const folders = new Map<number, Set<number>>();
+    for (const { items } of read) {
+      for (const { owner_user_id, folder_id } of items ?? []) {
+        const member = owner_user_id === undefined ? undefined : ctx.members.get(owner_user_id);
+        if (!member?.userId || !member.bound || folder_id === undefined) {
+          continue;
+        }
+
+        const ids = folders.get(owner_user_id!);
+        if (ids) {
+          ids.add(folder_id);
+        } else {
+          folders.set(owner_user_id!, new Set([folder_id]));
+        }
+      }
+    }
+
+    for (const [photosUserId, ids] of folders) {
+      const member = ctx.members.get(photosUserId)!;
+      const memberId = member.userId!;
+      const account = ctx.accounts[memberId];
+      const secret = await this.readSecret(memberId).catch(() => null);
+      if (!secret) {
+        member.unsure = true;
+        continue;
+      }
+
+      const result = await this.withSession(account, account.account, secret, async (session) => {
+        if (session.me.id !== photosUserId) {
+          throw new Error('The bound account is another Synology Photos user now');
+        }
+        for (const id of ids) {
+          member.folders.set(id, await this.readFolder(account, session.sid, id));
+        }
+      });
+
+      if (result.success) {
+        await this.keepSecret(memberId, secret, result.secret);
+      } else {
+        member.unsure = true;
+        this.logger.warn(`Could not read the Synology folders of user ${memberId}: ${result.message}`);
+      }
     }
   }
 
@@ -580,21 +836,52 @@ export class SynologyService extends BaseService {
     return items;
   }
 
-  /** The account's own photos of an album, found in the user's external libraries by their paths */
-  private async matchItems(ctx: SyncContext, items: SynologyItem[]) {
+  /**
+   * The photos of an album found in Immich: the account's own by their paths in the user's external libraries; those
+   * others added in their own libraries, once they are in Immich
+   */
+  private async matchItems(ctx: SyncContext, items: SynologyItem[], present: Set<string>): Promise<Matched> {
     const { report } = ctx;
-    const assetIds: string[] = [];
-    const byItem = new Map<number, string>();
+    const matched: Matched = { assetIds: [], byItem: new Map(), complete: true, unsure: new Set() };
     const seen = new Set<string>();
+    const add = (itemId: number, assetId: string) => {
+      matched.byItem.set(itemId, assetId);
+      if (seen.has(assetId)) {
+        return;
+      }
+
+      seen.add(assetId);
+      matched.assetIds.push(assetId);
+    };
 
     for (const item of items) {
       if (item.owner_user_id !== undefined && item.owner_user_id !== ctx.photosUserId) {
         report.others++;
+        const member = ctx.members.get(item.owner_user_id);
+        if (!member?.userId) {
+          report.othersWaiting++;
+          ctx.waiting.add(item.owner_user_id);
+          continue;
+        }
+
+        if (member.unsure) {
+          matched.unsure.add(member.userId);
+        }
+
+        const assetId = await this.findMemberAsset(ctx, member, item, present);
+        if (assetId) {
+          report.othersMatched++;
+          add(item.id, assetId);
+        }
         continue;
       }
 
       report.items++;
       const folder = item.folder_id === undefined ? null : await this.getFolder(ctx, item.folder_id);
+      if (folder === null && item.folder_id !== undefined) {
+        matched.complete = false;
+      }
+
       const path = folder === null ? item.filename : toSynologyPath(folder, item.filename);
       const index = await this.getPathIndex(ctx);
       const asset = folder === null ? undefined : index.find(path, item.filesize);
@@ -606,16 +893,38 @@ export class SynologyService extends BaseService {
       }
 
       report.matched++;
-      byItem.set(item.id, asset.id);
-      if (seen.has(asset.id)) {
-        continue;
-      }
-
-      seen.add(asset.id);
-      assetIds.push(asset.id);
+      add(item.id, asset.id);
     }
 
-    return { assetIds, byItem };
+    return matched;
+  }
+
+  /**
+   * A photo another user added, in their own library only: by its path in their external libraries when their folder
+   * could be read, else by its name, size and time; several by name, size and time are counted in the report
+   */
+  private async findMemberAsset(ctx: SyncContext, member: SynologyMember, item: SynologyItem, present: Set<string>) {
+    const folder = item.folder_id === undefined ? undefined : member.folders.get(item.folder_id);
+    if (typeof folder === 'string') {
+      member.paths ??= await this.loadPathIndex(member.userId!);
+      const asset = member.paths.find(toSynologyPath(folder, item.filename), item.filesize);
+      if (asset) {
+        return asset.id;
+      }
+    }
+
+    if (!member.names) {
+      const names = new SynologyNameIndex();
+      for await (const asset of this.synologyAlbumRepository.getUserAssets(member.userId!)) {
+        names.add(asset);
+      }
+      member.names = names;
+    }
+    const { asset, count } = member.names.find(item, present);
+    if (count > 1) {
+      ctx.report.othersAmbiguous++;
+    }
+    return asset?.id;
   }
 
   /** The path of a folder of the account's personal space, relative to its Photos folder; null when not readable */
@@ -624,30 +933,36 @@ export class SynologyService extends BaseService {
       return ctx.folders.get(id)!;
     }
 
-    const response = await this.synologyRepository.call<{ folder?: { name?: string }; name?: string }>(
-      ctx.connection,
-      'SYNO.Foto.Browse.Folder',
-      'get',
-      1,
-      { id },
-      ctx.sid,
-    );
-    const name = response.success ? (response.data?.folder?.name ?? response.data?.name) : undefined;
-    const folder = typeof name === 'string' ? name : null;
+    const folder = await this.readFolder(ctx.connection, ctx.sid, id);
     ctx.folders.set(id, folder);
     return folder;
   }
 
+  private async readFolder(connection: SynologyConnection, sid: string, id: number) {
+    const response = await this.synologyRepository.call<{ folder?: { name?: string }; name?: string }>(
+      connection,
+      'SYNO.Foto.Browse.Folder',
+      'get',
+      1,
+      { id },
+      sid,
+    );
+    const name = response.success ? (response.data?.folder?.name ?? response.data?.name) : undefined;
+    return typeof name === 'string' ? name : null;
+  }
+
   private async getPathIndex(ctx: SyncContext) {
-    if (!ctx.index) {
-      const index = new SynologyPathIndex();
-      for await (const asset of this.synologyAlbumRepository.getLibraryAssets(ctx.userId)) {
-        index.add(asset);
-      }
-      this.logger.debug(`${index.size} photos of the external libraries of user ${ctx.userId} to find Synology's in`);
-      ctx.index = index;
-    }
+    ctx.index ??= await this.loadPathIndex(ctx.userId);
     return ctx.index;
+  }
+
+  private async loadPathIndex(userId: string) {
+    const index = new SynologyPathIndex();
+    for await (const asset of this.synologyAlbumRepository.getLibraryAssets(userId)) {
+      index.add(asset);
+    }
+    this.logger.debug(`${index.size} photos of the external libraries of user ${userId} to find Synology's in`);
+    return index;
   }
 
   /** Photos added to albums, or taken out, may give a location to the album users' photos taken around them */

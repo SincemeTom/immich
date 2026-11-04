@@ -49,10 +49,17 @@ const report: SynologySyncReportDto = {
   albumsFailed: 1,
   items: 13_426,
   matched: 13_400,
-  others: 3896,
+  others: 3049,
+  othersMatched: 3044,
+  othersWaiting: 5,
+  othersAmbiguous: 1,
+  membersAdded: 3,
+  membersUpdated: 0,
+  membersRemoved: 0,
   added: 13_400,
   removed: 0,
   unmatchedPaths: ['2023/Trip/gone.jpg'],
+  membersWaiting: 2,
 };
 
 const scheduled: SynologyAccountResponseDto = {
@@ -246,6 +253,9 @@ describe('SynologySettings', () => {
     expect(section).toHaveTextContent('synology_sync_photos');
     expect(section).toHaveTextContent('synology_sync_empty');
     expect(section).toHaveTextContent('synology_sync_others');
+    expect(section).toHaveTextContent('synology_sync_members');
+    expect(screen.getByTestId('synology-ambiguous')).toBeInTheDocument();
+    expect(screen.getByTestId('synology-waiting-members')).toBeInTheDocument();
     expect(section).toHaveTextContent('synology_sync_failed_albums');
     expect(section).toHaveTextContent('2023/Trip/gone.jpg');
     expect(screen.getByText('synology_sync_next')).toBeInTheDocument();
