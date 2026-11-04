@@ -13,8 +13,12 @@ What it reads:
   albums.json          the albums of the account, with their sharing
   shared_with_me.json  the albums others share with the account
   items/<album>.json   what is in each album (filename, size, time taken, folder)
-  folders.json         the folders those items are in (personal space and shared space)
+  folders.json         the folders those items are in (personal space and shared space; others' are refused, 642)
+  sharing.json         who each album is shared with and how, as each of two calls answers
+  users.json           the users and groups an album may be shared with
+  user_settings.json, team_space.json   the account's and the shared space's settings
   errors.json          every call that failed, with Synology's error code
+  summary.json         the shape of all that, without any name, filename, path or passphrase
 """
 
 import getpass
@@ -148,11 +152,92 @@ def main():
                     break
         save(out, "folders.json", folders)
         print(f"{len(folders)} of {len(folder_ids)} folders read")
+
+        # who an album is shared with, and how: the earlier probe's call answered an empty list for every album, so
+        # each of the ways Synology's own web page may use is tried, and what each answers is kept
+        sharing = {}
+        for album in albums:
+            if not album.get("passphrase"):
+                continue
+            tries = {
+                "album_get": syno.call(
+                    "SYNO.Foto.Browse.Album", "get", 2, id=[album["id"]], additional=["sharing_info"]
+                ),
+                "passphrase_get": syno.call("SYNO.Foto.Sharing.Passphrase", "get", 1, passphrase=album["passphrase"]),
+            }
+            sharing[album["id"]] = {name: body for name, body in tries.items() if body.get("success")}
+        save(out, "sharing.json", sharing)
+        save(out, "users.json", syno.call("SYNO.Foto.Sharing.Misc", "list_user_group", 1, team_space_sharable=False))
+        save(out, "user_settings.json", syno.call("SYNO.Foto.Setting.User", "get", 1))
+        save(out, "team_space.json", syno.call("SYNO.Foto.Setting.TeamSpace", "get", 1))
+
+        save(out, "summary.json", summarize(albums, shared, out, folders, sharing))
     finally:
         syno.call("SYNO.API.Auth", "logout", auth_version, session="ImmichProbe")
         save(out, "errors.json", syno.errors)
 
     print(f"done: {out} ({len(syno.errors)} calls failed, see errors.json)")
+    print("summary.json has no names, filenames or paths: it is what may go into the repository")
+
+
+def summarize(albums, shared, out, folders, sharing):
+    """The shape of what was read, with no name, filename, path or passphrase in it"""
+    me = None
+    items_by_owner, item_keys, additional_keys, types = {}, set(), set(), {}
+    with_size = with_time = with_folder = 0
+    total = 0
+    for album in albums:
+        me = me or album.get("owner_user_id")
+        with open(os.path.join(out, f"items/{album['id']}.json"), encoding="utf-8") as f:
+            items = json.load(f)
+        for item in items:
+            total += 1
+            owner = "me" if item.get("owner_user_id") == me else f"user {item.get('owner_user_id')}"
+            items_by_owner[owner] = items_by_owner.get(owner, 0) + 1
+            item_keys |= set(item)
+            additional_keys |= set(item.get("additional", {}))
+            types[item.get("type")] = types.get(item.get("type"), 0) + 1
+            with_size += "filesize" in item
+            with_time += "time" in item
+            with_folder += "folder_id" in item
+    roots = {}
+    for folder in folders.values():
+        depth = len([part for part in folder.get("name", "").split("/") if part])
+        key = f"{folder['api']} depth {depth}"
+        roots[key] = roots.get(key, 0) + 1
+    return {
+        "albums": len(albums),
+        "albums_shared_by_link": sum(1 for a in albums if a.get("passphrase")),
+        "albums_shared_with_me": len(shared),
+        "album_keys": sorted({k for a in albums for k in a}),
+        "album_additional_keys": sorted({k for a in albums for k in a.get("additional", {})}),
+        "items": total,
+        "items_by_owner": items_by_owner,
+        "item_types": types,
+        "item_keys": sorted(item_keys),
+        "item_additional_keys": sorted(additional_keys),
+        "items_with_filesize_time_folder": [with_size, with_time, with_folder],
+        "folders_by_api_and_depth": roots,
+        "folder_keys": sorted({k for f in folders.values() for k in f}),
+        "sharing_answered_by": {
+            name: sum(1 for s in sharing.values() if name in s) for name in ("album_get", "passphrase_get")
+        },
+        "sharing_shape": {
+            name: shape(next((s[name]["data"] for s in sharing.values() if name in s), None))
+            for name in ("album_get", "passphrase_get")
+        },
+    }
+
+
+def shape(value, depth=8):
+    """The keys and types of a JSON value, without the values"""
+    if depth == 0:
+        return type(value).__name__
+    if isinstance(value, dict):
+        return {key: shape(item, depth - 1) for key, item in value.items()}
+    if isinstance(value, list):
+        return [shape(value[0], depth - 1)] if value else []
+    return type(value).__name__
 
 
 if __name__ == "__main__":
