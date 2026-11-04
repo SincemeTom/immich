@@ -1,8 +1,10 @@
 import 'package:immich_mobile/domain/models/album/local_album.model.dart';
 import 'package:immich_mobile/domain/models/asset/base_asset.model.dart';
 import 'package:immich_mobile/domain/models/asset_edit.model.dart';
+import 'package:immich_mobile/domain/models/events.model.dart';
 import 'package:immich_mobile/domain/models/exif.model.dart';
 import 'package:immich_mobile/domain/models/store.model.dart';
+import 'package:immich_mobile/domain/utils/event_stream.dart';
 import 'package:immich_mobile/entities/store.entity.dart';
 import 'package:immich_mobile/extensions/platform_extensions.dart';
 import 'package:immich_mobile/infrastructure/repositories/local_asset.repository.dart';
@@ -95,6 +97,7 @@ class AssetService {
 
     await _apiRepository.restoreTrash(remoteIds);
     await _remoteRepository.restoreTrash(remoteIds);
+    EventStream.shared.emit(RemoteAssetsChangedEvent(remoteIds, restored: true));
   }
 
   Future<void> stack(String userId, List<String> remoteIds) async {
@@ -148,6 +151,11 @@ class AssetService {
       dateTimeOriginal: parsedDateTime,
       timeZone: .fromNullable(offset).map((o) => 'UTC$o'),
     );
+    if (visibility.isSome || isFavorite.isSome) {
+      EventStream.shared.emit(
+        RemoteAssetsChangedEvent(remoteIds, visibility: visibility.unwrapOrNull, isFavorite: isFavorite.unwrapOrNull),
+      );
+    }
   }
 
   Future<void> trash(List<String> remoteIds) async {
@@ -157,6 +165,7 @@ class AssetService {
 
     await _apiRepository.delete(remoteIds, false);
     await _remoteRepository.trash(remoteIds);
+    EventStream.shared.emit(RemoteAssetsChangedEvent(remoteIds, trashed: true));
   }
 
   Future<void> delete(List<String> remoteIds) async {
@@ -166,6 +175,7 @@ class AssetService {
 
     await _apiRepository.delete(remoteIds, true);
     await _remoteRepository.deleteAssets(remoteIds);
+    EventStream.shared.emit(RemoteAssetsChangedEvent(remoteIds, trashed: true));
   }
 
   Future<void> applyEdits(String remoteId, List<AssetEdit> edits) async {
