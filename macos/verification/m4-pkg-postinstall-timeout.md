@@ -16,7 +16,7 @@ Installer 最后弹出："安装器遇到了一个错误，导致安装失败。
 
 ```
 11:27:03 package_script_service[48189]: PackageKit: Executing script "postinstall" in /tmp/PKInstallSandbox.iLSib4/Scripts/io.github.sincemetom.immich.3UM2Ip
-11:27:04 ./postinstall: immich postinstall: installing 3.3.5-a559bb0f5-standalone for petyrwang (/Users/petyrwang)
+11:27:04 ./postinstall: immich postinstall: installing 3.3.5-a559bb0f5-standalone for <用户> (/Users/<用户>)
 11:27:08 ./postinstall: immich postinstall: model clip/XLM-Roberta-Large-ViT-H-14__frozen_laion5b_s13b_b90k/v2: installed
 11:27:08 ./postinstall: immich postinstall: model ocr/PP-OCRv6_medium/v2: installed
 11:27:08 ./postinstall: immich postinstall: model facial-recognition/buffalo_l/v2: installed
