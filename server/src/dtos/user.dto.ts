@@ -18,6 +18,10 @@ export const UserUpdateMeSchema = z
       .meta({ deprecated: true }),
     name: z.string().optional().describe('User name'),
     avatarColor: UserAvatarColorSchema.nullish(),
+    currentPassword: z
+      .string()
+      .optional()
+      .describe('Current password, required to change the email or the password of a user who has one'),
   })
   .meta({ id: 'UserUpdateMeDto' });
 

@@ -2,6 +2,14 @@
 
 Immich macOS 原生版（非官方）的各个版本。版本号是 `<上游 Immich 版本>-mac.<序号>`，每个版本对应一个 git 标签，发布流程见 [RELEASING.md](RELEASING.md)。这个版本基于上游 Immich 修改，改动的验证记录在 [verification/](verification/README.md)。
 
+## v3.3.5-mac.8（2026-11-04）
+
+基于上游 v3.3.5。
+
+**改进**
+
+- 改登录邮箱要输入当前密码，防止手机解锁着或会话被盗时账号被改走。网页的 账号设置 → 个人资料 改了邮箱时多出一个“当前密码”框；Pixcellar 也会问。只用 OAuth 登录、没有密码的用户不用输。旧接口 `PUT /users/me` 设新密码同样要当前密码，管理员建的用户第一次登录改密码不受影响（[m4-email-password.md](verification/m4-email-password.md)）
+
 ## v3.3.5-mac.7（2026-11-03）
 
 基于上游 v3.3.5。
