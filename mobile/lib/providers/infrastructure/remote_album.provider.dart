@@ -5,6 +5,7 @@ import 'dart:async';
 import 'package:freezed_annotation/freezed_annotation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:immich_mobile/domain/models/album/album.model.dart';
+import 'package:immich_mobile/domain/models/album/album_access.model.dart';
 import 'package:immich_mobile/domain/models/asset/base_asset.model.dart';
 import 'package:immich_mobile/domain/models/user.model.dart';
 import 'package:immich_mobile/domain/services/remote_album.service.dart';
@@ -14,6 +15,7 @@ import 'package:immich_mobile/providers/album/pending_album_uploads.provider.dar
 import 'package:immich_mobile/providers/backup/asset_upload_progress.provider.dart';
 import 'package:immich_mobile/providers/infrastructure/album.provider.dart';
 import 'package:immich_mobile/providers/user.provider.dart';
+import 'package:immich_mobile/repositories/album_api_repository.dart';
 import 'package:immich_mobile/services/foreground_upload.service.dart';
 import 'package:logging/logging.dart';
 
@@ -282,8 +284,17 @@ class RemoteAlbumNotifier extends Notifier<RemoteAlbumState> {
     state = state.copyWith(albums: state.albums.map((album) => album.id == albumId ? updated : album).toList());
   }
 
-  Future<void> addUsers(String albumId, List<String> userIds) {
-    return _remoteAlbumService.addUsers(albumId: albumId, userIds: userIds);
+  Future<void> addUsers(String albumId, List<String> userIds, {AlbumAccess? access, bool hasAccessLevels = false}) {
+    return _remoteAlbumService.addUsers(
+      albumId: albumId,
+      userIds: userIds,
+      access: access,
+      hasAccessLevels: hasAccessLevels,
+    );
+  }
+
+  Future<void> updateMemberAccess(String albumId, String userId, AlbumAccess access, {required bool hasAccessLevels}) {
+    return _remoteAlbumService.updateMemberAccess(albumId, userId, access, hasAccessLevels: hasAccessLevels);
   }
 
   Future<void> removeUser(String albumId, String userId) {
@@ -312,4 +323,29 @@ final remoteAlbumSharedUsersProvider = FutureProvider.autoDispose.family<List<Us
   ref.onDispose(() => link.close());
   final service = ref.watch(remoteAlbumServiceProvider);
   return service.getSharedUsers(albumId);
+});
+
+/// The album's members and what each can do, from the server
+final albumMembersProvider = FutureProvider.autoDispose.family<AlbumMembers, String>((ref, albumId) {
+  return ref.watch(albumApiRepositoryProvider).getMembers(albumId);
+});
+
+/// What the user can do in the album: the owner everything at once; a member what the server says, and until it
+/// answers (or offline) the least their role may be
+final myAlbumAccessProvider = FutureProvider.autoDispose.family<AlbumAccess, String>((ref, albumId) async {
+  final userId = ref.watch(currentUserProvider.select((user) => user?.id));
+  if (userId == null) {
+    return AlbumAccess.viewer;
+  }
+  final localRole = await ref.watch(remoteAlbumServiceProvider).getUserRole(albumId, userId);
+  if (localRole == AlbumUserRole.owner) {
+    return AlbumAccess.owner;
+  }
+  final fallback = AlbumAccess.fromRole(localRole ?? AlbumUserRole.viewer);
+  try {
+    final members = await ref.watch(albumMembersProvider(albumId).future);
+    return members.accessOf(userId) ?? fallback;
+  } catch (error) {
+    return fallback;
+  }
 });

@@ -538,6 +538,8 @@
   "album_delete_confirmation_description": "如果此相簿已被共享，其他使用者將無法再存取。",
   "album_deleted": "相簿已刪除",
   "album_info_updated": "已更新相簿資訊",
+  "album_invite_as": "邀請為",
+  "album_member_access_updated": "權限已更新",
   "album_name": "相簿名稱",
   "album_options": "相簿選項",
   "album_remove_user": "移除使用者？",

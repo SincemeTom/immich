@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:collection/collection.dart';
 import 'package:immich_mobile/constants/enums.dart';
 import 'package:immich_mobile/domain/models/album/album.model.dart';
+import 'package:immich_mobile/domain/models/album/album_access.model.dart';
 import 'package:immich_mobile/domain/models/asset/base_asset.model.dart';
 import 'package:immich_mobile/domain/models/user.model.dart';
 import 'package:immich_mobile/infrastructure/repositories/remote_album.repository.dart';
@@ -290,10 +291,26 @@ class RemoteAlbumService {
     await _repository.deleteAlbum(albumId);
   }
 
-  Future<void> addUsers({required String albumId, required List<String> userIds}) async {
-    await _albumApiRepository.addUsers(albumId, userIds);
+  Future<void> addUsers({
+    required String albumId,
+    required List<String> userIds,
+    AlbumAccess? access,
+    bool hasAccessLevels = false,
+  }) async {
+    await _albumApiRepository.addUsers(albumId, userIds, access: access, hasAccessLevels: hasAccessLevels);
 
-    return _repository.addUsers(albumId, userIds);
+    return _repository.addUsers(albumId, userIds, role: access?.toServer().role ?? AlbumUserRole.editor);
+  }
+
+  Future<void> updateMemberAccess(
+    String albumId,
+    String userId,
+    AlbumAccess access, {
+    required bool hasAccessLevels,
+  }) async {
+    await _albumApiRepository.updateMemberAccess(albumId, userId, access, hasAccessLevels: hasAccessLevels);
+
+    return _repository.updateUserRole(albumId, userId, access.toServer().role);
   }
 
   Future<void> removeUser(String albumId, {required String userId}) async {

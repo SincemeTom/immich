@@ -123,9 +123,9 @@ enum ActionButtonType {
       ActionButtonType.upload =>
         !context.isInLockedView && //
             context.asset.storage == AssetState.local,
+      // what the user may do in the album, the action itself tells
       ActionButtonType.removeFromAlbum =>
-        context.isOwner && //
-            !context.isInLockedView && //
+        !context.isInLockedView && //
             context.currentAlbum != null,
       ActionButtonType.setAlbumCover =>
         !context.isInLockedView && //
@@ -176,7 +176,9 @@ enum ActionButtonType {
       ActionButtonType.slideshow => const ActionMenuItem(action: SlideshowAction()),
       ActionButtonType.archive ||
       ActionButtonType.unarchive => ActionMenuItem(action: ArchiveAction(source: context.source)),
-      ActionButtonType.download => ActionMenuItem(action: DownloadAction(source: context.source)),
+      ActionButtonType.download => ActionMenuItem(
+        action: DownloadAction(source: context.source, albumId: context.currentAlbum?.id),
+      ),
       ActionButtonType.restoreTrash => ActionMenuItem(action: RestoreAction(source: context.source)),
       ActionButtonType.delete => ActionMenuItem(action: DeleteAction(source: context.source)),
       ActionButtonType.moveToLockFolder ||
