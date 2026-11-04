@@ -54,6 +54,11 @@ export class UserService extends BaseService {
   }
 
   async updateMe({ user }: AuthDto, dto: UserUpdateMeDto): Promise<UserAdminResponseDto> {
+    const changesEmail = !!dto.email && dto.email.toLowerCase() !== user.email.toLowerCase();
+    if (changesEmail || dto.password) {
+      await this.checkCurrentPassword(user.id, dto.currentPassword, { forNewPassword: !!dto.password });
+    }
+
     if (dto.email) {
       const duplicate = await this.userRepository.getByEmail(dto.email);
       if (duplicate && duplicate.id !== user.id) {
@@ -77,6 +82,30 @@ export class UserService extends BaseService {
     const updatedUser = await this.userRepository.update(user.id, update);
 
     return mapUserAdmin(updatedUser);
+  }
+
+  /**
+   * The login email and the password are changed by who knows the password: someone at an unlocked device, or with a
+   * stolen session, would otherwise take the account. A user without a password (OAuth only) has none to give, and the
+   * first password of a user who must change it is set without the one an admin gave.
+   */
+  private async checkCurrentPassword(
+    userId: string,
+    currentPassword: string | undefined,
+    { forNewPassword }: { forNewPassword: boolean },
+  ) {
+    const { password, shouldChangePassword } = await this.userRepository.getForChangePassword(userId);
+    if (!password || (forNewPassword && shouldChangePassword)) {
+      return;
+    }
+
+    if (!currentPassword) {
+      throw new BadRequestException('Current password is required');
+    }
+
+    if (!this.cryptoRepository.compareBcrypt(currentPassword, password)) {
+      throw new BadRequestException('Wrong password');
+    }
   }
 
   async getMyPreferences(auth: AuthDto): Promise<UserPreferencesResponseDto> {

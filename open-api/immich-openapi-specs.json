@@ -35291,6 +35291,10 @@
             ],
             "nullable": true
           },
+          "currentPassword": {
+            "description": "Current password, required to change the email or the password of a user who has one",
+            "type": "string"
+          },
           "email": {
             "description": "User email",
             "format": "email",

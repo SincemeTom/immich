@@ -96,7 +96,11 @@ describe(AuthService.name, () => {
       const auth = AuthFactory.create(user);
       const dto = { password: 'old-password', newPassword: 'new-password' };
 
-      mocks.user.getForChangePassword.mockResolvedValue({ id: user.id, password: 'hash-password' });
+      mocks.user.getForChangePassword.mockResolvedValue({
+        id: user.id,
+        password: 'hash-password',
+        shouldChangePassword: false,
+      });
       mocks.user.update.mockResolvedValue(user);
 
       await sut.changePassword(auth, dto);
@@ -115,7 +119,11 @@ describe(AuthService.name, () => {
       const auth = AuthFactory.create(user);
       const dto = { password: 'old-password', newPassword: 'new-password' };
 
-      mocks.user.getForChangePassword.mockResolvedValue({ id: user.id, password: 'hash-password' });
+      mocks.user.getForChangePassword.mockResolvedValue({
+        id: user.id,
+        password: 'hash-password',
+        shouldChangePassword: false,
+      });
       mocks.user.update.mockResolvedValue(user);
 
       await sut.changePassword(auth, dto);
@@ -133,7 +141,11 @@ describe(AuthService.name, () => {
 
       mocks.crypto.compareBcrypt.mockReturnValue(false);
 
-      mocks.user.getForChangePassword.mockResolvedValue({ id: user.id, password: 'hash-password' });
+      mocks.user.getForChangePassword.mockResolvedValue({
+        id: user.id,
+        password: 'hash-password',
+        shouldChangePassword: false,
+      });
 
       await expect(sut.changePassword(auth, dto)).rejects.toBeInstanceOf(BadRequestException);
     });
@@ -143,7 +155,7 @@ describe(AuthService.name, () => {
       const auth = AuthFactory.create(user);
       const dto = { password: 'old-password', newPassword: 'new-password' };
 
-      mocks.user.getForChangePassword.mockResolvedValue({ id: user.id, password: '' });
+      mocks.user.getForChangePassword.mockResolvedValue({ id: user.id, password: '', shouldChangePassword: false });
 
       await expect(sut.changePassword(auth, dto)).rejects.toBeInstanceOf(BadRequestException);
     });
@@ -153,7 +165,11 @@ describe(AuthService.name, () => {
       const auth = AuthFactory.create(user);
       const dto = { password: 'old-password', newPassword: 'new-password', invalidateSessions: true };
 
-      mocks.user.getForChangePassword.mockResolvedValue({ id: user.id, password: 'hash-password' });
+      mocks.user.getForChangePassword.mockResolvedValue({
+        id: user.id,
+        password: 'hash-password',
+        shouldChangePassword: false,
+      });
       mocks.user.update.mockResolvedValue(user);
 
       await sut.changePassword(auth, dto);

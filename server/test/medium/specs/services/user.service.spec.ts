@@ -209,6 +209,63 @@ describe(UserService.name, () => {
       });
       await expect(sut.getMe(auth)).resolves.toMatchObject({ shouldChangePassword: false });
     });
+
+    describe('with a password', () => {
+      const newUserWithPassword = async (ctx: ReturnType<typeof setup>['ctx']) => {
+        const password = await ctx.get(CryptoRepository).hashBcrypt('current-password', 4);
+        const { user } = await ctx.newUser({ password, shouldChangePassword: false });
+        return { user, auth: factory.auth({ user: { id: user.id, email: user.email } }) };
+      };
+
+      it('should require the current password to change the email', async () => {
+        const { sut, ctx } = setup();
+        const { auth } = await newUserWithPassword(ctx);
+
+        await expect(sut.updateMe(auth, { email: 'no-password@immich.cloud' })).rejects.toThrow(
+          'Current password is required',
+        );
+        await expect(
+          sut.updateMe(auth, { email: 'no-password@immich.cloud', currentPassword: 'wrong' }),
+        ).rejects.toThrow('Wrong password');
+        await expect(sut.getMe(auth)).resolves.toMatchObject({ email: auth.user.email });
+
+        const dto = { email: 'with-password@immich.cloud' };
+        await expect(sut.updateMe(auth, { ...dto, currentPassword: 'current-password' })).resolves.toMatchObject(dto);
+      });
+
+      it('should not require it to keep the email or change the name', async () => {
+        const { sut, ctx } = setup();
+        const { auth } = await newUserWithPassword(ctx);
+
+        await expect(sut.updateMe(auth, { email: auth.user.email, name: 'Renamed' })).resolves.toMatchObject({
+          name: 'Renamed',
+        });
+      });
+
+      it('should require it to set a new password', async () => {
+        const { sut, ctx } = setup();
+        const { auth } = await newUserWithPassword(ctx);
+
+        await expect(sut.updateMe(auth, { password: 'new-password' })).rejects.toThrow('Current password is required');
+        await expect(
+          sut.updateMe(auth, { password: 'new-password', currentPassword: 'current-password' }),
+        ).resolves.toBeDefined();
+      });
+
+      it('should not require it for the first password of a user who must change it', async () => {
+        const { sut, ctx } = setup();
+        const password = await ctx.get(CryptoRepository).hashBcrypt('given-by-admin', 4);
+        const { user } = await ctx.newUser({ password, shouldChangePassword: true });
+        const auth = factory.auth({ user: { id: user.id, email: user.email } });
+
+        await expect(sut.updateMe(auth, { password: 'my-own-password' })).resolves.toMatchObject({
+          shouldChangePassword: false,
+        });
+        await expect(sut.updateMe(auth, { email: 'still-needs@immich.cloud' })).rejects.toThrow(
+          'Current password is required',
+        );
+      });
+    });
   });
 
   describe('updateMyPreferences', () => {
