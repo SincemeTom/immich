@@ -3323,6 +3323,49 @@ export type SyncStreamDto = {
     /** Sync request types */
     types: SyncRequestType[];
 };
+export type SynologyAccountResponseDto = {
+    /** Synology account name */
+    account?: string;
+    /** How many albums of its own the account had then */
+    albumCount?: number;
+    /** Whether the user bound a Synology account */
+    bound: boolean;
+    /** When the account was bound */
+    boundAt?: string;
+    /** When the server last logged in with it */
+    checkedAt?: string;
+    errorReason?: SynologyErrorReason;
+    /** The last error, as Synology or the system reported it */
+    message?: string;
+    /** The name Synology Photos has for the account */
+    name?: string;
+    /** Address of the Synology */
+    url?: string;
+    /** Whether the Synology's HTTPS certificate is checked */
+    verifyCertificate?: boolean;
+};
+export type SynologyAccountBindDto = {
+    /** Synology account name */
+    account: string;
+    /** 2-step verification code, when Synology asks for one; this server is then trusted, without codes */
+    otpCode?: string;
+    /** Password of the account. Left out, the one in the Keychain is used, if the address and account stay */
+    password?: string;
+    /** Address of the Synology, such as https://nas.example.com:5001; HTTPS without a scheme */
+    url: string;
+    /** Check the Synology's HTTPS certificate; turn off for a self-signed one */
+    verifyCertificate?: boolean;
+};
+export type SynologyAccountTestResponseDto = {
+    account: SynologyAccountResponseDto;
+    /** How many albums of its own the account has */
+    albumCount?: number;
+    errorReason?: SynologyErrorReason;
+    /** The error, as Synology or the system reported it */
+    message?: string;
+    /** Whether the server could log in and read Synology Photos */
+    success: boolean;
+};
 export type SystemConfigTemplateStorageOptionDto = {
     /** Available day format options for storage template */
     dayOptions: string[];
@@ -7713,6 +7756,53 @@ export function getSyncStream({ syncStreamDto }: {
     })));
 }
 /**
+ * Unbind my Synology account
+ */
+export function unbindSynologyAccount(opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchText("/synology/account", {
+        ...opts,
+        method: "DELETE"
+    }));
+}
+/**
+ * Retrieve my Synology account
+ */
+export function getSynologyAccount(opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchJson<{
+        status: 200;
+        data: SynologyAccountResponseDto;
+    }>("/synology/account", {
+        ...opts
+    }));
+}
+/**
+ * Bind my Synology account
+ */
+export function bindSynologyAccount({ synologyAccountBindDto }: {
+    synologyAccountBindDto: SynologyAccountBindDto;
+}, opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchJson<{
+        status: 200;
+        data: SynologyAccountTestResponseDto;
+    }>("/synology/account", oazapfts.json({
+        ...opts,
+        method: "PUT",
+        body: synologyAccountBindDto
+    })));
+}
+/**
+ * Test my Synology account
+ */
+export function testSynologyAccount(opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchJson<{
+        status: 200;
+        data: SynologyAccountTestResponseDto;
+    }>("/synology/account/test", {
+        ...opts,
+        method: "POST"
+    }));
+}
+/**
  * Get system configuration
  */
 export function getConfig(opts?: Oazapfts.RequestOpts) {
@@ -9115,6 +9205,23 @@ export enum SyncRequestType {
     AssetFacesV2 = "AssetFacesV2",
     AssetFacesV3 = "AssetFacesV3",
     UserMetadataV1 = "UserMetadataV1"
+}
+export enum SynologyErrorReason {
+    Unreachable = "unreachable",
+    Certificate = "certificate",
+    NotSynology = "notSynology",
+    NoPhotos = "noPhotos",
+    WrongPassword = "wrongPassword",
+    Disabled = "disabled",
+    Denied = "denied",
+    OtpRequired = "otpRequired",
+    OtpWrong = "otpWrong",
+    OtpEnforced = "otpEnforced",
+    Blocked = "blocked",
+    PasswordExpired = "passwordExpired",
+    AlreadyBound = "alreadyBound",
+    Keychain = "keychain",
+    Other = "other"
 }
 export enum AssetOrderBy {
     TakenAt = "takenAt",

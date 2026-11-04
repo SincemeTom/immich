@@ -16032,6 +16032,189 @@
         "x-immich-state": "Stable"
       }
     },
+    "/synology/account": {
+      "delete": {
+        "description": "Forget the Synology account, and remove its password from the Keychain.",
+        "operationId": "unbindSynologyAccount",
+        "parameters": [],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "cookie": []
+          },
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "Unbind my Synology account",
+        "tags": [
+          "Synology"
+        ],
+        "x-immich-history": [
+          {
+            "version": "v3.3.5",
+            "state": "Added"
+          },
+          {
+            "version": "v3.3.5",
+            "state": "Alpha"
+          }
+        ],
+        "x-immich-permission": "userPreference.update",
+        "x-immich-state": "Alpha"
+      },
+      "get": {
+        "description": "Retrieve the Synology account the user bound, and what the last login with it found.",
+        "operationId": "getSynologyAccount",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SynologyAccountResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "cookie": []
+          },
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "Retrieve my Synology account",
+        "tags": [
+          "Synology"
+        ],
+        "x-immich-history": [
+          {
+            "version": "v3.3.5",
+            "state": "Added"
+          },
+          {
+            "version": "v3.3.5",
+            "state": "Alpha"
+          }
+        ],
+        "x-immich-permission": "userPreference.read",
+        "x-immich-state": "Alpha"
+      },
+      "put": {
+        "description": "Log in to Synology with the account, and keep it when that works: the password in the macOS Keychain. Synology may ask for a 2-step verification code, once.",
+        "operationId": "bindSynologyAccount",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SynologyAccountBindDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SynologyAccountTestResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "cookie": []
+          },
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "Bind my Synology account",
+        "tags": [
+          "Synology"
+        ],
+        "x-immich-history": [
+          {
+            "version": "v3.3.5",
+            "state": "Added"
+          },
+          {
+            "version": "v3.3.5",
+            "state": "Alpha"
+          }
+        ],
+        "x-immich-permission": "userPreference.update",
+        "x-immich-state": "Alpha"
+      }
+    },
+    "/synology/account/test": {
+      "post": {
+        "description": "Log in to Synology with the bound account, read Synology Photos, and log out.",
+        "operationId": "testSynologyAccount",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SynologyAccountTestResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "cookie": []
+          },
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "Test my Synology account",
+        "tags": [
+          "Synology"
+        ],
+        "x-immich-history": [
+          {
+            "version": "v3.3.5",
+            "state": "Added"
+          },
+          {
+            "version": "v3.3.5",
+            "state": "Alpha"
+          }
+        ],
+        "x-immich-permission": "userPreference.read",
+        "x-immich-state": "Alpha"
+      }
+    },
     "/system-config": {
       "get": {
         "deprecated": true,
@@ -19181,6 +19364,10 @@
     {
       "name": "Network shares (admin)",
       "description": "Network shares, such as a NAS folder shared over NFS, that the server mounts itself, so that external libraries can read them. Only available when the server runs natively on macOS."
+    },
+    {
+      "name": "Synology",
+      "description": "The user's own Synology account, which the server reads their Synology Photos albums with. The password is kept in the macOS Keychain, not in the database. Only available when the server runs natively on macOS."
     },
     {
       "name": "Map",
@@ -33727,6 +33914,141 @@
           "profileChangedAt"
         ],
         "type": "object"
+      },
+      "SynologyAccountBindDto": {
+        "properties": {
+          "account": {
+            "description": "Synology account name",
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "otpCode": {
+            "description": "2-step verification code, when Synology asks for one; this server is then trusted, without codes",
+            "pattern": "^\\d{6,8}$",
+            "type": "string"
+          },
+          "password": {
+            "description": "Password of the account. Left out, the one in the Keychain is used, if the address and account stay",
+            "maxLength": 1024,
+            "minLength": 1,
+            "type": "string"
+          },
+          "url": {
+            "description": "Address of the Synology, such as https://nas.example.com:5001; HTTPS without a scheme",
+            "maxLength": 512,
+            "type": "string"
+          },
+          "verifyCertificate": {
+            "default": true,
+            "description": "Check the Synology's HTTPS certificate; turn off for a self-signed one",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "account",
+          "url"
+        ],
+        "type": "object"
+      },
+      "SynologyAccountResponseDto": {
+        "properties": {
+          "account": {
+            "description": "Synology account name",
+            "type": "string"
+          },
+          "albumCount": {
+            "description": "How many albums of its own the account had then",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "bound": {
+            "description": "Whether the user bound a Synology account",
+            "type": "boolean"
+          },
+          "boundAt": {
+            "description": "When the account was bound",
+            "type": "string"
+          },
+          "checkedAt": {
+            "description": "When the server last logged in with it",
+            "type": "string"
+          },
+          "errorReason": {
+            "$ref": "#/components/schemas/SynologyErrorReason"
+          },
+          "message": {
+            "description": "The last error, as Synology or the system reported it",
+            "type": "string"
+          },
+          "name": {
+            "description": "The name Synology Photos has for the account",
+            "type": "string"
+          },
+          "url": {
+            "description": "Address of the Synology",
+            "type": "string"
+          },
+          "verifyCertificate": {
+            "description": "Whether the Synology's HTTPS certificate is checked",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "bound"
+        ],
+        "type": "object"
+      },
+      "SynologyAccountTestResponseDto": {
+        "properties": {
+          "account": {
+            "$ref": "#/components/schemas/SynologyAccountResponseDto"
+          },
+          "albumCount": {
+            "description": "How many albums of its own the account has",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "errorReason": {
+            "$ref": "#/components/schemas/SynologyErrorReason"
+          },
+          "message": {
+            "description": "The error, as Synology or the system reported it",
+            "type": "string"
+          },
+          "success": {
+            "description": "Whether the server could log in and read Synology Photos",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "account",
+          "success"
+        ],
+        "type": "object"
+      },
+      "SynologyErrorReason": {
+        "description": "Why connecting to Synology, or logging in to it, failed",
+        "enum": [
+          "unreachable",
+          "certificate",
+          "notSynology",
+          "noPhotos",
+          "wrongPassword",
+          "disabled",
+          "denied",
+          "otpRequired",
+          "otpWrong",
+          "otpEnforced",
+          "blocked",
+          "passwordExpired",
+          "alreadyBound",
+          "keychain",
+          "other"
+        ],
+        "type": "string"
       },
       "SystemConfigTemplateStorageOptionDto": {
         "properties": {

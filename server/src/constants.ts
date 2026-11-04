@@ -171,6 +171,8 @@ export const endpointTags: Record<ApiTag, string> = {
     "Where thumbnails, encoded videos, database backups and each user's originals are kept: in the media location, or on a network share. Only available when the server runs natively on macOS.",
   [ApiTag.NetworkShares]:
     'Network shares, such as a NAS folder shared over NFS, that the server mounts itself, so that external libraries can read them. Only available when the server runs natively on macOS.',
+  [ApiTag.Synology]:
+    "The user's own Synology account, which the server reads their Synology Photos albums with. The password is kept in the macOS Keychain, not in the database. Only available when the server runs natively on macOS.",
   [ApiTag.Map]:
     'Map endpoints include supplemental functionality related to geolocation, such as reverse geocoding and retrieving map markers for assets with geolocation data.',
   [ApiTag.Memories]:

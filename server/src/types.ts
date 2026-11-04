@@ -2,6 +2,7 @@ import { ShallowDehydrateObject } from 'kysely';
 import { Mocked } from 'vitest';
 import type { NetworkShare, NetworkShareErrorReason } from 'src/utils/network-share.js';
 import type { StorageLocationState, StorageLocations } from 'src/utils/storage-location.js';
+import type { SynologyErrorReason } from 'src/utils/synology.js';
 import { VECTOR_EXTENSIONS } from 'src/constants.js';
 import { AssetFile } from 'src/database.js';
 import { UploadFieldName } from 'src/dtos/asset-media.dto.js';
@@ -595,7 +596,25 @@ export interface SystemMetadata extends Record<SystemMetadataKey, Record<string,
   };
   [SystemMetadataKey.StorageLocations]: StorageLocations;
   [SystemMetadataKey.StorageLocationState]: StorageLocationState;
+  /** the Synology account each user bound, by user ID; the password is in the Keychain */
+  [SystemMetadataKey.SynologyAccounts]: { users: Record<string, SynologyAccount> };
 }
+
+export type SynologyAccount = {
+  /** origin, such as https://nas.example.com:5001 */
+  url: string;
+  verifyCertificate: boolean;
+  account: string;
+  /** Synology Photos' ID of the account: what items' owner_user_id and sharing's db_id are */
+  photosUserId: number;
+  /** DSM's ID of the account */
+  dsmUserId?: number;
+  name?: string;
+  boundAt: string;
+  checkedAt: string;
+  albumCount?: number;
+  error?: { reason: SynologyErrorReason; message: string };
+};
 
 export type UserPreferences = {
   albums: {

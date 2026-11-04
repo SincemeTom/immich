@@ -1,0 +1,208 @@
+import {
+  bindSynologyAccount,
+  getSynologyAccount,
+  SynologyErrorReason,
+  testSynologyAccount,
+  unbindSynologyAccount,
+  type SynologyAccountResponseDto,
+} from '@immich/sdk';
+import { modalManager } from '@immich/ui';
+import '@testing-library/jest-dom';
+import { fireEvent, screen, waitFor } from '@testing-library/svelte';
+import { getAnimateMock } from '$lib/__mocks__/animate.mock';
+import { renderWithTooltips } from '$tests/helpers';
+import SynologySettings from './SynologySettings.svelte';
+
+vi.mock('@immich/sdk', async (original) => ({
+  ...(await original<typeof import('@immich/sdk')>()),
+  getSynologyAccount: vi.fn(),
+  bindSynologyAccount: vi.fn(),
+  testSynologyAccount: vi.fn(),
+  unbindSynologyAccount: vi.fn(),
+}));
+
+const bound: SynologyAccountResponseDto = {
+  bound: true,
+  url: 'https://nas.example.com:5001',
+  account: 'alice',
+  verifyCertificate: true,
+  name: 'alice',
+  boundAt: '2026-11-01T00:00:00.000Z',
+  checkedAt: '2026-11-01T00:00:00.000Z',
+  albumCount: 49,
+};
+
+const inputs = () => {
+  const textboxes = screen.getAllByRole('textbox') as HTMLInputElement[];
+  const password = document.querySelector('input[type="password"]') as HTMLInputElement;
+  return { url: textboxes[0], account: textboxes[1], password, all: textboxes };
+};
+
+const bindButton = () => screen.getByRole('button', { name: 'synology_account_bind' });
+
+describe('SynologySettings', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    Element.prototype.animate = getAnimateMock();
+  });
+
+  it('should ask for an address, account and password when none is bound', async () => {
+    vi.mocked(getSynologyAccount).mockResolvedValue({ bound: false });
+    vi.mocked(bindSynologyAccount).mockResolvedValue({ success: true, albumCount: 49, account: bound });
+    renderWithTooltips(SynologySettings, {});
+
+    await waitFor(() => expect(bindButton()).toBeDisabled());
+    const { url, account, password } = inputs();
+    await fireEvent.input(url, { target: { value: ' nas.example.com:5001 ' } });
+    await fireEvent.input(account, { target: { value: 'alice' } });
+    expect(bindButton()).toBeDisabled();
+    await fireEvent.input(password, { target: { value: 'p@ss' } });
+    expect(bindButton()).toBeEnabled();
+
+    await fireEvent.click(bindButton());
+
+    expect(bindSynologyAccount).toHaveBeenCalledWith({
+      synologyAccountBindDto: {
+        url: 'nas.example.com:5001',
+        account: 'alice',
+        password: 'p@ss',
+        verifyCertificate: true,
+        otpCode: undefined,
+      },
+    });
+    expect(await screen.findByTestId('synology-account')).toHaveTextContent('alice · https://nas.example.com:5001');
+    expect(document.querySelector('input[type="password"]')).toBeNull();
+  });
+
+  it('should ask for the 2-step verification code when Synology wants one', async () => {
+    vi.mocked(getSynologyAccount).mockResolvedValue({ bound: false });
+    vi.mocked(bindSynologyAccount)
+      .mockResolvedValueOnce({
+        success: false,
+        errorReason: SynologyErrorReason.OtpRequired,
+        message: 'Synology answered with error 403',
+        account: { bound: false },
+      })
+      .mockResolvedValueOnce({ success: true, albumCount: 49, account: bound });
+    renderWithTooltips(SynologySettings, {});
+
+    await waitFor(() => expect(bindButton()).toBeDisabled());
+    const { url, account, password } = inputs();
+    await fireEvent.input(url, { target: { value: 'https://nas.example.com:5001' } });
+    await fireEvent.input(account, { target: { value: 'admin' } });
+    await fireEvent.input(password, { target: { value: 'pw' } });
+    await fireEvent.click(bindButton());
+
+    expect(await screen.findByText('synology_error_otpRequired')).toBeInTheDocument();
+    expect(screen.getByText('Synology answered with error 403')).toBeInTheDocument();
+    const otp = inputs().all[2];
+    expect(bindButton()).toBeDisabled();
+    await fireEvent.input(otp, { target: { value: '123456' } });
+    await fireEvent.click(bindButton());
+
+    expect(bindSynologyAccount).toHaveBeenLastCalledWith({
+      synologyAccountBindDto: expect.objectContaining({ password: 'pw', otpCode: '123456' }),
+    });
+    expect(await screen.findByTestId('synology-account')).toBeInTheDocument();
+  });
+
+  it('should show why binding failed, and keep the form', async () => {
+    vi.mocked(getSynologyAccount).mockResolvedValue({ bound: false });
+    vi.mocked(bindSynologyAccount).mockResolvedValue({
+      success: false,
+      errorReason: SynologyErrorReason.WrongPassword,
+      account: { bound: false },
+    });
+    renderWithTooltips(SynologySettings, {});
+
+    await waitFor(() => expect(bindButton()).toBeDisabled());
+    const { url, account, password } = inputs();
+    await fireEvent.input(url, { target: { value: 'nas' } });
+    await fireEvent.input(account, { target: { value: 'alice' } });
+    await fireEvent.input(password, { target: { value: 'wrong' } });
+    await fireEvent.click(bindButton());
+
+    expect(await screen.findByText('synology_error_wrongPassword')).toBeInTheDocument();
+    expect(screen.queryByText('synology_otp_code')).toBeNull();
+    expect(bindButton()).toBeInTheDocument();
+  });
+
+  it('should show the bound account, and test it', async () => {
+    vi.mocked(getSynologyAccount).mockResolvedValue(bound);
+    vi.mocked(testSynologyAccount).mockResolvedValue({
+      success: false,
+      errorReason: SynologyErrorReason.Unreachable,
+      message: 'connect ECONNREFUSED',
+      account: { ...bound, errorReason: SynologyErrorReason.Unreachable, message: 'connect ECONNREFUSED' },
+    });
+    renderWithTooltips(SynologySettings, {});
+
+    expect(await screen.findByTestId('synology-account')).toHaveTextContent('alice · https://nas.example.com:5001');
+    expect(document.querySelector('input[type="password"]')).toBeNull();
+
+    await fireEvent.click(screen.getByRole('button', { name: 'synology_account_test' }));
+
+    expect(testSynologyAccount).toHaveBeenCalled();
+    expect(await screen.findAllByText('synology_error_unreachable')).not.toHaveLength(0);
+  });
+
+  it('should keep the saved password when only the certificate check changes', async () => {
+    vi.mocked(getSynologyAccount).mockResolvedValue(bound);
+    vi.mocked(bindSynologyAccount).mockResolvedValue({ success: true, albumCount: 49, account: bound });
+    renderWithTooltips(SynologySettings, {});
+
+    await fireEvent.click(await screen.findByRole('button', { name: 'edit' }));
+    expect(screen.getByText('synology_password_keep')).toBeInTheDocument();
+    expect(bindButton()).toBeEnabled();
+    await fireEvent.click(screen.getByRole('switch'));
+    await fireEvent.click(bindButton());
+
+    expect(bindSynologyAccount).toHaveBeenCalledWith({
+      synologyAccountBindDto: {
+        url: 'https://nas.example.com:5001',
+        account: 'alice',
+        password: undefined,
+        verifyCertificate: false,
+        otpCode: undefined,
+      },
+    });
+  });
+
+  it('should want the password when the address changes', async () => {
+    vi.mocked(getSynologyAccount).mockResolvedValue(bound);
+    renderWithTooltips(SynologySettings, {});
+
+    await fireEvent.click(await screen.findByRole('button', { name: 'edit' }));
+    await fireEvent.input(inputs().url, { target: { value: 'nas.example.com:5001/photo' } });
+    expect(bindButton()).toBeEnabled();
+    await fireEvent.input(inputs().url, { target: { value: 'other.example.com' } });
+
+    expect(bindButton()).toBeDisabled();
+    expect(screen.getByText('synology_password_description')).toBeInTheDocument();
+  });
+
+  it('should unbind after confirming', async () => {
+    vi.mocked(getSynologyAccount).mockResolvedValue(bound);
+    vi.mocked(unbindSynologyAccount).mockResolvedValue(undefined as never);
+    const dialog = vi.spyOn(modalManager, 'showDialog').mockResolvedValue(true);
+    renderWithTooltips(SynologySettings, {});
+
+    await fireEvent.click(await screen.findByRole('button', { name: 'synology_account_unbind' }));
+
+    expect(dialog).toHaveBeenCalled();
+    await waitFor(() => expect(unbindSynologyAccount).toHaveBeenCalled());
+    expect(await screen.findByRole('button', { name: 'synology_account_bind' })).toBeInTheDocument();
+    expect(inputs().url.value).toBe('');
+  });
+
+  it('should not unbind when not confirmed', async () => {
+    vi.mocked(getSynologyAccount).mockResolvedValue(bound);
+    vi.spyOn(modalManager, 'showDialog').mockResolvedValue(false);
+    renderWithTooltips(SynologySettings, {});
+
+    await fireEvent.click(await screen.findByRole('button', { name: 'synology_account_unbind' }));
+
+    expect(unbindSynologyAccount).not.toHaveBeenCalled();
+    expect(screen.getByTestId('synology-account')).toBeInTheDocument();
+  });
+});

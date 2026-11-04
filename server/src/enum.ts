@@ -388,6 +388,7 @@ export enum SystemMetadataKey {
   StorageLocationState = 'storage-location-state',
   RawPreviews = 'raw-previews',
   LocationInference = 'location-inference',
+  SynologyAccounts = 'synology-accounts',
 }
 
 export enum UserMetadataKey {
@@ -1297,6 +1298,7 @@ export enum ApiTag {
   Map = 'Map',
   NetworkShares = 'Network shares (admin)',
   StorageLocations = 'Storage locations (admin)',
+  Synology = 'Synology',
   Memories = 'Memories',
   Notifications = 'Notifications',
   NotificationsAdmin = 'Notifications (admin)',

@@ -2,6 +2,12 @@
 
 Immich macOS 原生版（非官方）的各个版本。版本号是 `<上游 Immich 版本>-mac.<序号>`，每个版本对应一个 git 标签，发布流程见 [RELEASING.md](RELEASING.md)。这个版本基于上游 Immich 修改，改动的验证记录在 [verification/](verification/README.md)。
 
+## 未发布
+
+**新功能**
+
+- 绑定群晖账号，为同步群晖照片的相册做准备：网页 账号设置 → 群晖照片，填群晖地址、账号和密码。保存前会先登录一次，确认能读到群晖照片，并显示有多少个相册；之后可以随时“测试连接”或解除绑定。密码存在服务器的 macOS 钥匙串里，不存进数据库；开了两步验证的账号只需输一次验证码。每个用户只能绑定自己的账号，同一个群晖账号不能绑给两个 Immich 用户。只读群晖，不改动群晖上的任何内容（[synology-account.md](verification/synology-account.md)）
+
 ## v3.3.5-mac.8（2026-11-04）
 
 基于上游 v3.3.5。
