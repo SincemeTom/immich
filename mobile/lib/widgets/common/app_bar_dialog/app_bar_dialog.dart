@@ -4,6 +4,7 @@ import 'package:auto_route/auto_route.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart' hide Store;
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:immich_mobile/constants/constants.dart';
 import 'package:immich_mobile/extensions/build_context_extensions.dart';
 import 'package:immich_mobile/generated/translations.g.dart';
 import 'package:immich_mobile/models/server_info/server_disk_info.model.dart';
@@ -58,7 +59,7 @@ class ImmichAppBarDialog extends HookConsumerWidget {
               child: Padding(
                 padding: const EdgeInsets.only(bottom: 4),
                 child: Image.asset(
-                  context.isDarkTheme ? 'assets/immich-text-dark.png' : 'assets/immich-text-light.png',
+                  context.isDarkTheme ? 'assets/pixcellar-text-dark.png' : 'assets/pixcellar-text-light.png',
                   height: 16,
                 ),
               ),
@@ -199,9 +200,7 @@ class ImmichAppBarDialog extends HookConsumerWidget {
             InkWell(
               onTap: () {
                 ContextHelper(context).pop();
-                unawaited(
-                  launchUrl(Uri.parse('https://github.com/immich-app/immich'), mode: LaunchMode.externalApplication),
-                );
+                unawaited(launchUrl(Uri.parse(kPixcellarRepository), mode: LaunchMode.externalApplication));
               },
               child: Text(context.t.profile_drawer_github, style: context.textTheme.bodySmall),
             ),

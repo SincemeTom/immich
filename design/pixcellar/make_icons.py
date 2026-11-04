@@ -83,7 +83,46 @@ def main() -> None:
     ImageDraw.Draw(circle).ellipse((0, 0, preview.width - 1, preview.height - 1), fill=255)
     preview.putalpha(circle)
     preview.save(HERE / "android-adaptive-preview.png")
+    brand_assets(petals)
     print("done")
+
+
+ASSETS = ROOT / "mobile/assets"
+FONT = ROOT / "mobile/fonts/GoogleSans/GoogleSans-Bold.ttf"
+# the wordmark's colors: dark grey on light themes, near white on dark ones
+TEXT_LIGHT = (33, 33, 33)
+TEXT_DARK = (240, 240, 240)
+
+
+def wordmark(height: int, color: tuple) -> Image.Image:
+    """'Pixcellar' in Google Sans Bold, cropped to the ink, height px tall"""
+    from PIL import ImageDraw, ImageFont
+
+    font = ImageFont.truetype(str(FONT), height * 2)
+    canvas = Image.new("RGBA", (height * 12, height * 3), (0, 0, 0, 0))
+    ImageDraw.Draw(canvas).text((height, height // 2), "Pixcellar", font=font, fill=(*color, 255))
+    text = canvas.crop(canvas.getbbox())
+    return text.resize((round(text.width * height / text.height), height), Image.LANCZOS)
+
+
+def brand_assets(petals: Image.Image) -> None:
+    """The logo, wordmark and splash images the app shows (mobile/assets/pixcellar-*)"""
+    logo = adaptive_layer(petals, 1024, 1.0)
+    logo.save(ASSETS / "pixcellar-logo.png", optimize=True)
+
+    for theme, color in (("light", TEXT_LIGHT), ("dark", TEXT_DARK)):
+        wordmark(160, color).save(ASSETS / f"pixcellar-text-{theme}.png", optimize=True)
+        # the logo and the wordmark side by side, as in the timeline's app bar
+        text = wordmark(110, color)
+        mark = logo.resize((160, 160), Image.LANCZOS)
+        inline = Image.new("RGBA", (mark.width + 36 + text.width, mark.height), (0, 0, 0, 0))
+        inline.alpha_composite(mark, (0, 0))
+        inline.alpha_composite(text, (mark.width + 36, (mark.height - text.height) // 2 + 6))
+        inline.save(ASSETS / f"pixcellar-logo-inline-{theme}.png", optimize=True)
+
+    # splash: the logo alone; Android 12+ shows a 1152 px icon whose middle 768 px circle is visible
+    adaptive_layer(petals, 320, 1.0).save(ASSETS / "pixcellar-splash.png", optimize=True)
+    adaptive_layer(petals, 1152, 0.5).save(ASSETS / "pixcellar-splash-android12.png", optimize=True)
 
 
 if __name__ == "__main__":

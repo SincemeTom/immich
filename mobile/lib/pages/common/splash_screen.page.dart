@@ -5,13 +5,13 @@ import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:immich_mobile/constants/constants.dart';
 import 'package:immich_mobile/constants/locales.dart';
 import 'package:immich_mobile/data/db/main/database.dart';
 import 'package:immich_mobile/domain/models/config/app_config.dart';
 import 'package:immich_mobile/domain/models/store.model.dart';
 import 'package:immich_mobile/entities/store.entity.dart';
 import 'package:immich_mobile/extensions/platform_extensions.dart';
-import 'package:immich_mobile/generated/codegen_loader.g.dart';
 import 'package:immich_mobile/generated/translations.g.dart';
 import 'package:immich_mobile/infrastructure/repositories/settings.repository.dart';
 import 'package:immich_mobile/providers/app_life_cycle.provider.dart';
@@ -24,6 +24,7 @@ import 'package:immich_mobile/providers/websocket.provider.dart';
 import 'package:immich_mobile/routing/router.dart';
 import 'package:immich_mobile/theme/color_scheme.dart';
 import 'package:immich_mobile/theme/theme_data.dart';
+import 'package:immich_mobile/utils/branded_translation_loader.dart';
 import 'package:immich_mobile/widgets/common/immich_logo.dart';
 import 'package:immich_mobile/widgets/common/immich_title_text.dart';
 import 'package:logging/logging.dart';
@@ -44,10 +45,10 @@ class BootstrapErrorWidget extends StatelessWidget {
       path: translationsPath,
       useFallbackTranslations: true,
       fallbackLocale: locales.values.first,
-      assetLoader: const CodegenLoader(),
+      assetLoader: const BrandedTranslationLoader(),
       child: Builder(
         builder: (lCtx) => MaterialApp(
-          title: 'Immich',
+          title: 'Pixcellar',
           debugShowCheckedModeBanner: true,
           localizationsDelegates: lCtx.localizationDelegates,
           supportedLocales: lCtx.supportedLocales,
@@ -159,17 +160,9 @@ class _BottomPanelState extends State<_BottomPanel> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             _ActionLink(
-              icon: Icons.chat_bubble_outline,
-              label: context.t.discord,
-              onTap: () => launchUrl(Uri.parse('https://discord.immich.app/'), mode: LaunchMode.externalApplication),
-            ),
-            _ActionLink(
               icon: Icons.bug_report_outlined,
               label: context.t.profile_drawer_github,
-              onTap: () => launchUrl(
-                Uri.parse('https://github.com/immich-app/immich/issues'),
-                mode: LaunchMode.externalApplication,
-              ),
+              onTap: () => launchUrl(Uri.parse('$kPixcellarRepository/issues'), mode: LaunchMode.externalApplication),
             ),
             if (!_cleared)
               _ActionLink(
@@ -400,7 +393,7 @@ class SplashScreenPageState extends ConsumerState<SplashScreenPage> {
   Widget build(BuildContext context) {
     return const Scaffold(
       body: Center(
-        child: Image(image: AssetImage('assets/immich-logo.png'), width: 80, filterQuality: FilterQuality.high),
+        child: Image(image: AssetImage('assets/pixcellar-logo.png'), width: 80, filterQuality: FilterQuality.high),
       ),
     );
   }

@@ -1,7 +1,7 @@
 import Foundation
 import native_video_player
 
-let CLIENT_CERT_LABEL = "app.alextran.immich.client_identity"
+let CLIENT_CERT_LABEL = "io.github.sincemetom.pixcellar.client_identity"
 let HEADERS_KEY = "immich.request_headers"
 let SERVER_URLS_KEY = "immich.server_urls"
 let APP_GROUP = Bundle.main.object(forInfoDictionaryKey: "AppGroupId") as! String

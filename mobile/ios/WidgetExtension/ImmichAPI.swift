@@ -48,7 +48,7 @@ struct Asset: Codable {
   let type: AssetType
 
   var deepLink: URL? {
-    return URL(string: "immich://asset?id=\(id)")
+    return URL(string: "pixcellar://asset?id=\(id)")
   }
 }
 

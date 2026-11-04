@@ -42,8 +42,12 @@ const List<(String, String)> kWidgetNames = [
 
 const int kMinMonthsToEnableScrubberSnap = 12;
 
-const String kImmichAppStoreLink = "https://apps.apple.com/app/immich/id1613945652";
-const String kImmichPlayStoreLink = "https://play.google.com/store/apps/details?id=app.alextran.immich";
+// Pixcellar: the app is published from the fork's GitHub releases (tags `pixcellar-v*`); the server can be
+// any Immich server, so "update your server" still points at upstream's releases
+const String kPixcellarRepository = "https://github.com/SincemeTom/immich";
+const String kPixcellarReleases = "$kPixcellarRepository/releases?q=pixcellar&expanded=true";
+const String kImmichAppStoreLink = kPixcellarReleases;
+const String kImmichPlayStoreLink = kPixcellarReleases;
 const String kImmichLatestRelease = "https://github.com/immich-app/immich/releases/latest";
 
 const int kPhotoTabIndex = 0;
