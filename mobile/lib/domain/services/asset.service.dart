@@ -3,6 +3,7 @@ import 'package:immich_mobile/domain/models/asset/base_asset.model.dart';
 import 'package:immich_mobile/domain/models/asset_edit.model.dart';
 import 'package:immich_mobile/domain/models/events.model.dart';
 import 'package:immich_mobile/domain/models/exif.model.dart';
+import 'package:immich_mobile/domain/models/inferred_location.model.dart';
 import 'package:immich_mobile/domain/models/store.model.dart';
 import 'package:immich_mobile/domain/utils/event_stream.dart';
 import 'package:immich_mobile/entities/store.entity.dart';
@@ -72,6 +73,26 @@ class AssetService {
 
     final id = asset is LocalAsset ? asset.remoteId! : (asset as RemoteAsset).id;
     return _remoteRepository.watchExif(id);
+  }
+
+  /// The location the server inferred for the asset, null when it is not inferred
+  Future<InferredLocation?> getInferredLocation(String remoteId) async {
+    if (!await _apiRepository.isLocationInferred(remoteId)) {
+      return null;
+    }
+    InferredLocationSource? source;
+    try {
+      source = await _apiRepository.getInferredLocationSource(remoteId);
+    } catch (_) {
+      // it is inferred all the same
+    }
+    return InferredLocation(source: source);
+  }
+
+  /// Clears the inferred location of the asset; the server does not infer it again
+  Future<void> clearInferredLocation(String remoteId) async {
+    await _apiRepository.clearInferredLocation(remoteId);
+    await _exifRepository.clearLocation(remoteId);
   }
 
   Future<List<(String, String)>> getPlaces(String userId) {

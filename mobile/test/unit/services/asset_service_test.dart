@@ -3,6 +3,7 @@ import 'package:drift/native.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:immich_mobile/data/db/main/database.dart';
+import 'package:immich_mobile/domain/models/inferred_location.model.dart';
 import 'package:immich_mobile/domain/models/stack.model.dart';
 import 'package:immich_mobile/domain/models/store.model.dart';
 import 'package:immich_mobile/domain/services/asset.service.dart';
@@ -177,6 +178,54 @@ void main() {
 
       verify(() => apiRepository.stack(['remote', 'previous'])).called(1);
       verify(() => mocks.localAsset.repo.updatePreviousChecksum('local', 'srv')).called(1);
+    });
+  });
+
+  group('AssetService inferred location', () {
+    final source = InferredLocationSource(
+      assetId: 'source',
+      takenAt: DateTime(2026, 5, 1, 14, 3),
+      ownerId: 'owner',
+      ownerName: 'Tom',
+    );
+
+    test('is null when the location is not inferred, without asking where from', () async {
+      when(() => apiRepository.isLocationInferred('asset')).thenAnswer((_) async => false);
+
+      expect(await sut.getInferredLocation('asset'), isNull);
+
+      verifyNever(() => apiRepository.getInferredLocationSource(any()));
+    });
+
+    test('tells the photo it was inferred from', () async {
+      when(() => apiRepository.isLocationInferred('asset')).thenAnswer((_) async => true);
+      when(() => apiRepository.getInferredLocationSource('asset')).thenAnswer((_) async => source);
+
+      expect(await sut.getInferredLocation('asset'), InferredLocation(source: source));
+    });
+
+    test('is inferred all the same when where from cannot be told', () async {
+      when(() => apiRepository.isLocationInferred('asset')).thenAnswer((_) async => true);
+      when(() => apiRepository.getInferredLocationSource('asset')).thenThrow(Exception('offline'));
+
+      expect(await sut.getInferredLocation('asset'), const InferredLocation());
+    });
+
+    test('clearing it removes the location on the server, then here', () async {
+      when(() => apiRepository.clearInferredLocation('asset')).thenAnswer((_) async {});
+      when(() => exifRepository.clearLocation('asset')).thenAnswer((_) async {});
+
+      await sut.clearInferredLocation('asset');
+
+      verifyInOrder([() => apiRepository.clearInferredLocation('asset'), () => exifRepository.clearLocation('asset')]);
+    });
+
+    test('a failed clear leaves the location here', () async {
+      when(() => apiRepository.clearInferredLocation('asset')).thenThrow(Exception('offline'));
+
+      await expectLater(sut.clearInferredLocation('asset'), throwsException);
+
+      verifyNever(() => exifRepository.clearLocation(any()));
     });
   });
 }

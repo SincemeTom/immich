@@ -8,6 +8,7 @@ import 'package:immich_mobile/extensions/build_context_extensions.dart';
 import 'package:immich_mobile/extensions/theme_extensions.dart';
 import 'package:immich_mobile/generated/translations.g.dart';
 import 'package:immich_mobile/presentation/actions/edit_location.action.dart';
+import 'package:immich_mobile/presentation/widgets/asset_viewer/asset_details/inferred_location.widget.dart';
 import 'package:immich_mobile/presentation/widgets/asset_viewer/sheet_tile.widget.dart';
 import 'package:immich_mobile/widgets/asset_viewer/detail_panel/exif_map.dart';
 import 'package:maplibre_gl/maplibre_gl.dart';
@@ -102,6 +103,7 @@ class _LocationDetailsState extends ConsumerState<LocationDetails> {
                     coordinates,
                     style: context.textTheme.bodySmall?.copyWith(color: context.colorScheme.onSurfaceSecondary),
                   ),
+                  InferredLocationDetails(asset: asset, exifInfo: exifInfo, isOwner: editLocation != null),
                 ],
               ),
             ),
