@@ -115,6 +115,11 @@ class AuthNotifier extends StateNotifier<AuthState> {
     state = state.copyWith(profileImagePath: path);
   }
 
+  /// After the user changed their name or login email
+  void updateUserProfile({required String name, required String email}) {
+    state = state.copyWith(name: name, userEmail: email);
+  }
+
   Future<bool> changePassword({required String currentPassword, required String newPassword}) async {
     try {
       await _authService.changePassword(currentPassword: currentPassword, newPassword: newPassword);

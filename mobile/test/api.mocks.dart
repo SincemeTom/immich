@@ -10,3 +10,9 @@ class MockServerApi extends Mock implements ServerApi {}
 class MockPartnerApiRepository extends Mock implements PartnerApiRepository {}
 
 class MockConnectivityApi extends Mock implements ConnectivityApi {}
+
+class MockUsersApi extends Mock implements UsersApi {}
+
+class MockAuthenticationApi extends Mock implements AuthenticationApi {}
+
+class MockSessionsApi extends Mock implements SessionsApi {}

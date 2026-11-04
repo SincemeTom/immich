@@ -4,6 +4,7 @@ import 'package:flutter_hooks/flutter_hooks.dart' hide Store;
 import 'package:immich_mobile/extensions/build_context_extensions.dart';
 import 'package:immich_mobile/generated/translations.g.dart';
 import 'package:immich_mobile/routing/router.dart';
+import 'package:immich_mobile/widgets/settings/account/account_settings.dart';
 import 'package:immich_mobile/widgets/settings/advanced_settings.dart';
 import 'package:immich_mobile/widgets/settings/asset_list_settings/asset_list_settings.dart';
 import 'package:immich_mobile/widgets/settings/asset_viewer_settings/asset_viewer_settings.dart';
@@ -17,6 +18,7 @@ import 'package:immich_mobile/widgets/settings/preference_settings/preference_se
 import 'package:immich_ui/immich_ui.dart';
 
 enum SettingSection {
+  account(Icons.manage_accounts_outlined),
   advanced(Icons.build_outlined),
   assetViewer(Icons.image_outlined),
   backup(Icons.cloud_upload_outlined),
@@ -31,6 +33,7 @@ enum SettingSection {
   final IconData icon;
 
   String title(Translations t) => switch (this) {
+    SettingSection.account => t.account,
     SettingSection.advanced => t.advanced,
     SettingSection.assetViewer => t.asset_viewer_settings_title,
     SettingSection.backup => t.backup,
@@ -44,6 +47,7 @@ enum SettingSection {
   };
 
   String subtitle(Translations t) => switch (this) {
+    SettingSection.account => t.account_settings_subtitle,
     SettingSection.advanced => t.advanced_settings_tile_subtitle,
     SettingSection.assetViewer => t.asset_viewer_settings_subtitle,
     SettingSection.backup => t.backup_settings_subtitle,
@@ -57,6 +61,7 @@ enum SettingSection {
   };
 
   Widget get widget => switch (this) {
+    SettingSection.account => const AccountSettings(),
     SettingSection.advanced => const AdvancedSettings(),
     SettingSection.assetViewer => const AssetViewerSettings(),
     SettingSection.backup => const BackupSettings(),
