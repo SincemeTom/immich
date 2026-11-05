@@ -10,6 +10,7 @@ class PersonOptionSheet extends StatelessWidget {
     this.onToggleHidden,
     this.isHidden = false,
     this.onMerge,
+    this.onSelectCover,
   });
 
   final VoidCallback? onEditName;
@@ -18,6 +19,7 @@ class PersonOptionSheet extends StatelessWidget {
   final VoidCallback? onToggleHidden;
   final bool isHidden;
   final VoidCallback? onMerge;
+  final VoidCallback? onSelectCover;
 
   @override
   Widget build(BuildContext context) {
@@ -39,6 +41,12 @@ class PersonOptionSheet extends StatelessWidget {
                 leading: const Icon(Icons.cake),
                 title: Text(birthdayExists ? context.t.edit_birthday : context.t.add_birthday, style: textStyle),
                 onTap: onEditBirthday,
+              ),
+            if (onSelectCover != null)
+              ListTile(
+                leading: const Icon(Icons.account_circle_outlined),
+                title: Text(context.t.select_featured_photo, style: textStyle),
+                onTap: onSelectCover,
               ),
             if (onMerge != null)
               ListTile(

@@ -69,6 +69,10 @@ class _PersonPageState extends ConsumerState<PersonPage> {
             ContextHelper(sheetContext).pop();
           },
           birthdayExists: _person.birthDate != null,
+          onSelectCover: () async {
+            ContextHelper(sheetContext).pop();
+            await selectPersonCover(context, ref, _person);
+          },
           onMerge: () async {
             ContextHelper(sheetContext).pop();
             await mergeIntoPerson(context, ref, _person);

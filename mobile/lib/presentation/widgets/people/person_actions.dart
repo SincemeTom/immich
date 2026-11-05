@@ -3,6 +3,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:immich_mobile/data/store.dart';
 import 'package:immich_mobile/domain/models/person.model.dart';
 import 'package:immich_mobile/generated/translations.g.dart';
+import 'package:immich_mobile/presentation/pages/person_cover_picker.page.dart';
 import 'package:immich_mobile/presentation/widgets/people/person_picker.widget.dart';
 import 'package:immich_mobile/widgets/common/confirm_dialog.dart';
 import 'package:immich_mobile/widgets/common/immich_toast.dart';
@@ -93,6 +94,15 @@ Future<void> setPersonFeaturePhoto(BuildContext context, WidgetRef ref, Person p
       _toast(context, context.t.errors.unable_to_set_feature_photo, type: ToastType.error);
     }
   }
+}
+
+/// Pick one of [person]'s photos, and make their face on it their cover
+Future<void> selectPersonCover(BuildContext context, WidgetRef ref, Person person) async {
+  final assetId = await pickPersonCover(context, person);
+  if (assetId == null || !context.mounted) {
+    return;
+  }
+  await setPersonFeaturePhoto(context, ref, person, assetId);
 }
 
 /// [person]'s face on [assetId] is someone else's: pick them, or a new person
