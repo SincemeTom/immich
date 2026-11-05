@@ -4,16 +4,19 @@ import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:immich_mobile/domain/models/album/local_album.model.dart';
 import 'package:immich_mobile/domain/models/config/app_config.dart';
+import 'package:immich_mobile/domain/models/config/backup_config.dart';
 import 'package:immich_mobile/domain/models/settings_key.dart';
 import 'package:immich_mobile/domain/services/sync_linked_album.service.dart';
 import 'package:immich_mobile/extensions/build_context_extensions.dart';
 import 'package:immich_mobile/extensions/platform_extensions.dart';
+import 'package:immich_mobile/extensions/theme_extensions.dart';
 import 'package:immich_mobile/generated/translations.g.dart';
 import 'package:immich_mobile/providers/background_sync.provider.dart';
 import 'package:immich_mobile/providers/backup/backup_album.provider.dart';
 import 'package:immich_mobile/providers/infrastructure/platform.provider.dart';
 import 'package:immich_mobile/providers/infrastructure/settings.provider.dart';
 import 'package:immich_mobile/providers/user.provider.dart';
+import 'package:immich_mobile/utils/bytes_units.dart';
 import 'package:immich_ui/immich_ui.dart';
 
 class BackupSettings extends StatelessWidget {
@@ -31,6 +34,11 @@ class BackupSettings extends StatelessWidget {
           SettingGroupTitle(title: context.t.background_options, icon: Icons.charging_station_rounded),
           const _BackupOnlyWhenChargingButton(),
           const _BackupDelaySlider(),
+        ],
+        if (CurrentPlatform.isIOS) ...[
+          const Divider(),
+          SettingGroupTitle(title: context.t.background_options, icon: Icons.cloud_upload_outlined),
+          const _BackupQueueSizeSlider(),
         ],
         const Divider(),
         SettingGroupTitle(title: context.t.backup_albums_sync, icon: Icons.sync),
@@ -223,6 +231,56 @@ class _BackupOnlyWhenChargingButton extends ConsumerWidget {
       onChanged: (value) {
         unawaited(fgService.configure(requireCharging: value));
       },
+    );
+  }
+}
+
+/// How much room the files handed to iOS for upload may take, so that it carries on with them while the app is away
+class _BackupQueueSizeSlider extends ConsumerWidget {
+  const _BackupQueueSizeSlider();
+
+  static const _options = BackupConfig.queueSizeOptionsMb;
+
+  static int _toSliderValue(int mb) {
+    final index = _options.indexOf(mb);
+    return index >= 0 ? index : _options.indexOf(BackupConfig.defaultQueueSizeMb);
+  }
+
+  static String _format(int mb) => formatHumanReadableBytes(mb * 1024 * 1024, 0);
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final queueSizeMb = ref.watch(appConfigProvider.select((c) => c.backup.queueSizeMb));
+    final currentValue = _toSliderValue(queueSizeMb);
+    final label = _format(_options[currentValue]);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 24.0, top: 8.0, right: 16.0),
+          child: Text(
+            context.t.backup_queue_size(space: label),
+            style: context.textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w500),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.only(left: 24.0, top: 4.0, right: 16.0),
+          child: Text(
+            context.t.backup_queue_size_description,
+            style: context.textTheme.bodyMedium?.copyWith(color: context.colorScheme.onSurfaceSecondary),
+          ),
+        ),
+        Slider(
+          value: currentValue.toDouble(),
+          onChanged: (double v) async {
+            await ref.read(settingsProvider).write(SettingsKey.backupQueueSizeMb, _options[v.round()]);
+          },
+          max: (_options.length - 1).toDouble(),
+          min: 0.0,
+          divisions: _options.length - 1,
+          label: label,
+        ),
+      ],
     );
   }
 }

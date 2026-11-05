@@ -1,11 +1,16 @@
 import 'dart:async';
 
+import 'package:background_downloader/background_downloader.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:immich_mobile/constants/constants.dart';
+import 'package:immich_mobile/domain/models/asset/base_asset.model.dart';
 import 'package:immich_mobile/providers/backup/backup.provider.dart';
 import 'package:immich_mobile/services/background_upload.service.dart';
 import 'package:immich_mobile/services/foreground_upload.service.dart';
 import 'package:immich_mobile/utils/upload_speed_calculator.dart';
 import 'package:mocktail/mocktail.dart';
+
+import '../../fixtures/asset.stub.dart';
 
 class MockForegroundUploadService extends Mock implements ForegroundUploadService {}
 
@@ -19,6 +24,7 @@ void main() {
   setUpAll(() {
     registerFallbackValue(Completer<void>());
     registerFallbackValue(const UploadCallbacks());
+    registerFallbackValue(<String>{});
   });
 
   setUp(() {
@@ -104,6 +110,275 @@ void main() {
       notifier.dispose();
 
       onSuccess('asset-1', 'remote-1');
+    });
+  });
+
+  group('restarting the backup', () {
+    late List<UploadCallbacks> runs;
+    late List<Completer<void>> runsDone;
+
+    setUp(() {
+      mockCounts(total: 5, remainder: 5);
+      runs = [];
+      runsDone = [];
+      when(() => foregroundUploadService.uploadCandidates(any(), any(), callbacks: any(named: 'callbacks'))).thenAnswer(
+        (invocation) {
+          runs.add(invocation.namedArguments[#callbacks] as UploadCallbacks);
+          final done = Completer<void>();
+          runsDone.add(done);
+          return done.future;
+        },
+      );
+    });
+
+    test('waits for the cancelled run before uploading again', () async {
+      unawaited(notifier.startForegroundBackup('user-1'));
+      await pumpEventQueue();
+      expect(runs, hasLength(1));
+
+      final restarted = notifier.startForegroundBackup('user-1');
+      await pumpEventQueue();
+      expect(runs, hasLength(1));
+
+      runsDone[0].complete();
+      await pumpEventQueue();
+      expect(runs, hasLength(2));
+
+      runsDone[1].complete();
+      await restarted;
+    });
+
+    test('only the last of restarts in a row uploads', () async {
+      unawaited(notifier.startForegroundBackup('user-1'));
+      await pumpEventQueue();
+      final second = notifier.startForegroundBackup('user-1');
+      final third = notifier.startForegroundBackup('user-1');
+      await pumpEventQueue();
+
+      runsDone[0].complete();
+      await second;
+      await pumpEventQueue();
+      expect(runs, hasLength(2));
+
+      runsDone[1].complete();
+      await third;
+    });
+
+    test('what a cancelled run still reports does not show', () async {
+      unawaited(notifier.startForegroundBackup('user-1'));
+      await pumpEventQueue();
+      final cancelled = runs[0];
+      cancelled.onProgress!('asset-1', 'a.mp4', 10, 100);
+      expect(notifier.state.uploadItems.keys, ['asset-1']);
+
+      notifier.stopForegroundBackup(reason: 'test');
+      unawaited(notifier.startForegroundBackup('user-1'));
+      await pumpEventQueue();
+
+      cancelled.onProgress!('asset-1', 'a.mp4', 20, 100);
+      cancelled.onError!('asset-2', 'PathNotFoundException');
+      cancelled.onSuccess!('asset-3', 'remote-3');
+      cancelled.onICloudProgress!('asset-4', 0.5);
+      expect(notifier.state.uploadItems, isEmpty);
+      expect(notifier.state.iCloudDownloadProgress, isEmpty);
+
+      runsDone[0].complete();
+      await pumpEventQueue();
+      expect(notifier.state.backupCount, 0);
+      runs[1].onProgress!('asset-1', 'a.mp4', 30, 100);
+      expect(notifier.state.uploadItems['asset-1']!.progress, 0.3);
+      runsDone[1].complete();
+    });
+  });
+
+  group('iOS background session', () {
+    late StreamController<TaskProgressUpdate> progress;
+    late StreamController<TaskStatusUpdate> status;
+    late List<Task> activeTasks;
+    late int remoteSyncs;
+    late bool syncSucceeds;
+    late List<Invocation> candidateCalls;
+    late Future<int> Function(Invocation) answerCandidates;
+
+    UploadTask task(String id) => UploadTask(
+      taskId: id,
+      url: 'https://example.com/assets',
+      filename: '$id.mp4',
+      displayName: '$id.mp4',
+      group: kBackupGroup,
+    );
+
+    setUp(() {
+      BackupNotifier.sessionPollInterval = const Duration(milliseconds: 10);
+      progress = StreamController.broadcast();
+      status = StreamController.broadcast();
+      activeTasks = [];
+      remoteSyncs = 0;
+      syncSucceeds = true;
+      candidateCalls = [];
+      answerCandidates = (_) async => 0;
+      notifier.dispose();
+      notifier = BackupNotifier(
+        foregroundUploadService,
+        backgroundUploadService,
+        UploadSpeedManager(),
+        syncRemote: () async {
+          remoteSyncs++;
+          return syncSucceeds;
+        },
+        isIOS: true,
+      );
+      mockCounts(total: 5, remainder: 5);
+      when(() => foregroundUploadService.isOnWifi()).thenAnswer((_) async => true);
+      when(() => backgroundUploadService.taskProgressStream).thenAnswer((_) => progress.stream);
+      when(() => backgroundUploadService.taskStatusStream).thenAnswer((_) => status.stream);
+      when(() => backgroundUploadService.getActiveBackupTasks()).thenAnswer((_) async => List.of(activeTasks));
+      Future<int> answer(Invocation invocation) {
+        candidateCalls.add(invocation);
+        return answerCandidates(invocation);
+      }
+
+      when(
+        () => backgroundUploadService.uploadBackupCandidates(
+          any(),
+          shouldStop: any(named: 'shouldStop'),
+          skip: any(named: 'skip'),
+          onWifi: any(named: 'onWifi'),
+          onPreparing: any(named: 'onPreparing'),
+          onICloudProgress: any(named: 'onICloudProgress'),
+          onPrepared: any(named: 'onPrepared'),
+        ),
+      ).thenAnswer(answer);
+      when(
+        () => backgroundUploadService.uploadBackupCandidates(
+          any(),
+          deadline: any(named: 'deadline'),
+          shouldStop: any(named: 'shouldStop'),
+          skip: any(named: 'skip'),
+          onWifi: any(named: 'onWifi'),
+        ),
+      ).thenAnswer(answer);
+    });
+
+    tearDown(() {
+      unawaited(progress.close());
+      unawaited(status.close());
+    });
+
+    test('the queue of the session shows as waiting until it moves, and its uploads are synced', () async {
+      activeTasks = [task('asset-1')];
+      final started = notifier.startForegroundBackup('user-1');
+      await pumpEventQueue();
+      expect(notifier.state.uploadItems['asset-1']!.phase, UploadPhase.waiting);
+
+      progress.add(TaskProgressUpdate(task('asset-1'), 0.4, 1000, 2.5));
+      await pumpEventQueue();
+      final item = notifier.state.uploadItems['asset-1']!;
+      expect(item.phase, UploadPhase.uploading);
+      expect(item.progress, 0.4);
+      expect(item.fileSize, 1000);
+
+      activeTasks = [];
+      status.add(TaskStatusUpdate(task('asset-1'), TaskStatus.complete));
+      await started;
+
+      expect(remoteSyncs, 1);
+      verify(() => foregroundUploadService.getBackupCounts('user-1')).called(2);
+      verifyNever(() => foregroundUploadService.uploadCandidates(any(), any(), callbacks: any(named: 'callbacks')));
+    });
+
+    test('an upload done is not queued again before the server knows it', () async {
+      syncSucceeds = false;
+      activeTasks = [task('asset-1')];
+      final started = notifier.startForegroundBackup('user-1');
+      await pumpEventQueue();
+
+      status.add(TaskStatusUpdate(task('asset-1'), TaskStatus.complete));
+      await pumpEventQueue();
+      expect(candidateCalls.last.namedArguments[#skip], contains('asset-1'));
+
+      activeTasks = [];
+      await started;
+      expect(remoteSyncs, 1);
+
+      await notifier.handOffToBackground('user-1');
+      expect(candidateCalls.last.namedArguments[#skip], contains('asset-1'));
+    });
+
+    test('what is being exported shows as preparing, then waits in the queue', () async {
+      final asset = LocalAssetStub.image1;
+      final exported = Completer<void>();
+      answerCandidates = (invocation) async {
+        if (candidateCalls.length > 1) {
+          return 0;
+        }
+        (invocation.namedArguments[#onPreparing] as void Function(LocalAsset))(asset);
+        await exported.future;
+        activeTasks = [task(asset.id)];
+        (invocation.namedArguments[#onPrepared] as void Function(LocalAsset, bool))(asset, true);
+        return 1;
+      };
+
+      final started = notifier.startForegroundBackup('user-1');
+      await pumpEventQueue();
+      expect(notifier.state.uploadItems[asset.id]!.phase, UploadPhase.preparing);
+
+      exported.complete();
+      await pumpEventQueue();
+      expect(notifier.state.uploadItems[asset.id]!.phase, UploadPhase.waiting);
+
+      activeTasks = [];
+      status.add(TaskStatusUpdate(task(asset.id), TaskStatus.complete));
+      await started;
+    });
+
+    test('a background upload that failed shows as failed, and is not queued again in the run', () async {
+      activeTasks = [task('asset-1')];
+      final started = notifier.startForegroundBackup('user-1');
+      await pumpEventQueue();
+
+      status.add(TaskStatusUpdate(task('asset-1'), TaskStatus.failed, TaskException('boom')));
+      await pumpEventQueue();
+      expect(notifier.state.uploadItems['asset-1']!.isFailed, isTrue);
+      expect(candidateCalls.last.namedArguments[#skip], contains('asset-1'));
+
+      activeTasks = [];
+      await started;
+      expect(remoteSyncs, 0);
+    });
+
+    test('leaving the app tops up the queue of the session', () async {
+      when(() => foregroundUploadService.isOnWifi()).thenAnswer((_) async => false);
+      await notifier.startForegroundBackup('user-1');
+
+      await notifier.handOffToBackground('user-1');
+
+      final handOff = candidateCalls.last;
+      expect(handOff.namedArguments[#deadline], isNotNull);
+      expect(handOff.namedArguments[#onWifi], isFalse);
+      expect(notifier.state.uploadItems, isEmpty);
+    });
+
+    test('leaving again stops following', () async {
+      activeTasks = [task('asset-1')];
+      final started = notifier.startForegroundBackup('user-1');
+      await pumpEventQueue();
+
+      notifier.stopForegroundBackup(reason: 'test');
+      await started;
+
+      progress.add(TaskProgressUpdate(task('asset-1'), 0.5));
+      await pumpEventQueue();
+      expect(notifier.state.uploadItems, isEmpty);
+      verifyNever(() => foregroundUploadService.uploadCandidates(any(), any(), callbacks: any(named: 'callbacks')));
+    });
+
+    test('turning the backup off empties the background session', () async {
+      when(() => backgroundUploadService.cancel()).thenAnswer((_) async => 0);
+
+      await notifier.stopBackup(reason: 'test');
+
+      verify(() => backgroundUploadService.cancel()).called(1);
     });
   });
 }

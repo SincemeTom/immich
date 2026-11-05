@@ -4,6 +4,7 @@ import 'package:immich_mobile/data/data_controller.dart';
 import 'package:immich_mobile/domain/models/store.model.dart';
 import 'package:immich_mobile/domain/services/log.service.dart';
 import 'package:immich_mobile/entities/store.entity.dart';
+import 'package:immich_mobile/extensions/platform_extensions.dart';
 import 'package:immich_mobile/generated/translations.g.dart';
 import 'package:immich_mobile/infrastructure/repositories/log.repository.dart';
 import 'package:immich_mobile/infrastructure/repositories/network.repository.dart';
@@ -11,6 +12,20 @@ import 'package:immich_mobile/infrastructure/repositories/settings.repository.da
 import 'package:immich_mobile/services/api.service.dart';
 import 'package:logging/logging.dart';
 import 'package:photo_manager/photo_manager.dart';
+
+/// How the uploads and downloads of the background session are run
+List<(String, dynamic)> get fileDownloaderGlobalConfig => [
+  // On iOS the tasks go straight to the system, which runs them while the app is suspended. Held back in a queue
+  // of the app, they would only reach it once an earlier one is over, often with the app in the background: the
+  // system then puts them off until it sees fit (Wi-Fi, charging), and a killed app loses them
+  if (CurrentPlatform.isIOS)
+    (Config.holdingQueue, false)
+  else
+    // maxConcurrent: 6, maxConcurrentByHost(server):6, maxConcurrentByGroup: 3
+    (Config.holdingQueue, (6, 6, 3)),
+  // On Android, if files are larger than 256MB, run in foreground service
+  (Config.runInForegroundIfFileLargerThan, 256),
+];
 
 void configureFileDownloaderNotifications() {
   final t = StaticTranslations.instance;

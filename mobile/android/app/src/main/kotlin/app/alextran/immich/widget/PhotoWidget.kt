@@ -49,7 +49,7 @@ class PhotoWidget : GlanceAppWidget() {
           .fillMaxSize()
           .background(GlanceTheme.colors.background)
           .clickable {
-            val intent = Intent(Intent.ACTION_VIEW, deeplinkURL ?: "immich://".toUri())
+            val intent = Intent(Intent.ACTION_VIEW, deeplinkURL ?: "pixcellar://".toUri())
             intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
             context.startActivity(intent)
           }

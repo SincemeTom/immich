@@ -17,11 +17,11 @@ default_platform(:ios)
 
 platform :ios do
   # Constants
-  TEAM_ID = "2W7AC6T8T5"
-  CODE_SIGN_IDENTITY = "Apple Distribution: FUTO Holdings, Inc. (#{TEAM_ID})"
-  BASE_BUNDLE_ID = "app.alextran.immich"
-  DEV_BUNDLE_ID  = "tech.futo.immich.testflight"
-  DEV_GROUP_ID   = "group.app.immich.share.testflight"
+  TEAM_ID = "59HUZ8GCLX"
+  CODE_SIGN_IDENTITY = "Apple Distribution: Tao Wang (#{TEAM_ID})"
+  BASE_BUNDLE_ID = "io.github.sincemetom.pixcellar"
+  DEV_BUNDLE_ID  = "io.github.sincemetom.pixcellar.testflight"
+  DEV_GROUP_ID   = "group.io.github.sincemetom.pixcellar.testflight"
 
   # Helper method to get App Store Connect API key
   def get_api_key

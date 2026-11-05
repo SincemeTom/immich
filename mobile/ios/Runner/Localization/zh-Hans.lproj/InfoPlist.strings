@@ -1,0 +1,10 @@
+/* Pixcellar 系统权限说明（简体中文） */
+"NSCameraUsageDescription" = "Pixcellar 需要使用相机，以便你拍摄照片和视频并备份到自己的服务器。";
+"NSFaceIDUsageDescription" = "Pixcellar 使用面容 ID 保护你的锁定文件夹。";
+"NSLocalNetworkUsageDescription" = "Pixcellar 需要访问本地网络，以连接你在局域网中的照片服务器，并查找可投屏的设备。";
+"NSLocationAlwaysAndWhenInUseUsageDescription" = "Pixcellar 读取当前 Wi-Fi 名称，确保后台备份只在你选定的网络下进行。";
+"NSLocationUsageDescription" = "Pixcellar 读取当前 Wi-Fi 名称，确保备份只在你选定的网络下进行。";
+"NSLocationWhenInUseUsageDescription" = "Pixcellar 读取当前 Wi-Fi 名称，确保备份只在你选定的网络下进行。";
+"NSMicrophoneUsageDescription" = "Pixcellar 在你拍摄视频时需要使用麦克风录制声音。";
+"NSPhotoLibraryAddUsageDescription" = "Pixcellar 需要将你从服务器下载的照片和视频保存到照片图库。";
+"NSPhotoLibraryUsageDescription" = "Pixcellar 需要读取你的照片图库，以便将照片和视频备份到你自己的服务器。";

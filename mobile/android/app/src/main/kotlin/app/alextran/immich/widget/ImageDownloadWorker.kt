@@ -108,7 +108,7 @@ class ImageDownloadWorker(
             glanceId,
             "",
             "",
-            "immich://",
+            "pixcellar://",
             WidgetState.LOG_IN
           )
         }

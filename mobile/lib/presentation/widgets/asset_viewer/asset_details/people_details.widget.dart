@@ -10,8 +10,10 @@ import 'package:immich_mobile/extensions/build_context_extensions.dart';
 import 'package:immich_mobile/extensions/theme_extensions.dart';
 import 'package:immich_mobile/generated/translations.g.dart';
 import 'package:immich_mobile/presentation/widgets/images/remote_image_provider.dart';
+import 'package:immich_mobile/presentation/widgets/people/person_actions.dart';
 import 'package:immich_mobile/presentation/widgets/people/person_edit_name_modal.widget.dart';
 import 'package:immich_mobile/providers/routes.provider.dart';
+import 'package:immich_mobile/providers/user.provider.dart';
 import 'package:immich_mobile/routing/router.dart';
 import 'package:immich_mobile/utils/image_url_builder.dart';
 import 'package:immich_mobile/utils/people.utils.dart';
@@ -29,6 +31,8 @@ class PeopleDetails extends ConsumerWidget {
     }
 
     final people = ref.watch(Store.people.forAsset(asset.id));
+    // the faces are the owner's to correct
+    final isOwner = ref.watch(currentUserProvider)?.id == asset.ownerId;
 
     return people.when(
       data: (people) {
@@ -66,6 +70,7 @@ class PeopleDetails extends ConsumerWidget {
                           ContextHelper(context).pop();
                           unawaited(context.pushRoute(PersonRoute(person: person)));
                         },
+                        onLongPress: isOwner ? () => _showFaceOptions(context, ref, person, asset.id) : null,
                         onNameTap: () => showDialog(
                           context: context,
                           useRootNavigator: false,
@@ -89,14 +94,66 @@ class PeopleDetails extends ConsumerWidget {
   }
 }
 
+Future<void> _showFaceOptions(BuildContext context, WidgetRef ref, Person person, String assetId) {
+  final name = person.name;
+  return showModalBottomSheet(
+    context: context,
+    useRootNavigator: true,
+    backgroundColor: context.colorScheme.surface,
+    builder: (sheetContext) {
+      final textStyle = sheetContext.textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600);
+      return SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.account_circle_outlined),
+                title: Text(context.t.set_as_featured_photo, style: textStyle),
+                onTap: () {
+                  Navigator.of(sheetContext).pop();
+                  unawaited(setPersonFeaturePhoto(context, ref, person, assetId));
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.person_search_outlined),
+                title: Text(
+                  name.isEmpty ? context.t.not_this_person_unnamed : context.t.not_this_person(name: name),
+                  style: textStyle,
+                ),
+                subtitle: Text(context.t.reassign_face_title),
+                onTap: () {
+                  Navigator.of(sheetContext).pop();
+                  unawaited(reassignPersonFace(context, ref, person, assetId));
+                },
+              ),
+              ListTile(
+                leading: Icon(Icons.face_retouching_off, color: context.colorScheme.error),
+                title: Text(context.t.delete_face, style: textStyle?.copyWith(color: context.colorScheme.error)),
+                subtitle: Text(context.t.delete_face_description),
+                onTap: () {
+                  Navigator.of(sheetContext).pop();
+                  unawaited(deletePersonFace(context, ref, person, assetId));
+                },
+              ),
+            ],
+          ),
+        ),
+      );
+    },
+  );
+}
+
 class _Avatar extends StatelessWidget {
   final Person person;
   final DateTime assetFileCreatedAt;
   final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
   final VoidCallback? onNameTap;
   final double imageSize = 96;
 
-  const _Avatar({required this.person, required this.assetFileCreatedAt, this.onTap, this.onNameTap});
+  const _Avatar({required this.person, required this.assetFileCreatedAt, this.onTap, this.onLongPress, this.onNameTap});
 
   @override
   Widget build(BuildContext context) {
@@ -111,6 +168,7 @@ class _Avatar extends StatelessWidget {
           children: [
             GestureDetector(
               onTap: onTap,
+              onLongPress: onLongPress,
               child: SizedBox(
                 height: imageSize,
                 child: Material(

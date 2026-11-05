@@ -4,6 +4,9 @@ import 'package:logging/logging.dart';
 import 'package:openapi/api.dart';
 
 // Redirect URL = app.immich:///oauth-callback
+// Pixcellar keeps this callback on purpose: every Immich server (official or
+// fork) and every OAuth provider already registered for Immich uses it, and the
+// server's mobile redirect override matches this exact scheme.
 
 class OAuthService {
   final ApiService _apiService;

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="memory_widget_title">回忆</string>
+  <string name="random_widget_title">随机照片</string>
+
+  <string name="memory_widget_description">查看 Pixcellar 中的往年今日。</string>
+  <string name="random_widget_description">随机显示照片库或指定相册中的一张照片。</string>
+
+  <string name="bg_downloader_notification_channel_name">上传和下载</string>
+  <string name="bg_downloader_notification_channel_description">上传和下载的进度</string>
+
+  <string name="background_worker_notification_channel_name">后台备份</string>
+
+  <string name="share_upload_label">上传到 Pixcellar</string>
+  <string name="view_in_app_label">在 Pixcellar 中查看</string>
+</resources>

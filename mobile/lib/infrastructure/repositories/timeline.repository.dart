@@ -173,11 +173,21 @@ class TimelineRepository extends DatabaseAccessor<Drift> with $TimelineRepositor
 
   Stream<List<Bucket>> _watchRemoteAlbumBucket(String albumId, {GroupAssetsBy groupBy = GroupAssetsBy.day}) {
     if (groupBy == GroupAssetsBy.none) {
-      return _db.remoteAlbumAssetEntity
-          .count(where: (row) => row.albumId.equals(albumId))
-          .map(_generateBuckets)
-          .watch()
-          .map((results) => results.isNotEmpty ? results.first : const <Bucket>[])
+      // the album's photos not in the trash, as the assets the timeline then reads
+      final count = _db.remoteAssetEntity.id.count();
+      final query = _db.remoteAssetEntity.selectOnly()
+        ..addColumns([count])
+        ..join([
+          innerJoin(
+            _db.remoteAlbumAssetEntity,
+            _db.remoteAlbumAssetEntity.assetId.equalsExp(_db.remoteAssetEntity.id),
+            useColumns: false,
+          ),
+        ])
+        ..where(_db.remoteAssetEntity.deletedAt.isNull() & _db.remoteAlbumAssetEntity.albumId.equals(albumId));
+      return query
+          .map((row) => _generateBuckets(row.read(count) ?? 0))
+          .watchSingle()
           .handleError((error) => const <Bucket>[]);
     }
 

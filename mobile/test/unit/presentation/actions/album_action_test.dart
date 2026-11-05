@@ -1,10 +1,14 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:immich_mobile/domain/models/album/album.model.dart';
+import 'package:immich_mobile/domain/models/album/album_access.model.dart';
 import 'package:immich_mobile/domain/models/asset/base_asset.model.dart';
 import 'package:immich_mobile/generated/translations.g.dart';
+import 'package:immich_mobile/presentation/actions/action.dart';
 import 'package:immich_mobile/presentation/actions/action.widget.dart';
 import 'package:immich_mobile/presentation/actions/remove_from_album.action.dart';
 import 'package:immich_mobile/presentation/actions/set_album_cover.action.dart';
+import 'package:immich_mobile/providers/infrastructure/remote_album.provider.dart';
 import 'package:immich_mobile/providers/infrastructure/toast.provider.dart';
 import 'package:immich_ui/immich_ui.dart';
 import 'package:mocktail/mocktail.dart';
@@ -24,6 +28,7 @@ void main() {
   setUp(() async {
     context = await PresentationContext.create();
     albumService = context.service.album.service;
+    when(() => albumService.getUserRole(any(), any())).thenAnswer((_) async => AlbumUserRole.owner);
   });
 
   tearDown(() async {
@@ -32,12 +37,18 @@ void main() {
 
   List<Override> withMockToast() => [toastServiceProvider.overrideWithValue(context.service.toast)];
 
+  List<Override> withAccess(AlbumAccess access) => [myAlbumAccessProvider.overrideWith((ref, id) async => access)];
+
+  Future<bool> isShown(WidgetTester tester, ActionBuilder action, List<Override> overrides) async {
+    await tester.pumpTestWidget(context, ActionIconButton(action: action), overrides: overrides);
+    return find.byType(ImmichIconButton).evaluate().isNotEmpty;
+  }
+
   group('RemoveFromAlbumAction', () {
-    Future<void> pumpRemove(WidgetTester tester, Set<BaseAsset> selection) => tester.pumpTestAction(
-      context,
-      const RemoveFromAlbumAction(source: .timeline, albumId: albumId),
-      overrides: [...context.selected(selection), ...withMockToast()],
-    );
+    const action = RemoveFromAlbumAction(source: .timeline, albumId: albumId);
+
+    Future<void> pumpRemove(WidgetTester tester, Set<BaseAsset> selection) =>
+        tester.pumpTestAction(context, action, overrides: [...context.selected(selection), ...withMockToast()]);
 
     testWidgets('removes every selected remote asset from the album', (tester) async {
       final first = RemoteAssetFactory.create();
@@ -65,19 +76,58 @@ void main() {
     });
 
     testWidgets('is hidden for a local-only asset', (tester) async {
-      await tester.pumpTestWidget(
-        context,
-        const ActionIconButton(
-          action: RemoveFromAlbumAction(source: .timeline, albumId: albumId),
-        ),
-        overrides: context.selected({LocalAssetFactory.create()}),
-      );
+      expect(await isShown(tester, action, context.selected({LocalAssetFactory.create()})), isFalse);
+    });
 
-      expect(find.byType(ImmichIconButton), findsNothing);
+    testWidgets('is hidden for a viewer', (tester) async {
+      final own = RemoteAssetFactory.create(ownerId: context.currentUser.id);
+      expect(
+        await isShown(tester, action, [
+          ...context.selected({own}),
+          ...withAccess(.downloader),
+        ]),
+        isFalse,
+      );
+    });
+
+    testWidgets('lets an editor remove their own photos', (tester) async {
+      final own = RemoteAssetFactory.create(ownerId: context.currentUser.id);
+      expect(
+        await isShown(tester, action, [
+          ...context.selected({own}),
+          ...withAccess(.editor),
+        ]),
+        isTrue,
+      );
+    });
+
+    testWidgets('does not let an editor remove others\' photos', (tester) async {
+      final own = RemoteAssetFactory.create(ownerId: context.currentUser.id);
+      final others = RemoteAssetFactory.create();
+      expect(
+        await isShown(tester, action, [
+          ...context.selected({own, others}),
+          ...withAccess(.editor),
+        ]),
+        isFalse,
+      );
+    });
+
+    testWidgets('lets a manager remove anyone\'s photos', (tester) async {
+      final others = RemoteAssetFactory.create();
+      expect(
+        await isShown(tester, action, [
+          ...context.selected({others}),
+          ...withAccess(.manager),
+        ]),
+        isTrue,
+      );
     });
   });
 
   group('SetAlbumCoverAction', () {
+    const action = SetAlbumCoverAction(source: .timeline, albumId: albumId);
+
     testWidgets('sets the single selected asset as the cover', (tester) async {
       final asset = RemoteAssetFactory.create();
       when(
@@ -86,7 +136,7 @@ void main() {
 
       await tester.pumpTestAction(
         context,
-        const SetAlbumCoverAction(source: .timeline, albumId: albumId),
+        action,
         overrides: [
           ...context.selected({asset}),
           ...withMockToast(),
@@ -101,27 +151,34 @@ void main() {
     });
 
     testWidgets('is hidden for more than one asset', (tester) async {
-      await tester.pumpTestWidget(
-        context,
-        const ActionIconButton(
-          action: SetAlbumCoverAction(source: .timeline, albumId: albumId),
-        ),
-        overrides: context.selected({RemoteAssetFactory.create(), RemoteAssetFactory.create()}),
-      );
-
-      expect(find.byType(ImmichIconButton), findsNothing);
+      final selection = {RemoteAssetFactory.create(), RemoteAssetFactory.create()};
+      expect(await isShown(tester, action, context.selected(selection)), isFalse);
     });
 
     testWidgets('is hidden for a local-only asset', (tester) async {
-      await tester.pumpTestWidget(
-        context,
-        const ActionIconButton(
-          action: SetAlbumCoverAction(source: .timeline, albumId: albumId),
-        ),
-        overrides: context.selected({LocalAssetFactory.create()}),
-      );
+      expect(await isShown(tester, action, context.selected({LocalAssetFactory.create()})), isFalse);
+    });
 
-      expect(find.byType(ImmichIconButton), findsNothing);
+    testWidgets('is hidden for an editor', (tester) async {
+      final asset = RemoteAssetFactory.create();
+      expect(
+        await isShown(tester, action, [
+          ...context.selected({asset}),
+          ...withAccess(.editor),
+        ]),
+        isFalse,
+      );
+    });
+
+    testWidgets('is shown for a manager', (tester) async {
+      final asset = RemoteAssetFactory.create();
+      expect(
+        await isShown(tester, action, [
+          ...context.selected({asset}),
+          ...withAccess(.manager),
+        ]),
+        isTrue,
+      );
     });
   });
 }

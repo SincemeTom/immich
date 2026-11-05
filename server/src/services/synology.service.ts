@@ -192,7 +192,7 @@ export class SynologyService extends BaseService {
     const same = !!current && current.url === url && current.account.toLowerCase() === dto.account.toLowerCase();
     const stored = same ? await this.readSecret(auth.user.id).catch(() => null) : null;
     if (!dto.password && !stored) {
-      throw new BadRequestException('Enter the password of the Synology account');
+      throw new BadRequestException('Enter the password of the NAS account');
     }
 
     const secret: Secret = { password: dto.password ?? stored!.password, deviceId: stored?.deviceId };
@@ -212,7 +212,7 @@ export class SynologyService extends BaseService {
         {
           success: false,
           reason: SynologyErrorReason.AlreadyBound,
-          message: 'Another Immich user bound this Synology account',
+          message: 'Another Immich user bound this NAS account',
         },
         current,
       );
@@ -258,7 +258,7 @@ export class SynologyService extends BaseService {
     this.requireSupport();
     const current = await this.getUserAccount(auth.user.id);
     if (!current) {
-      throw new NotFoundException('No Synology account is bound');
+      throw new NotFoundException('No NAS account is bound');
     }
 
     let result: Connected | Failed | undefined;
@@ -286,7 +286,7 @@ export class SynologyService extends BaseService {
     const accounts = await this.getAccounts();
     const account = accounts[auth.user.id];
     if (!account) {
-      throw new NotFoundException('No Synology account is bound');
+      throw new NotFoundException('No NAS account is bound');
     }
 
     account.checkedAt = new Date().toISOString();
@@ -334,7 +334,7 @@ export class SynologyService extends BaseService {
     const accounts = await this.getAccounts();
     const account = accounts[auth.user.id];
     if (!account) {
-      throw new NotFoundException('No Synology account is bound');
+      throw new NotFoundException('No NAS account is bound');
     }
 
     account.syncQueuedAt = new Date().toISOString();
@@ -348,7 +348,7 @@ export class SynologyService extends BaseService {
     const accounts = await this.getAccounts();
     const account = accounts[auth.user.id];
     if (!account) {
-      throw new NotFoundException('No Synology account is bound');
+      throw new NotFoundException('No NAS account is bound');
     }
 
     account.autoSync = dto.autoSync;
@@ -863,7 +863,7 @@ export class SynologyService extends BaseService {
 
       const result = await this.withSession(account, account.account, secret, async (session) => {
         if (session.me.id !== photosUserId) {
-          throw new Error('The bound account is another Synology Photos user now');
+          throw new Error('The bound account is another user of the NAS photo app now');
         }
         for (const id of ids) {
           member.folders.set(id, await this.readFolder(account, session.sid, id));
@@ -1137,7 +1137,7 @@ export class SynologyService extends BaseService {
       return {
         success: false,
         reason: SynologyErrorReason.NoPhotos,
-        message: 'Synology Photos is not installed on this Synology',
+        message: 'The photo app is not installed on this NAS',
       };
     }
 
@@ -1158,7 +1158,7 @@ export class SynologyService extends BaseService {
     );
     if (!login.success || !login.data?.sid) {
       const code = login.error?.code;
-      return { success: false, reason: getAuthErrorReason(code), message: `Synology answered with error ${code}` };
+      return { success: false, reason: getAuthErrorReason(code), message: `The NAS answered with error ${code}` };
     }
 
     const sid = login.data.sid;
@@ -1186,7 +1186,7 @@ export class SynologyService extends BaseService {
       return {
         success: false,
         reason: SynologyErrorReason.NoPhotos,
-        message: `The account may not use Synology Photos (error ${me.error?.code})`,
+        message: `The account may not use the NAS photo app (error ${me.error?.code})`,
       };
     }
 
@@ -1316,7 +1316,7 @@ export class SynologyService extends BaseService {
 
   private requireSupport() {
     if (!this.isSupported()) {
-      throw new BadRequestException('Synology accounts are only available when Immich runs natively on macOS');
+      throw new BadRequestException('External albums are only available when Immich runs natively on macOS');
     }
   }
 }

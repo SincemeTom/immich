@@ -241,7 +241,7 @@ describe(SynologyService.name, () => {
       expect(result).toEqual({
         success: false,
         errorReason: reason,
-        message: `Synology answered with error ${code}`,
+        message: `The NAS answered with error ${code}`,
         account: { bound: false },
       });
       expect(mocks.keychain.set).not.toHaveBeenCalled();
@@ -449,7 +449,7 @@ describe(SynologyService.name, () => {
       });
       expect(accounts['user-1'].error).toEqual({
         reason: SynologyErrorReason.WrongPassword,
-        message: 'Synology answered with error 400',
+        message: 'The NAS answered with error 400',
       });
       expect(secret()).toEqual({ password: 'pw', deviceId: 'device-token' });
     });

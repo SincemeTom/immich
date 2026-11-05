@@ -5,15 +5,19 @@ import 'dart:async';
 import 'package:freezed_annotation/freezed_annotation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:immich_mobile/domain/models/album/album.model.dart';
+import 'package:immich_mobile/domain/models/album/album_access.model.dart';
 import 'package:immich_mobile/domain/models/asset/base_asset.model.dart';
+import 'package:immich_mobile/domain/models/events.model.dart';
 import 'package:immich_mobile/domain/models/user.model.dart';
 import 'package:immich_mobile/domain/services/remote_album.service.dart';
+import 'package:immich_mobile/domain/utils/event_stream.dart';
 import 'package:immich_mobile/models/albums/album_search.model.dart';
 import 'package:immich_mobile/providers/album/album_sort_by_options.provider.dart';
 import 'package:immich_mobile/providers/album/pending_album_uploads.provider.dart';
 import 'package:immich_mobile/providers/backup/asset_upload_progress.provider.dart';
 import 'package:immich_mobile/providers/infrastructure/album.provider.dart';
 import 'package:immich_mobile/providers/user.provider.dart';
+import 'package:immich_mobile/repositories/album_api_repository.dart';
 import 'package:immich_mobile/services/foreground_upload.service.dart';
 import 'package:logging/logging.dart';
 
@@ -34,15 +38,48 @@ class RemoteAlbumNotifier extends Notifier<RemoteAlbumState> {
   late RemoteAlbumService _remoteAlbumService;
   final _logger = Logger('RemoteAlbumNotifier');
 
+  /// The albums were read once: they then follow what the app does to their photos
+  bool _loaded = false;
+  Timer? _refreshTimer;
+
   @override
   RemoteAlbumState build() {
     _remoteAlbumService = ref.read(remoteAlbumServiceProvider);
+    final subscriptions = [
+      // trashed and restored photos change the albums' counts
+      EventStream.shared.listen<RemoteAssetsChangedEvent>((event) {
+        if (event.trashed || event.restored) {
+          _scheduleRefresh();
+        }
+      }),
+      EventStream.shared.listen<AlbumAssetsChangedEvent>((event) {
+        if (_loaded) {
+          unawaited(_refreshAlbumInState(event.albumId));
+        }
+      }),
+    ];
+    ref.onDispose(() {
+      _refreshTimer?.cancel();
+      for (final subscription in subscriptions) {
+        unawaited(subscription.cancel());
+      }
+    });
     return const RemoteAlbumState(albums: []);
+  }
+
+  /// Once for a burst of changes (an undo right after, a few actions in a row)
+  void _scheduleRefresh() {
+    if (!_loaded) {
+      return;
+    }
+    _refreshTimer?.cancel();
+    _refreshTimer = Timer(const Duration(milliseconds: 300), () => unawaited(refresh().catchError((_) {})));
   }
 
   Future<List<RemoteAlbum>> _getAll() async {
     try {
       final albums = await _remoteAlbumService.getAll();
+      _loaded = true;
       state = state.copyWith(albums: albums);
       return albums;
     } catch (error, stack) {
@@ -183,6 +220,7 @@ class RemoteAlbumNotifier extends Notifier<RemoteAlbumState> {
 
     final updatedAlbums = state.albums.where((album) => album.id != albumId).toList();
     state = state.copyWith(albums: updatedAlbums);
+    ref.invalidate(albumsContainingAssetProvider);
   }
 
   Future<List<RemoteAsset>> getAssets(String albumId) {
@@ -282,8 +320,17 @@ class RemoteAlbumNotifier extends Notifier<RemoteAlbumState> {
     state = state.copyWith(albums: state.albums.map((album) => album.id == albumId ? updated : album).toList());
   }
 
-  Future<void> addUsers(String albumId, List<String> userIds) {
-    return _remoteAlbumService.addUsers(albumId: albumId, userIds: userIds);
+  Future<void> addUsers(String albumId, List<String> userIds, {AlbumAccess? access, bool hasAccessLevels = false}) {
+    return _remoteAlbumService.addUsers(
+      albumId: albumId,
+      userIds: userIds,
+      access: access,
+      hasAccessLevels: hasAccessLevels,
+    );
+  }
+
+  Future<void> updateMemberAccess(String albumId, String userId, AlbumAccess access, {required bool hasAccessLevels}) {
+    return _remoteAlbumService.updateMemberAccess(albumId, userId, access, hasAccessLevels: hasAccessLevels);
   }
 
   Future<void> removeUser(String albumId, String userId) {
@@ -295,6 +342,7 @@ class RemoteAlbumNotifier extends Notifier<RemoteAlbumState> {
 
     final updatedAlbums = state.albums.where((album) => album.id != albumId).toList();
     state = state.copyWith(albums: updatedAlbums);
+    ref.invalidate(albumsContainingAssetProvider);
   }
 
   Future<void> setActivityStatus(String albumId, bool enabled) {
@@ -312,4 +360,29 @@ final remoteAlbumSharedUsersProvider = FutureProvider.autoDispose.family<List<Us
   ref.onDispose(() => link.close());
   final service = ref.watch(remoteAlbumServiceProvider);
   return service.getSharedUsers(albumId);
+});
+
+/// The album's members and what each can do, from the server
+final albumMembersProvider = FutureProvider.autoDispose.family<AlbumMembers, String>((ref, albumId) {
+  return ref.watch(albumApiRepositoryProvider).getMembers(albumId);
+});
+
+/// What the user can do in the album: the owner everything at once; a member what the server says, and until it
+/// answers (or offline) the least their role may be
+final myAlbumAccessProvider = FutureProvider.autoDispose.family<AlbumAccess, String>((ref, albumId) async {
+  final userId = ref.watch(currentUserProvider.select((user) => user?.id));
+  if (userId == null) {
+    return AlbumAccess.viewer;
+  }
+  final localRole = await ref.watch(remoteAlbumServiceProvider).getUserRole(albumId, userId);
+  if (localRole == AlbumUserRole.owner) {
+    return AlbumAccess.owner;
+  }
+  final fallback = AlbumAccess.fromRole(localRole ?? AlbumUserRole.viewer);
+  try {
+    final members = await ref.watch(albumMembersProvider(albumId).future);
+    return members.accessOf(userId) ?? fallback;
+  } catch (error) {
+    return fallback;
+  }
 });

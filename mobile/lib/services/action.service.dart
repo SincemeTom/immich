@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:immich_mobile/domain/models/events.model.dart';
+import 'package:immich_mobile/domain/utils/event_stream.dart';
 import 'package:immich_mobile/infrastructure/repositories/remote_asset.repository.dart';
 import 'package:immich_mobile/providers/infrastructure/db.provider.dart';
 import 'package:immich_mobile/repositories/asset_api.repository.dart';
@@ -17,13 +19,19 @@ class ActionService {
 
   Future<int> emptyTrash(String userId) async {
     final count = await _assetApiRepository.emptyTrash();
-    await _remoteAssetRepository.emptyTrash(userId);
+    final ids = await _remoteAssetRepository.emptyTrash(userId);
+    if (ids.isNotEmpty) {
+      EventStream.shared.emit(RemoteAssetsChangedEvent(ids, trashed: true));
+    }
     return count;
   }
 
   Future<int> restoreAllTrash(String userId) async {
     final count = await _assetApiRepository.restoreAllTrash();
-    await _remoteAssetRepository.restoreAllTrash(userId);
+    final ids = await _remoteAssetRepository.restoreAllTrash(userId);
+    if (ids.isNotEmpty) {
+      EventStream.shared.emit(RemoteAssetsChangedEvent(ids, restored: true));
+    }
     return count;
   }
 

@@ -1,9 +1,13 @@
+import 'dart:async';
+
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:immich_mobile/domain/models/album/album.model.dart';
 import 'package:immich_mobile/domain/models/album/local_album.model.dart';
 import 'package:immich_mobile/domain/models/asset/base_asset.model.dart';
+import 'package:immich_mobile/domain/models/events.model.dart';
 import 'package:immich_mobile/domain/services/local_album.service.dart';
 import 'package:immich_mobile/domain/services/remote_album.service.dart';
+import 'package:immich_mobile/domain/utils/event_stream.dart';
 import 'package:immich_mobile/infrastructure/repositories/local_album.repository.dart';
 import 'package:immich_mobile/providers/infrastructure/db.provider.dart';
 import 'package:immich_mobile/providers/infrastructure/remote_album.provider.dart';
@@ -33,6 +37,12 @@ final remoteAlbumProvider = NotifierProvider<RemoteAlbumNotifier, RemoteAlbumSta
   dependencies: [remoteAlbumServiceProvider],
 );
 
-final albumsContainingAssetProvider = FutureProvider.family<List<RemoteAlbum>, String>(
-  (ref, assetId) => ref.watch(remoteAlbumServiceProvider).getAlbumsContainingAsset(assetId),
-);
+final albumsContainingAssetProvider = FutureProvider.family<List<RemoteAlbum>, String>((ref, assetId) {
+  final subscription = EventStream.shared.listen<AlbumAssetsChangedEvent>((event) {
+    if (event.assetIds.contains(assetId)) {
+      ref.invalidateSelf();
+    }
+  });
+  ref.onDispose(() => unawaited(subscription.cancel()));
+  return ref.watch(remoteAlbumServiceProvider).getAlbumsContainingAsset(assetId);
+});

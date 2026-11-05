@@ -55,11 +55,18 @@ class _MapViewState extends ConsumerState<MapView> {
   final ValueNotifier<double> bottomSheetOffset = ValueNotifier(0.25);
   final GlobalKey _bottomSheetKey = GlobalKey();
   StreamSubscription? _eventSubscription;
+  StreamSubscription? _assetsSubscription;
 
   @override
   void initState() {
     super.initState();
     _eventSubscription = EventStream.shared.listen<MapMarkerReloadEvent>(_onEvent);
+    // trashed, archived or locked photos leave the map, restored ones come back
+    _assetsSubscription = EventStream.shared.listen<RemoteAssetsChangedEvent>((event) {
+      if (event.changesWhereShown) {
+        _onEvent(event);
+      }
+    });
   }
 
   @override
@@ -67,6 +74,7 @@ class _MapViewState extends ConsumerState<MapView> {
     _debouncer.dispose();
     bottomSheetOffset.dispose();
     unawaited(_eventSubscription?.cancel());
+    unawaited(_assetsSubscription?.cancel());
     super.dispose();
   }
 
@@ -140,6 +148,10 @@ class _MapViewState extends ConsumerState<MapView> {
     unawaited(
       _reloadMutex.run(() async {
         if (mounted && (ref.read(mapStateProvider.notifier).setBounds(bounds) || forceReload)) {
+          if (forceReload) {
+            // markers are cached per bounds; drop them so changed photos are picked up
+            ref.invalidate(mapMarkerProvider(bounds));
+          }
           final markers = await ref.read(mapMarkerProvider(bounds).future);
           await reloadMarkers(markers);
         }

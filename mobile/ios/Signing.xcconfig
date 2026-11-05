@@ -11,19 +11,19 @@
 //     IMMICH_GROUP_ID = group.com.customuniqueid.immich
 
 // Apple Developer Team ID used for automatically provisioning signing credentials
-IMMICH_TEAM_ID = 2W7AC6T8T5
+IMMICH_TEAM_ID = 59HUZ8GCLX
 
 // Root bundle identifier for the Release configuration.
 // Extension suffixes (`.ShareExtension`/`.Widget`) will be appended
-IMMICH_BUNDLE_ID_PROD = app.alextran.immich
+IMMICH_BUNDLE_ID_PROD = io.github.sincemetom.pixcellar
 
 // Root bundle identifier for the Debug and Profile configurations.
 // Build scheme suffixes (`.debug`/`.profile`) will be appended
-IMMICH_BUNDLE_ID_DEV = app.futo.immich
+IMMICH_BUNDLE_ID_DEV = io.github.sincemetom.pixcellar.dev
 
 // Root App Group identifier.
 // Build scheme suffixes (`.debug`/`.profile`) will be appended
-IMMICH_GROUP_ID = group.app.immich.share
+IMMICH_GROUP_ID = group.io.github.sincemetom.pixcellar
 
 // Optional per-developer configuration override
 #include? "Signing.local.xcconfig"

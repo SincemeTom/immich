@@ -4,11 +4,14 @@ import 'package:flutter_hooks/flutter_hooks.dart' hide Store;
 import 'package:immich_mobile/extensions/build_context_extensions.dart';
 import 'package:immich_mobile/generated/translations.g.dart';
 import 'package:immich_mobile/routing/router.dart';
+import 'package:immich_mobile/widgets/settings/account/account_settings.dart';
 import 'package:immich_mobile/widgets/settings/advanced_settings.dart';
 import 'package:immich_mobile/widgets/settings/asset_list_settings/asset_list_settings.dart';
 import 'package:immich_mobile/widgets/settings/asset_viewer_settings/asset_viewer_settings.dart';
+import 'package:immich_mobile/widgets/settings/auto_stack_settings.dart';
 import 'package:immich_mobile/widgets/settings/backup_settings/backup_settings.dart';
 import 'package:immich_mobile/widgets/settings/beta_sync_settings/sync_status_and_actions.dart';
+import 'package:immich_mobile/widgets/settings/external_album_settings.dart';
 import 'package:immich_mobile/widgets/settings/free_up_space_settings.dart';
 import 'package:immich_mobile/widgets/settings/language_settings.dart';
 import 'package:immich_mobile/widgets/settings/networking_settings/networking_settings.dart';
@@ -17,9 +20,12 @@ import 'package:immich_mobile/widgets/settings/preference_settings/preference_se
 import 'package:immich_ui/immich_ui.dart';
 
 enum SettingSection {
+  account(Icons.manage_accounts_outlined),
   advanced(Icons.build_outlined),
   assetViewer(Icons.image_outlined),
+  autoStack(Icons.burst_mode_outlined),
   backup(Icons.cloud_upload_outlined),
+  externalAlbums(Icons.photo_album_outlined),
   freeUpSpace(Icons.cleaning_services_outlined),
   languages(Icons.language),
   networking(Icons.wifi),
@@ -31,9 +37,12 @@ enum SettingSection {
   final IconData icon;
 
   String title(Translations t) => switch (this) {
+    SettingSection.account => t.account,
     SettingSection.advanced => t.advanced,
     SettingSection.assetViewer => t.asset_viewer_settings_title,
+    SettingSection.autoStack => t.auto_stack,
     SettingSection.backup => t.backup,
+    SettingSection.externalAlbums => t.synology_photos,
     SettingSection.freeUpSpace => t.free_up_space,
     SettingSection.languages => t.language,
     SettingSection.networking => t.networking_settings,
@@ -44,9 +53,12 @@ enum SettingSection {
   };
 
   String subtitle(Translations t) => switch (this) {
+    SettingSection.account => t.account_settings_subtitle,
     SettingSection.advanced => t.advanced_settings_tile_subtitle,
     SettingSection.assetViewer => t.asset_viewer_settings_subtitle,
+    SettingSection.autoStack => t.auto_stack_setting_description,
     SettingSection.backup => t.backup_settings_subtitle,
+    SettingSection.externalAlbums => t.synology_setting_description,
     SettingSection.freeUpSpace => t.free_up_space_settings_subtitle,
     SettingSection.languages => t.setting_languages_subtitle,
     SettingSection.networking => t.networking_subtitle,
@@ -57,9 +69,12 @@ enum SettingSection {
   };
 
   Widget get widget => switch (this) {
+    SettingSection.account => const AccountSettings(),
     SettingSection.advanced => const AdvancedSettings(),
     SettingSection.assetViewer => const AssetViewerSettings(),
+    SettingSection.autoStack => const AutoStackSettingsPage(),
     SettingSection.backup => const BackupSettings(),
+    SettingSection.externalAlbums => const ExternalAlbumSettingsPage(),
     SettingSection.freeUpSpace => const FreeUpSpaceSettings(),
     SettingSection.languages => const LanguageSettings(),
     SettingSection.networking => const NetworkingSettings(),

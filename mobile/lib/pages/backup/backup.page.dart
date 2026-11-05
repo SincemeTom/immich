@@ -141,7 +141,7 @@ class _BackupPageState extends ConsumerState<BackupPage> {
                     onStart: () async => await startBackup(),
                     onStop: () {
                       syncSuccess = null;
-                      backupNotifier.stopForegroundBackup(reason: "backup button toggled off");
+                      unawaited(backupNotifier.stopBackup(reason: "backup button toggled off"));
                     },
                   ),
                   switch (error) {

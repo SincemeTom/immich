@@ -23,10 +23,12 @@ import 'package:immich_mobile/providers/infrastructure/storage.provider.dart';
 import 'package:immich_mobile/repositories/asset_media.repository.dart';
 import 'package:immich_mobile/repositories/upload.repository.dart';
 import 'package:immich_mobile/services/api.service.dart';
+import 'package:immich_mobile/services/foreground_upload.service.dart';
 import 'package:immich_mobile/utils/debug_print.dart';
 import 'package:logging/logging.dart';
 import 'package:openapi/api.dart' as api;
 import 'package:path/path.dart' as p;
+import 'package:photo_manager/photo_manager.dart' show PMProgressHandler;
 
 part 'background_upload.service.freezed.dart';
 
@@ -136,7 +138,89 @@ class BackgroundUploadService {
 
   /// Enqueue tasks to the background upload queue
   Future<List<bool>> enqueueTasks(List<UploadTask> tasks) {
-    return _uploadRepository.enqueueBackgroundAll(tasks);
+    final result = _enqueuing.then((_) => _enqueue(tasks));
+    _enqueuing = result.then((_) {}, onError: (_) {});
+    return result;
+  }
+
+  /// One enqueue at a time, to tell which file each one wrote
+  static Future<void> _enqueuing = Future.value();
+
+  /// On iOS each upload is sent from a copy of its file the session writes as it is queued, with the form around it
+  /// (named by a UUID in the temporary folder, and left there once the upload is over)
+  static final Map<String, String> _sessionFileOf = {};
+
+  static final _sessionFileName = RegExp(r'^[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$');
+
+  @visibleForTesting
+  static Future<Set<String>> Function() listSessionFiles = () async {
+    try {
+      return {
+        await for (final entry in Directory.systemTemp.list(followLinks: false))
+          if (entry is File && _sessionFileName.hasMatch(p.basename(entry.path))) entry.path,
+      };
+    } catch (_) {
+      return {};
+    }
+  };
+
+  /// How much room the temporary folder takes: the files exported from the photo library and their copies in the
+  /// session
+  @visibleForTesting
+  static Future<int> Function() measureTempUsage = () async {
+    var total = 0;
+    try {
+      await for (final entry in Directory.systemTemp.list(recursive: true, followLinks: false)) {
+        if (entry is File) {
+          total += await entry.length().catchError((_) => 0);
+        }
+      }
+    } catch (_) {
+      // what could be measured
+    }
+    return total;
+  };
+
+  Future<List<bool>> _enqueue(List<UploadTask> tasks) async {
+    if (!CurrentPlatform.isIOS) {
+      return _uploadRepository.enqueueBackgroundAll(tasks);
+    }
+    final results = <bool>[];
+    for (final task in tasks) {
+      final before = await listSessionFiles();
+      final queued = (await _uploadRepository.enqueueBackgroundAll([task])).firstOrNull ?? false;
+      results.add(queued);
+      if (!queued) {
+        continue;
+      }
+      final written = (await listSessionFiles()).difference(before);
+      if (written.length != 1) {
+        continue;
+      }
+      _sessionFileOf[task.taskId] = written.single;
+      // the session sends its copy: a backup upload is not retried from the export (see [buildUploadTask])
+      if (isBackupTask(task)) {
+        await _deleteQuietly(await task.filePath());
+      }
+    }
+    return results;
+  }
+
+  static Future<void> _deleteQuietly(String path) async {
+    try {
+      await File(path).delete();
+    } catch (_) {
+      // already gone, or with the temporary folder at the latest
+    }
+  }
+
+  /// Removes the files of an upload that is over
+  Future<void> _deleteFilesOf(Task task) async {
+    final sessionFile = _sessionFileOf.remove(task.taskId);
+    if (sessionFile != null) {
+      await _deleteQuietly(sessionFile);
+    }
+    await _deleteQuietly(await task.filePath());
   }
 
   /// Get a list of tasks that are ENQUEUED or RUNNING
@@ -144,37 +228,84 @@ class BackgroundUploadService {
     return _uploadRepository.getActiveTasks(group);
   }
 
-  /// Start background upload using iOS URLSession
+  /// The backup uploads queued or running in the background session
+  Future<List<Task>> getActiveBackupTasks() async => [
+    for (final group in const [kBackupGroup, kBackupLivePhotoGroup]) ...await _uploadRepository.getActiveTasks(group),
+  ];
+
+  static bool isBackupTask(Task task) => task.group == kBackupGroup || task.group == kBackupLivePhotoGroup;
+
+  /// Gives the background session the next backup uploads, as long as the temporary folder takes less than
+  /// [limitBytes] (the backup setting by default). The session always gets at least one, however large
   ///
-  /// Finds backup candidates, builds upload tasks, and enqueues them
-  /// for background processing.
-  Future<void> uploadBackupCandidates(String userId) async {
-    await _storageRepository.clearCache();
+  /// The session uploads them while the app is suspended. Each one is queued as soon as its file is exported from the
+  /// photo library. Queuing stops at [deadline] (the time iOS leaves before suspending the app) or once [shouldStop]
+  /// says so (checked before each export: an exported file is always queued). Assets in [skip] are left out, and so
+  /// are those needing Wi-Fi when not [onWifi]. [onPreparing], [onICloudProgress] and [onPrepared] tell about each
+  /// export
+  ///
+  /// Returns the number of uploads queued
+  Future<int> uploadBackupCandidates(
+    String userId, {
+    int? limitBytes,
+    DateTime? deadline,
+    bool Function()? shouldStop,
+    Set<String> skip = const {},
+    bool onWifi = true,
+    void Function(LocalAsset asset)? onPreparing,
+    void Function(LocalAsset asset, double progress)? onICloudProgress,
+    void Function(LocalAsset asset, bool queued)? onPrepared,
+  }) async {
+    final limit = limitBytes ?? SettingsRepository.instance.appConfig.backup.queueSizeMb * 1024 * 1024;
+    final active = await getActiveBackupTasks();
+    // a task is known by its asset: queuing it again would mix the two up
+    final inSession = {for (final task in active) task.taskId};
+    // the uploads in the app and in the session read their files from the temporary folder
+    if (!ForegroundUploadService.isUploading && active.isEmpty) {
+      await _storageRepository.clearCache();
+      _sessionFileOf.clear();
+    }
     shouldAbortQueuingTasks = false;
 
+    Future<bool> isFull() async => inSession.isNotEmpty && await measureTempUsage() >= limit;
+    if (await isFull()) {
+      return 0;
+    }
+
     final candidates = await _backupRepository.getCandidates(userId);
-    if (candidates.isEmpty) {
-      _logger.info("No new backup candidates found, finishing background upload");
-      return;
-    }
-
-    _logger.info("Found ${candidates.length} backup candidates for background tasks");
-
-    const batchSize = 100;
-    final batch = candidates.take(batchSize).toList();
-    final List<UploadTask> tasks = [];
-
-    for (final asset in batch) {
-      final task = await getUploadTask(asset);
-      if (task != null) {
-        tasks.add(task);
+    var queued = 0;
+    for (final asset in candidates) {
+      if (shouldAbortQueuingTasks ||
+          (shouldStop?.call() ?? false) ||
+          (deadline != null && DateTime.now().isAfter(deadline))) {
+        break;
       }
+      if (inSession.contains(asset.id) || skip.contains(asset.id) || (!onWifi && _shouldRequireWiFi(asset))) {
+        continue;
+      }
+      if (await isFull()) {
+        break;
+      }
+      onPreparing?.call(asset);
+      final task = await getUploadTask(
+        asset,
+        onICloudProgress: onICloudProgress == null ? null : (progress) => onICloudProgress(asset, progress),
+      );
+      final queue = task != null && !shouldAbortQueuingTasks && (await enqueueTasks([task])).first;
+      if (queue) {
+        inSession.add(asset.id);
+        queued++;
+      }
+      onPrepared?.call(asset, queue);
     }
 
-    if (tasks.isNotEmpty && !shouldAbortQueuingTasks) {
-      _logger.info("Enqueuing ${tasks.length} background upload tasks");
-      await enqueueTasks(tasks);
+    if (queued > 0) {
+      final usage = await measureTempUsage();
+      _logger.info(
+        "Enqueued $queued background upload tasks, ${inSession.length} in the session (${usage ~/ (1024 * 1024)} MB)",
+      );
     }
+    return queued;
   }
 
   /// Cancel all ongoing background uploads and reset the upload queue
@@ -183,7 +314,9 @@ class BackgroundUploadService {
   Future<int> cancel() async {
     shouldAbortQueuingTasks = true;
 
-    await _storageRepository.clearCache();
+    if (!ForegroundUploadService.isUploading) {
+      await _storageRepository.clearCache();
+    }
     await _uploadRepository.reset(kBackupGroup);
     await _uploadRepository.deleteDatabaseRecords(kBackupGroup);
 
@@ -203,12 +336,12 @@ class BackgroundUploadService {
         unawaited(_stackEditedAsset(update));
 
         if (CurrentPlatform.isIOS) {
-          try {
-            final path = await update.task.filePath();
-            await File(path).delete();
-          } catch (e) {
-            _logger.severe('Error deleting file path for iOS: $e');
-          }
+          await _deleteFilesOf(update.task);
+        }
+
+      case TaskStatus.failed || TaskStatus.canceled || TaskStatus.notFound:
+        if (CurrentPlatform.isIOS && isBackupTask(update.task)) {
+          await _deleteFilesOf(update.task);
         }
 
       default:
@@ -271,8 +404,14 @@ class BackgroundUploadService {
     }
   }
 
+  /// [onICloudProgress] tells how the download from iCloud of a file that is only there goes
   @visibleForTesting
-  Future<UploadTask?> getUploadTask(LocalAsset asset, {String group = kBackupGroup, int? priority}) async {
+  Future<UploadTask?> getUploadTask(
+    LocalAsset asset, {
+    String group = kBackupGroup,
+    int? priority,
+    void Function(double progress)? onICloudProgress,
+  }) async {
     final entity = await _storageRepository.getAssetEntityForAsset(asset);
     if (entity == null) {
       _logger.warning("Asset entity not found for ${asset.id} - ${asset.name}");
@@ -280,6 +419,21 @@ class BackgroundUploadService {
     }
 
     File? file;
+
+    if (onICloudProgress != null &&
+        CurrentPlatform.isIOS &&
+        !await _storageRepository.isAssetAvailableLocally(asset.id)) {
+      _logger.info("Loading iCloud asset ${asset.id} - ${asset.name}");
+      final progressHandler = PMProgressHandler();
+      final subscription = progressHandler.stream.listen((event) => onICloudProgress(event.progress));
+      try {
+        file = entity.isLivePhoto
+            ? await _storageRepository.loadMotionFileFromCloud(asset.id, progressHandler: progressHandler)
+            : await _storageRepository.loadFileFromCloud(asset.id, progressHandler: progressHandler);
+      } finally {
+        await subscription.cancel();
+      }
+    }
 
     /// iOS LivePhoto has two files: a photo and a video.
     /// They are uploaded separately, with video file being upload first, then returned with the assetId
@@ -291,7 +445,9 @@ class BackgroundUploadService {
     /// The cancel operation will only cancel the video group (normal group), the photo group will not
     /// be touched, as the video file is already uploaded.
 
-    if (entity.isLivePhoto) {
+    if (file != null) {
+      // from iCloud
+    } else if (entity.isLivePhoto) {
       file = await _storageRepository.getMotionFileForAsset(asset);
     } else {
       file = await _storageRepository.getFileForAsset(asset.id);
@@ -451,7 +607,9 @@ class BackgroundUploadService {
       requiresWiFi: requiresWiFi,
       priority: priority ?? 5,
       updates: Updates.statusAndProgress,
-      retries: 3,
+      // On iOS a backup upload is sent from the copy the session made, its export is gone: what fails is queued again
+      // by the next backup run, with a new export
+      retries: CurrentPlatform.isIOS && (group == kBackupGroup || group == kBackupLivePhotoGroup) ? 0 : 3,
     );
   }
 }

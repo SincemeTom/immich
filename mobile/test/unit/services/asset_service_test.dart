@@ -3,6 +3,7 @@ import 'package:drift/native.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:immich_mobile/data/db/main/database.dart';
+import 'package:immich_mobile/domain/models/inferred_location.model.dart';
 import 'package:immich_mobile/domain/models/stack.model.dart';
 import 'package:immich_mobile/domain/models/store.model.dart';
 import 'package:immich_mobile/domain/services/asset.service.dart';
@@ -177,6 +178,104 @@ void main() {
 
       verify(() => apiRepository.stack(['remote', 'previous'])).called(1);
       verify(() => mocks.localAsset.repo.updatePreviousChecksum('local', 'srv')).called(1);
+    });
+  });
+
+  group('AssetService inferred location', () {
+    final source = InferredLocationSource(
+      assetId: 'source',
+      takenAt: DateTime(2026, 5, 1, 14, 3),
+      ownerId: 'owner',
+      ownerName: 'Tom',
+    );
+
+    test('is null when the location is not inferred, without asking where from', () async {
+      when(() => apiRepository.isLocationInferred('asset')).thenAnswer((_) async => false);
+
+      expect(await sut.getInferredLocation('asset'), isNull);
+
+      verifyNever(() => apiRepository.getInferredLocationSource(any()));
+    });
+
+    test('tells the photo it was inferred from', () async {
+      when(() => apiRepository.isLocationInferred('asset')).thenAnswer((_) async => true);
+      when(() => apiRepository.getInferredLocationSource('asset')).thenAnswer((_) async => source);
+
+      expect(await sut.getInferredLocation('asset'), InferredLocation(source: source));
+    });
+
+    test('is inferred all the same when where from cannot be told', () async {
+      when(() => apiRepository.isLocationInferred('asset')).thenAnswer((_) async => true);
+      when(() => apiRepository.getInferredLocationSource('asset')).thenThrow(Exception('offline'));
+
+      expect(await sut.getInferredLocation('asset'), const InferredLocation());
+    });
+
+    test('clearing it removes the location on the server, then here', () async {
+      when(() => apiRepository.clearInferredLocation('asset')).thenAnswer((_) async {});
+      when(() => exifRepository.clearLocation('asset')).thenAnswer((_) async {});
+
+      await sut.clearInferredLocation('asset');
+
+      verifyInOrder([() => apiRepository.clearInferredLocation('asset'), () => exifRepository.clearLocation('asset')]);
+    });
+
+    test('a failed clear leaves the location here', () async {
+      when(() => apiRepository.clearInferredLocation('asset')).thenThrow(Exception('offline'));
+
+      await expectLater(sut.clearInferredLocation('asset'), throwsException);
+
+      verifyNever(() => exifRepository.clearLocation(any()));
+    });
+  });
+
+  group('AssetService stack members', () {
+    test('a new cover is set on the server, then here', () async {
+      when(() => apiRepository.setStackPrimary('stack', 'b')).thenAnswer((_) async {});
+      when(() => remoteRepository.setStackPrimary('stack', 'b')).thenAnswer((_) async {});
+
+      await sut.setStackPrimary('stack', 'b');
+
+      verifyInOrder([
+        () => apiRepository.setStackPrimary('stack', 'b'),
+        () => remoteRepository.setStackPrimary('stack', 'b'),
+      ]);
+    });
+
+    test('a cover the server refuses is not set here', () async {
+      when(() => apiRepository.setStackPrimary('stack', 'b')).thenThrow(Exception('offline'));
+
+      await expectLater(sut.setStackPrimary('stack', 'b'), throwsException);
+
+      verifyNever(() => remoteRepository.setStackPrimary(any(), any()));
+    });
+
+    test('an asset is taken out on the server, then here', () async {
+      when(() => apiRepository.removeFromStack('stack', 'c')).thenAnswer((_) async {});
+      when(() => remoteRepository.removeFromStack('c')).thenAnswer((_) async {});
+
+      await sut.removeFromStack('stack', 'c');
+
+      verifyInOrder([() => apiRepository.removeFromStack('stack', 'c'), () => remoteRepository.removeFromStack('c')]);
+    });
+
+    test('keeping one trashes the others, then unstacks', () async {
+      when(() => apiRepository.delete(any(), any())).thenAnswer((_) async {});
+      when(() => remoteRepository.trash(any())).thenAnswer((_) async {});
+      when(() => remoteRepository.unStack(any())).thenAnswer((_) async {});
+      when(() => apiRepository.unStack(any())).thenAnswer((_) async {});
+
+      final trashed = await sut.keepOnlyInStack(
+        const StackResponse(id: 'stack', primaryAssetId: 'a', assetIds: ['a', 'b', 'c']),
+        'b',
+      );
+
+      expect(trashed, 2);
+      verifyInOrder([
+        () => apiRepository.delete(['a', 'c'], false),
+        () => remoteRepository.trash(['a', 'c']),
+        () => apiRepository.unStack(['stack']),
+      ]);
     });
   });
 }

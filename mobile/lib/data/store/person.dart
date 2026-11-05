@@ -23,10 +23,11 @@ extension type const PersonStore._(Provider<PersonMutations> _provider) implemen
   /// **NOTE:** This is only reactive to the local DB
   AutoDisposeStreamProvider<List<Person>> forAsset(String assetId) => _forAssetProvider(assetId);
 
-  /// Get all known people, honoring the user's minimum detected face count preference
+  /// Get all known people, honoring the user's minimum detected face count preference; the hidden ones too (last)
+  /// with [includeHidden]
   ///
   /// **NOTE:** This only hits the local DB
-  AutoDisposeStreamProvider<List<Person>> all() => _allProvider;
+  AutoDisposeStreamProvider<List<Person>> all({bool includeHidden = false}) => _allProvider(includeHidden);
 }
 
 final _peopleDb = driftProvider.select((db) => db.peopleDatabaseRepository);
@@ -39,12 +40,12 @@ final _forAssetProvider = StreamProvider.autoDispose.family<List<Person>, String
   (ref, assetId) => ref.watch(_peopleDb).watchPeopleForAsset(assetId).distinct(const ListEquality<Person>().equals),
 );
 
-final _allProvider = StreamProvider.autoDispose<List<Person>>((ref) async* {
+final _allProvider = StreamProvider.autoDispose.family<List<Person>, bool>((ref, includeHidden) async* {
   final prefs = await ref.watch(UserMetadataStore.instance.preferences().future);
 
   yield* ref
       .watch(_peopleDb)
-      .watchAll(minFaces: prefs?.minimumFaces ?? 3)
+      .watchAll(minFaces: prefs?.minimumFaces ?? 3, includeHidden: includeHidden)
       .distinct(const ListEquality<Person>().equals);
 });
 
@@ -61,5 +62,64 @@ class PersonMutations extends StoreMutations {
   Future<int> updateBirthday(String personId, DateTime birthday) async {
     await read(personApiRepositoryProvider).update(personId, birthday: birthday);
     return read(_peopleDb).updateBirthday(personId, birthday);
+  }
+
+  /// Hide a person from the people lists (and their faces from the photos'), or show them again
+  Future<int> setHidden(String personId, bool isHidden) async {
+    await read(personApiRepositoryProvider).update(personId, isHidden: isHidden);
+    return read(_peopleDb).updateHidden(personId, isHidden);
+  }
+
+  /// Cut the person's thumbnail from their face on [assetId]
+  Future<int> setFeaturePhoto(String personId, String assetId) async {
+    final person = await read(personApiRepositoryProvider).update(personId, featureFaceAssetId: assetId);
+    return read(_peopleDb).updateFeatureFace(personId, assetId, updatedAt: person.updatedAt);
+  }
+
+  /// Merge [sourceIds] into [targetId]; the ids of those merged
+  Future<List<String>> merge(String targetId, List<String> sourceIds) async {
+    final merged = await read(personApiRepositoryProvider).merge(targetId, sourceIds);
+    if (merged.isNotEmpty) {
+      await read(_peopleDb).merge(targetId, merged);
+    }
+    return merged;
+  }
+
+  /// [personId]'s faces on [assetId] are [newPersonId]'s, or a new person's if null; that person
+  Future<Person> reassignFaces(String assetId, String personId, {String? newPersonId}) async {
+    final api = read(personApiRepositoryProvider);
+    final db = read(_peopleDb);
+    final faceIds = await db.getFaceIds(assetId, personId);
+
+    Person? target;
+    if (newPersonId == null) {
+      target = await api.create();
+      final ownerId = await db.getOwnerId(personId);
+      if (ownerId != null) {
+        await db.insert(target, ownerId: ownerId);
+      }
+    }
+    final targetId = newPersonId ?? target!.id;
+
+    for (final faceId in faceIds) {
+      await api.reassignFace(faceId, targetId);
+    }
+    await db.reassignFaces(faceIds, targetId);
+    if (target != null) {
+      // a new person's thumbnail is the face just given
+      await db.updateFeatureFace(targetId, assetId);
+    }
+    return target ?? (await db.watchPerson(targetId).first) ?? Person(id: targetId, name: '');
+  }
+
+  /// [personId]'s faces on [assetId] are no faces
+  Future<void> removeFaces(String assetId, String personId) async {
+    final api = read(personApiRepositoryProvider);
+    final db = read(_peopleDb);
+    final faceIds = await db.getFaceIds(assetId, personId);
+    for (final faceId in faceIds) {
+      await api.deleteFace(faceId);
+    }
+    await db.deleteFaces(faceIds);
   }
 }

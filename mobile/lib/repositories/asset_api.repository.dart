@@ -1,6 +1,7 @@
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:immich_mobile/domain/models/asset/base_asset.model.dart';
 import 'package:immich_mobile/domain/models/asset_edit.model.dart' hide AssetEditAction;
+import 'package:immich_mobile/domain/models/inferred_location.model.dart';
 import 'package:immich_mobile/domain/models/stack.model.dart';
 import 'package:immich_mobile/providers/api.provider.dart';
 import 'package:immich_mobile/repositories/api.repository.dart';
@@ -52,6 +53,14 @@ class AssetApiRepository extends ApiRepository {
     return _stacksApi.deleteStacks(BulkIdsDto(ids: ids));
   }
 
+  Future<void> setStackPrimary(String stackId, String primaryAssetId) {
+    return _stacksApi.updateStack(stackId, StackUpdateDto(primaryAssetId: Optional.present(primaryAssetId)));
+  }
+
+  Future<void> removeFromStack(String stackId, String assetId) {
+    return _stacksApi.removeAssetFromStack(assetId, stackId);
+  }
+
   api.AssetVisibility _mapVisibility(AssetVisibility visibility) => switch (visibility) {
     AssetVisibility.timeline => api.AssetVisibility.timeline,
     AssetVisibility.hidden => api.AssetVisibility.hidden,
@@ -68,6 +77,32 @@ class AssetApiRepository extends ApiRepository {
 
   Future<String> getChecksum(String id) async {
     return (await checkNull(_api.getAssetInfo(id))).checksum;
+  }
+
+  /// Whether the location of the asset was inferred by the server (never on an official server)
+  Future<bool> isLocationInferred(String id) async {
+    final asset = await checkNull(_api.getAssetInfo(id));
+    return asset.exifInfo.orElse(null)?.locationInferred.orElse(null) ?? false;
+  }
+
+  Future<InferredLocationSource?> getInferredLocationSource(String id) async {
+    final source = (await _api.getInferredLocationSource(id))?.source_;
+    if (source == null) {
+      return null;
+    }
+    // the local time it was taken, given as if it were UTC
+    final taken = DateTime.parse(source.localDateTime);
+    return InferredLocationSource(
+      assetId: source.assetId,
+      takenAt: DateTime(taken.year, taken.month, taken.day, taken.hour, taken.minute, taken.second),
+      ownerId: source.ownerId,
+      ownerName: source.ownerName,
+    );
+  }
+
+  /// Clears the inferred location of the asset, which is then not inferred again
+  Future<void> clearInferredLocation(String id) {
+    return _api.clearInferredLocation(id);
   }
 
   Future<void> updateDescription(String assetId, String description) {
