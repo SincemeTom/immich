@@ -54,6 +54,16 @@ git push origin mac/main mac/develop v3.3.5-mac.3
 
 ### 3. 打包
 
+第 3 到第 6 步可以一次做完：标签推送后，在 `mac/develop` 上运行
+
+```bash
+macos/package/release.sh v3.3.5-mac.3
+```
+
+它会暂存已跟踪文件的本地改动，检出标签，打包（约 45 分钟，期间不让 Mac 睡眠），检查，留档到 `macos/package/releases/`，建 GitHub Release 草稿（说明取 CHANGELOG 里这个版本的一段，附 `.sha256`），最后回到原来的分支并恢复改动；成功或失败都会回去。日志在 `macos/package/build/release-<版本>-<时间>.log`。草稿仍要到网页上检查后点 Publish。
+
+手动做的话：
+
 ```bash
 git status --short --untracked-files=no   # 必须为空，否则打出来是 -dirty 的开发版
 macos/package/build-pkg.sh                # 检出在标签上时自动按正式版打包，签名并公证（约 45 分钟）
