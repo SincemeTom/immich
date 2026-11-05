@@ -2,6 +2,7 @@ import { createZodDto } from 'nestjs-zod';
 import z from 'zod';
 import type { SemVer } from 'semver';
 import { ExtraModel, HistoryBuilder } from 'src/decorators.js';
+import { StorageVolumeKind, StorageVolumeStatus } from 'src/utils/storage-space.js';
 import { isoDatetimeToDate } from 'src/validation.js';
 
 const ServerPingResponseSchema = z
@@ -47,15 +48,62 @@ const ServerApkLinksSchema = z
 
 const ServerStorageResponseSchema = z
   .object({
-    diskSize: z.string().describe('Total disk size (human-readable format)'),
-    diskUse: z.string().describe('Used disk space (human-readable format)'),
-    diskAvailable: z.string().describe('Available disk space (human-readable format)'),
-    diskSizeRaw: z.int().describe('Total disk size in bytes'),
-    diskUseRaw: z.int().describe('Used disk space in bytes'),
-    diskAvailableRaw: z.int().describe('Available disk space in bytes'),
-    diskUsagePercentage: z.number().meta({ format: 'double' }).describe('Disk usage percentage (0-100)'),
+    diskSize: z
+      .string()
+      .describe(
+        "The server's storage (human-readable format): the disk the library is on, and the network shares it mounts",
+      ),
+    diskUse: z
+      .string()
+      .describe('What your photos take (human-readable format): uploaded, and of your external libraries'),
+    diskAvailable: z.string().describe("The server's available space (human-readable format)"),
+    diskSizeRaw: z.int().describe("The server's storage in bytes"),
+    diskUseRaw: z.int().describe('What your photos take in bytes: uploaded, and of your external libraries'),
+    diskAvailableRaw: z.int().describe("The server's available space in bytes"),
+    diskUsagePercentage: z
+      .number()
+      .meta({ format: 'double' })
+      .describe("What your photos take, as a percentage (0-100) of the server's storage"),
+    usageUploads: z.int().describe('What your uploaded photos take in bytes: what the quota counts'),
+    usageExternal: z.int().describe('What the photos of your external libraries take in bytes'),
+    quotaSizeInBytes: z.int().nullable().describe('Your quota in bytes, if you have one'),
+    sharesNotCounted: z
+      .int()
+      .describe("Network shares the server's storage could not count: not mounted, or not answering"),
   })
   .meta({ id: 'ServerStorageResponseDto' });
+
+const StorageVolumeSchema = z
+  .object({
+    id: z.string().describe('"local" for the disk the library is on, else the network share id'),
+    kind: z.enum(StorageVolumeKind).describe('Kind').meta({ id: 'StorageVolumeKind' }),
+    name: z.string().describe("The network share's name; empty for the disk the library is on"),
+    source: z.string().describe('The library folder for the disk it is on, host:/export for a network share'),
+    path: z.string().describe('Where it is mounted, or the library folder'),
+    status: z
+      .enum(StorageVolumeStatus)
+      .describe(
+        'Counted; the same volume as one counted; offline; unmounted by hand; or not counted, as the setting says',
+      )
+      .meta({ id: 'StorageVolumeStatus' }),
+    sameAs: z.string().optional().describe('The volume it is the same as'),
+    totalBytes: z.int().optional().describe('Size in bytes, when it answered'),
+    usedBytes: z.int().optional().describe('Used space in bytes, when it answered'),
+    availableBytes: z.int().optional().describe('Available space in bytes, when it answered'),
+  })
+  .meta({ id: 'StorageVolumeDto' });
+
+const ServerStorageDetailsSchema = z
+  .object({
+    totalBytes: z.int().describe("The server's storage in bytes"),
+    usedBytes: z.int().describe('Used space in bytes, of the volumes counted'),
+    availableBytes: z.int().describe('Available space in bytes, of the volumes counted'),
+    includesNetworkShares: z.boolean().describe("Whether the server's storage counts the network shares"),
+    notCounted: z.int().describe('Network shares not counted, as they were not mounted or did not answer'),
+    checkedAt: z.string().optional().describe("When the network shares' space was read (ISO 8601)"),
+    volumes: z.array(StorageVolumeSchema).describe('The disk the library is on, and each network share'),
+  })
+  .meta({ id: 'ServerStorageDetailsResponseDto' });
 
 const ServerVersionResponseSchema = z
   .object({
@@ -175,6 +223,7 @@ export class ServerPingResponse extends createZodDto(ServerPingResponseSchema) {
 export class ServerAboutResponseDto extends createZodDto(ServerAboutResponseSchema) {}
 export class ServerApkLinksDto extends createZodDto(ServerApkLinksSchema) {}
 export class ServerStorageResponseDto extends createZodDto(ServerStorageResponseSchema) {}
+export class ServerStorageDetailsResponseDto extends createZodDto(ServerStorageDetailsSchema) {}
 
 export class ServerVersionResponseDto extends createZodDto(ServerVersionResponseSchema) {
   static fromSemVer(value: SemVer): z.infer<typeof ServerVersionResponseSchema> {

@@ -456,6 +456,26 @@ describe(NetworkShareService.name, () => {
       });
     });
 
+    it("should record the space of the shares that answered, for the server's storage", async () => {
+      shares = [share(), share({ id: 'off', folder: 'Off', enabled: false }), share({ id: 'away', folder: 'Away' })];
+      mounted.add(`${location}/Away`);
+      const spawn = mocks.process.spawn.getMockImplementation()!;
+      mocks.process.spawn.mockImplementation(((command: string, args: string[]) =>
+        command === '/bin/ls' && args.at(-1) === `${location}/Away`
+          ? child({ code: 1, stderr: 'ls: fts_read: Operation timed out' })
+          : spawn(command, args as any, {} as any)) as any);
+
+      await sut.handleMountAll();
+
+      expect(mocks.systemMetadata.set).toHaveBeenCalledWith(SystemMetadataKey.NetworkShareSpace, {
+        checkedAt: expect.any(String),
+        mountPaths: { 'share-id': `${location}/NAS photos`, away: `${location}/Away` },
+        shares: { 'share-id': { total: 1000 * 1024, used: 400 * 1024, available: 600 * 1024 } },
+      });
+      // df answers from a cache after the NAS has gone: it is not asked for a share that did not answer
+      expect(spawned('/bin/df')).toEqual([['-k', '-P', `${location}/NAS photos`]]);
+    });
+
     it('should mount at startup, and check every minute', async () => {
       shares = [share()];
       mocks.cron.create.mockReturnValue(void 0);

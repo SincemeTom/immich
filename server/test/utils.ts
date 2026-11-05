@@ -40,6 +40,7 @@ import { EmailRepository } from 'src/repositories/email.repository.js';
 import { EventRepository } from 'src/repositories/event.repository.js';
 import { IntegrityRepository } from 'src/repositories/integrity.repository.js';
 import { JobRepository } from 'src/repositories/job.repository.js';
+import { KeychainRepository } from 'src/repositories/keychain.repository.js';
 import { LibraryRepository } from 'src/repositories/library.repository.js';
 import { LoggingRepository } from 'src/repositories/logging.repository.js';
 import { MachineLearningRepository } from 'src/repositories/machine-learning.repository.js';
@@ -65,6 +66,8 @@ import { StackRepository } from 'src/repositories/stack.repository.js';
 import { StorageRepository } from 'src/repositories/storage.repository.js';
 import { SyncCheckpointRepository } from 'src/repositories/sync-checkpoint.repository.js';
 import { SyncRepository } from 'src/repositories/sync.repository.js';
+import { SynologyAlbumRepository } from 'src/repositories/synology-album.repository.js';
+import { SynologyRepository } from 'src/repositories/synology.repository.js';
 import { SystemMetadataRepository } from 'src/repositories/system-metadata.repository.js';
 import { TagRepository } from 'src/repositories/tag.repository.js';
 import { TelemetryRepository } from 'src/repositories/telemetry.repository.js';
@@ -258,6 +261,7 @@ export type ServiceOverrides = {
   event: EventRepository;
   integrityReport: IntegrityRepository;
   job: JobRepository;
+  keychain: KeychainRepository;
   library: LibraryRepository;
   logger: LoggingRepository;
   machineLearning: MachineLearningRepository;
@@ -283,6 +287,8 @@ export type ServiceOverrides = {
   storage: StorageRepository;
   sync: SyncRepository;
   syncCheckpoint: SyncCheckpointRepository;
+  synologyAlbum: SynologyAlbumRepository;
+  synology: SynologyRepository;
   systemMetadata: SystemMetadataRepository;
   tag: TagRepository;
   telemetry: TelemetryRepository;
@@ -346,6 +352,7 @@ export const getMocks = () => {
     event: automock(EventRepository, { args: [, , loggerMock], strict: false }),
     integrityReport: automock(IntegrityRepository, { strict: false }),
     job: newJobRepositoryMock(),
+    keychain: automock(KeychainRepository, { strict: false }),
     apiKey: automock(ApiKeyRepository),
     library: automock(LibraryRepository, { strict: false }),
     machineLearning: automock(MachineLearningRepository, { args: [loggerMock], strict: false }),
@@ -372,6 +379,8 @@ export const getMocks = () => {
     storage: newStorageRepositoryMock(),
     sync: automock(SyncRepository),
     syncCheckpoint: automock(SyncCheckpointRepository),
+    synologyAlbum: automock(SynologyAlbumRepository),
+    synology: automock(SynologyRepository),
     systemMetadata: newSystemMetadataRepositoryMock(),
     // systemMetadata: automock(SystemMetadataRepository, { strict: false }),
     // eslint-disable-next-line no-sparse-arrays
@@ -424,6 +433,7 @@ export const newTestService = <T extends BaseService>(
     overrides.event || (mocks.event as As<EventRepository>),
     overrides.integrityReport || (mocks.integrityReport as As<IntegrityRepository>),
     overrides.job || (mocks.job as As<JobRepository>),
+    overrides.keychain || (mocks.keychain as As<KeychainRepository>),
     overrides.library || (mocks.library as As<LibraryRepository>),
     overrides.machineLearning || (mocks.machineLearning as As<MachineLearningRepository>),
     overrides.map || (mocks.map as As<MapRepository>),
@@ -448,6 +458,8 @@ export const newTestService = <T extends BaseService>(
     overrides.storage || (mocks.storage as As<StorageRepository>),
     overrides.sync || (mocks.sync as As<SyncRepository>),
     overrides.syncCheckpoint || (mocks.syncCheckpoint as As<SyncCheckpointRepository>),
+    overrides.synologyAlbum || (mocks.synologyAlbum as As<SynologyAlbumRepository>),
+    overrides.synology || (mocks.synology as As<SynologyRepository>),
     overrides.systemMetadata || (mocks.systemMetadata as As<SystemMetadataRepository>),
     overrides.tag || (mocks.tag as As<TagRepository>),
     overrides.telemetry || (mocks.telemetry as unknown as TelemetryRepository),

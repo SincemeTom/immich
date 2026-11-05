@@ -200,6 +200,7 @@ const updatedConfig = Object.freeze<SystemConfig>({
     externalDomain: '',
     loginPageMessage: '',
     publicUsers: true,
+    storageIncludesNetworkShares: true,
   },
   storageTemplate: {
     enabled: true,

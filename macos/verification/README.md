@@ -31,6 +31,7 @@
 | M1-8 | 网页上挂载群晖（分支 `mac/feat/network-shares`） | [m1-network-shares.md](m1-network-shares.md) | 通过：管理 → 网络共享里添加 NFS 共享并测试连接；开机自动挂载，群晖重启、断网、句柄失效后自动重连；建外部库时可直接选择；端到端 41/41 |
 | M1-9 | 存储位置：缩略图、转码视频、备份和原图放群晖（分支 `mac/feat/storage-locations`） | [m1-storage-locations.md](m1-storage-locations.md) | 通过：管理 → 存储位置里设置，现有文件后台迁移并校验；群晖不在线时相关任务自动暂停、不会误写到 Mac、服务端照常启动，恢复后自动继续；外部库自动跳过 Immich 的目录；端到端 42/42 |
 | M1-10 | 视频旋转、镜像，查看时一键旋转（分支 `mac/feat/video-rotate`） | [m1-video-rotation.md](m1-video-rotation.md) | 通过：视频可在编辑器里旋转、镜像（不能裁剪），只改写显示方向、不重新编码，几秒完成、无损；查看照片或视频时 `R` / `Shift+R` 旋转；播放、缩略图、下载、实时转码、重新转码后都正确，与照片编辑结果逐帧一致；端到端 49/49，浏览器 11/11 |
+| M1-11 | 存储空间：服务器总量包括网络共享，用户用量包括外部图库（分支 `mac/feat/storage-space`） | [m1-storage-space.md](m1-storage-space.md) | 单元测试新增 16 项、数据库测试新增 2 项、网页新增 5 项通过：同一个存储卷只算一次，没连上的共享不算并提示；左下角显示自己的用量，上限是配额或服务器总量；管理后台列出本机和每个共享。还差在正式服核对同一卷上的两个共享 |
 | 模型选型 | OCR 与人脸模型、阈值（分支 `mac/feat/ml-defaults`） | [m1-ml-models.md](m1-ml-models.md) | 通过：OCR 默认改为 PP-OCRv6_medium @1024（真实照片 57/58，原来 48/58；内存 9.0 → 6.6 GB）；人脸保持 buffalo_l；阈值实测后保持上游默认；CoreML 编译不了的模型自动改用 CPU |
 | 问题 2 | 自动堆叠（分支 `mac/feat/auto-stack`） | [m1-auto-stack.md](m1-auto-stack.md) | 通过：每个用户在账户设置里开启，可选连拍、RAW+JPG、编辑版、相似照片（相似度 + 拍摄间隔）；上传和外部库扫描后自动执行；只加不删，移出的照片不再放回，可一键移除或重新堆叠；端到端 25/25 |
 | RAW 预览 | RAW 照片预览默认用相机内嵌 JPG（分支 `mac/feat/raw-embedded-preview`） | [m1-raw-preview.md](m1-raw-preview.md) | 通过："优先使用嵌入式预览"默认打开，RAW 显示与相机 JPG 一致；升级和切换开关时只自动重做 RAW 的预览；端到端 11/11 |
@@ -61,6 +62,16 @@
 | 编号 | 验证项 | 文件 | 结论 |
 |---|---|---|---|
 | M2 | VideoToolbox 转码（分支 `mac/feat/videotoolbox`） | [m2-videotoolbox.md](m2-videotoolbox.md) | 通过：端到端 17/17（真实 iPhone HDR、实况照片、2.7K 无人机视频及 10 种衍生格式），亮度、方向、帧数与软件一致；CPU 用量降 83%；长的高码率 H.264 单个转得慢约 1 倍。原生安装默认打开，一次转 2 个 |
+
+## 群晖照片相册同步
+
+| 编号 | 验证项 | 文件 | 结论 |
+|---|---|---|---|
+| 探测 | 同步要读的接口和数据（只读，真实的 49 个相册） | [synology-probe.md](synology-probe.md) | 需要的信息都能读到；时间要和 `localDateTime` 比并留 1 秒余量；群晖 `view` / `download` / `upload` 对应仅查看 / 可下载 / 可编辑；路径用相对路径和用户自己的外部图库对照，不用填前缀；命中率要在正式服上看 |
+| 绑定 | 每个用户绑定自己的群晖账号，密码存钥匙串 | [synology-account.md](synology-account.md) | 服务器单元测试 87 项、网页 8 项通过；从 LaunchAgent 读写钥匙串没有弹窗；连真实群晖（不登录）成功。还差在正式服用真实账号绑定；SSO 待测 |
+| 同步相册 | 自己的群晖相册同步成 Immich 相册，照片按路径从自己的外部图库里找；每天定时、也可立即同步，显示报告 | [synology-album-sync.md](synology-album-sync.md) | 服务器单元测试新增 52 项、数据库测试 9 项、网页新增 5 项通过；只动同步建的相册和加的照片，照片从不删。还差在正式服用真实账号同步，看命中率 |
+| 共享和别人的照片 | 按群晖的共享关系共享给对应的 Immich 用户；别人加进相册的照片，在他自己的库里找到后代他加进来 | [synology-album-sharing.md](synology-album-sharing.md) | 服务器单元测试新增 4 项、数据库测试新增 6 项通过；只按绑定账号或群晖 SSO 认人，对不上的只写人数；只动同步加的成员。还差在正式服用真实账号同步 |
+| 对不上的列出来 | 对不上的相册和照片完整记下，网页上按相册查看、下载 CSV；自己的照片按路径找不到时再按文件名 + 大小 + 时间找 | [synology-unmatched.md](synology-unmatched.md) | 服务器单元测试新增 3 项、数据库测试新增 2 项、网页新增 2 项通过；别人的照片不写是谁。还差在正式服用真实账号同步，下载清单核对 |
 
 ## 风险跟踪
 

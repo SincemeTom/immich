@@ -272,6 +272,10 @@ export const setupBaseMockApiRoutes = async (context: BrowserContext, adminUserI
         diskUseRaw: 79_891_660_800,
         diskAvailableRaw: 27_482_521_600,
         diskUsagePercentage: 74.4,
+        usageUploads: 79_891_660_800,
+        usageExternal: 0,
+        quotaSizeInBytes: null,
+        sharesNotCounted: 0,
       },
     });
   });

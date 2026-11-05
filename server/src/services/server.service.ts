@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { serverVersion } from 'src/constants.js';
 import { StorageCore } from 'src/cores/storage.core.js';
 import { OnEvent } from 'src/decorators.js';
+import { AuthDto } from 'src/dtos/auth.dto.js';
 import { LicenseKeyDto, LicenseResponseDto } from 'src/dtos/license.dto.js';
 import {
   ServerAboutResponseDto,
@@ -11,6 +12,7 @@ import {
   ServerMediaTypesResponseDto,
   ServerPingResponse,
   ServerStatsResponseDto,
+  ServerStorageDetailsResponseDto,
   ServerStorageResponseDto,
   UsageByUserDto,
 } from 'src/dtos/server.dto.js';
@@ -25,7 +27,8 @@ import {
   isOcrEnabled,
   isSmartSearchEnabled,
 } from 'src/utils/misc.js';
-import { isNetworkSharesSupported } from 'src/utils/network-share.js';
+import { getNetworkShareMountPath, isNetworkSharesSupported } from 'src/utils/network-share.js';
+import { summarizeStorage } from 'src/utils/storage-space.js';
 
 @Injectable()
 export class ServerService extends BaseService {
@@ -65,21 +68,71 @@ export class ServerService extends BaseService {
     };
   }
 
-  async getStorage(): Promise<ServerStorageResponseDto> {
+  /**
+   * The server's storage, and what the user's photos take of it: uploaded, and of their external libraries. What the
+   * quota counts, and whether an upload fits, stays the uploads only
+   */
+  async getStorage(auth: AuthDto): Promise<ServerStorageResponseDto> {
+    const summary = await this.getStorageSummary();
+    const { uploads, external } = await this.userRepository.getUsage(auth.user.id);
+    const used = uploads + external;
+    const percentage = summary.totalBytes > 0 ? (used / summary.totalBytes) * 100 : 0;
+
+    return {
+      diskSize: asHumanReadable(summary.totalBytes),
+      diskUse: asHumanReadable(used),
+      diskAvailable: asHumanReadable(summary.availableBytes),
+      diskSizeRaw: summary.totalBytes,
+      diskUseRaw: used,
+      diskAvailableRaw: summary.availableBytes,
+      diskUsagePercentage: Number(percentage.toFixed(2)),
+      usageUploads: uploads,
+      usageExternal: external,
+      quotaSizeInBytes: auth.user.quotaSizeInBytes ?? null,
+      sharesNotCounted: summary.notCounted,
+    };
+  }
+
+  /** The server's storage, volume by volume: the disk the library is on, and each network share */
+  async getStorageDetails(): Promise<ServerStorageDetailsResponseDto> {
+    const { server } = await this.getConfig({ withCache: false });
+    const summary = await this.getStorageSummary();
+    return {
+      totalBytes: summary.totalBytes,
+      usedBytes: summary.usedBytes,
+      availableBytes: summary.availableBytes,
+      includesNetworkShares: server.storageIncludesNetworkShares,
+      notCounted: summary.notCounted,
+      checkedAt: summary.checkedAt,
+      volumes: summary.volumes,
+    };
+  }
+
+  /**
+   * The disk the library is on, read now; the network shares as the minute check last read them, as reading a share
+   * here could hang the request when its NAS has gone
+   */
+  private async getStorageSummary() {
+    const { server } = await this.getConfig({ withCache: true });
     const libraryBase = StorageCore.getBaseFolder(StorageFolder.Library);
-    const diskInfo = await this.storageRepository.checkDiskUsage(libraryBase);
+    const disk = await this.storageRepository.checkDiskUsage(libraryBase);
+    const localPath = await this.storageRepository.realpath(libraryBase).catch(() => libraryBase);
 
-    const usagePercentage = (((diskInfo.total - diskInfo.free) / diskInfo.total) * 100).toFixed(2);
+    const location = this.configRepository.getEnv().storage.networkSharesLocation;
+    const supported = isNetworkSharesSupported(location);
+    const saved = supported ? await this.systemMetadataRepository.get(SystemMetadataKey.NetworkShares) : null;
+    const shares = saved?.shares ?? [];
+    const spaces = supported ? await this.systemMetadataRepository.get(SystemMetadataKey.NetworkShareSpace) : null;
 
-    const serverInfo = new ServerStorageResponseDto();
-    serverInfo.diskAvailable = asHumanReadable(diskInfo.available);
-    serverInfo.diskSize = asHumanReadable(diskInfo.total);
-    serverInfo.diskUse = asHumanReadable(diskInfo.total - diskInfo.free);
-    serverInfo.diskAvailableRaw = diskInfo.available;
-    serverInfo.diskSizeRaw = diskInfo.total;
-    serverInfo.diskUseRaw = diskInfo.total - diskInfo.free;
-    serverInfo.diskUsagePercentage = Number(usagePercentage);
-    return serverInfo;
+    return summarizeStorage({
+      local: { path: localPath, ...disk },
+      shares: shares.map((share) => ({
+        ...share,
+        mountPath: spaces?.mountPaths[share.id] ?? getNetworkShareMountPath(location!, share),
+      })),
+      spaces: spaces ?? undefined,
+      includeShares: server.storageIncludesNetworkShares,
+    });
   }
 
   ping(): ServerPingResponse {

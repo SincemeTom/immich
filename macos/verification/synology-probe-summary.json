@@ -1,0 +1,145 @@
+{
+  "albums": 49,
+  "albums_shared_by_link": 47,
+  "albums_shared_with_me": 6,
+  "album_keys": [
+    "additional",
+    "cant_migrate_condition",
+    "condition",
+    "create_time",
+    "end_time",
+    "freeze_album",
+    "id",
+    "item_count",
+    "name",
+    "owner_user_id",
+    "passphrase",
+    "shared",
+    "sort_by",
+    "sort_direction",
+    "start_time",
+    "temporary_shared",
+    "type",
+    "version"
+  ],
+  "album_additional_keys": [
+    "provider_count",
+    "sharing_info",
+    "thumbnail"
+  ],
+  "items": 16323,
+  "items_by_owner": {
+    "me": 13274,
+    "user 8": 2,
+    "user 3": 3042,
+    "user 6": 5
+  },
+  "item_types": {
+    "photo": 12792,
+    "live": 2548,
+    "video": 983
+  },
+  "item_keys": [
+    "additional",
+    "filename",
+    "filesize",
+    "folder_id",
+    "id",
+    "indexed_time",
+    "live_type",
+    "owner_user_id",
+    "time",
+    "type"
+  ],
+  "item_additional_keys": [
+    "exif",
+    "orientation",
+    "orientation_original",
+    "provider_user_id",
+    "resolution",
+    "thumbnail",
+    "video_meta"
+  ],
+  "items_with_filesize_time_folder": [
+    16323,
+    16323,
+    16323
+  ],
+  "folders_by_api_and_depth": {
+    "SYNO.Foto.Browse.Folder depth 4": 58,
+    "SYNO.Foto.Browse.Folder depth 2": 11,
+    "SYNO.Foto.Browse.Folder depth 3": 28,
+    "SYNO.Foto.Browse.Folder depth 5": 1,
+    "SYNO.Foto.Browse.Folder depth 6": 4
+  },
+  "folder_keys": [
+    "api",
+    "id",
+    "name",
+    "owner_user_id",
+    "parent",
+    "passphrase",
+    "shared",
+    "sort_by",
+    "sort_direction"
+  ],
+  "sharing_answered_by": {
+    "album_get": 47,
+    "passphrase_get": 46
+  },
+  "sharing_shape": {
+    "album_get": {
+      "list": [
+        {
+          "additional": {
+            "sharing_info": {
+              "enable_password": "bool",
+              "expiration": "int",
+              "is_expired": "bool",
+              "mtime": "int",
+              "owner": {
+                "id": "int",
+                "name": "str"
+              },
+              "passphrase": "str",
+              "permission": [
+                {
+                  "db_id": "int",
+                  "id": "int",
+                  "name": "str",
+                  "role": "str",
+                  "type": "str"
+                }
+              ],
+              "privacy_type": "str",
+              "sharing_link": "str",
+              "type": "str"
+            }
+          },
+          "cant_migrate_condition": {},
+          "condition": {
+            "is_valid": "bool"
+          },
+          "create_time": "int",
+          "end_time": "int",
+          "freeze_album": "bool",
+          "id": "int",
+          "item_count": "int",
+          "name": "str",
+          "owner_user_id": "int",
+          "passphrase": "str",
+          "shared": "bool",
+          "sort_by": "str",
+          "sort_direction": "str",
+          "start_time": "int",
+          "temporary_shared": "bool",
+          "type": "str",
+          "version": "int"
+        }
+      ]
+    },
+    "passphrase_get": {
+      "list": []
+    }
+  }
+}

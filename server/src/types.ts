@@ -2,6 +2,8 @@ import { ShallowDehydrateObject } from 'kysely';
 import { Mocked } from 'vitest';
 import type { NetworkShare, NetworkShareErrorReason } from 'src/utils/network-share.js';
 import type { StorageLocationState, StorageLocations } from 'src/utils/storage-location.js';
+import type { NetworkShareSpaces } from 'src/utils/storage-space.js';
+import type { SynologyErrorReason } from 'src/utils/synology.js';
 import { VECTOR_EXTENSIONS } from 'src/constants.js';
 import { AssetFile } from 'src/database.js';
 import { UploadFieldName } from 'src/dtos/asset-media.dto.js';
@@ -443,6 +445,9 @@ export type JobItem =
   | { name: JobName.LibraryScanQueueAll; data?: IBaseJob }
   | { name: JobName.LibraryDeleteCheck; data: IBaseJob }
 
+  // Synology Photos: the albums of a user's account (id: the user)
+  | { name: JobName.SynologyAlbumSync; data: IEntityJob }
+
   // Notification
   | { name: JobName.SendMail; data: IEmailJob }
   | { name: JobName.NotifyAlbumInvite; data: INotifyAlbumInviteJob }
@@ -593,9 +598,78 @@ export interface SystemMetadata extends Record<SystemMetadataKey, Record<string,
   [SystemMetadataKey.NetworkShareErrors]: {
     errors: Record<string, { reason: NetworkShareErrorReason; message: string }>;
   };
+  /** the space of the shares that answered the last minute check: what the server's storage counts */
+  [SystemMetadataKey.NetworkShareSpace]: NetworkShareSpaces;
   [SystemMetadataKey.StorageLocations]: StorageLocations;
   [SystemMetadataKey.StorageLocationState]: StorageLocationState;
+  /** the Synology account each user bound, by user ID; the password is in the Keychain */
+  [SystemMetadataKey.SynologyAccounts]: { users: Record<string, SynologyAccount> };
 }
+
+export type SynologyAccount = {
+  /** origin, such as https://nas.example.com:5001 */
+  url: string;
+  verifyCertificate: boolean;
+  account: string;
+  /** Synology Photos' ID of the account: what items' owner_user_id and sharing's db_id are */
+  photosUserId: number;
+  /** DSM's ID of the account */
+  dsmUserId?: number;
+  name?: string;
+  boundAt: string;
+  checkedAt: string;
+  albumCount?: number;
+  error?: { reason: SynologyErrorReason; message: string };
+  /** whether the albums are synced every day, at syncTime; on unless turned off */
+  autoSync?: boolean;
+  /** the server's local time the albums are synced at, HH:MM; 03:00 unless set */
+  syncTime?: string;
+  /** when the schedule was last changed: a time set earlier than now waits for the next day */
+  scheduledAt?: string;
+  /** when a sync was last asked for, by the schedule or by the user */
+  syncQueuedAt?: string;
+  lastSync?: SynologySyncReport;
+};
+
+/** What the last album sync did */
+export type SynologySyncReport = {
+  startedAt: string;
+  finishedAt: string;
+  success: boolean;
+  errorReason?: SynologyErrorReason;
+  message?: string;
+  /** the Synology albums of the account */
+  albums: number;
+  albumsCreated: number;
+  albumsUpdated: number;
+  /** albums the sync had created, gone from Synology: removed from Immich, without their photos */
+  albumsRemoved: number;
+  /** albums with none of the account's own photos found: not created */
+  albumsEmpty: number;
+  /** albums whose photos Synology did not list: left as they were */
+  albumsFailed: number;
+  /** the account's own photos in its albums, and how many of them were found: by path in the user's external libraries, or else by name, size and time in all their photos */
+  items: number;
+  matched: number;
+  matchedByName: number;
+  /** photos others added to the account's albums; those found in their owners' own libraries; those whose owners are not in Immich yet */
+  others: number;
+  othersMatched: number;
+  othersWaiting: number;
+  /** photos, the account's or others', found by name, size and time more than once in their owners' libraries: one was taken */
+  ambiguous: number;
+  /** members the albums were shared with, whose access changed, who were removed */
+  membersAdded: number;
+  membersUpdated: number;
+  membersRemoved: number;
+  /** how many Synology users the albums are shared with, or who added photos to them, are not found in Immich yet */
+  membersWaiting: number;
+  /** photos added to albums, and removed from them */
+  added: number;
+  removed: number;
+  /** how many albums and photos are in the list of those not matched */
+  unmatched: number;
+};
 
 export type UserPreferences = {
   albums: {

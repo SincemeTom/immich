@@ -1,6 +1,7 @@
 import { SystemMetadataKey } from 'src/enum.js';
 import { ServerService } from 'src/services/server.service.js';
 import { mockEnvData } from 'test/repositories/config.repository.mock.js';
+import { factory } from 'test/small.factory.js';
 import { ServiceMocks, newTestService } from 'test/utils.js';
 
 describe(ServerService.name, () => {
@@ -16,112 +17,135 @@ describe(ServerService.name, () => {
   });
 
   describe('getStorage', () => {
-    it('should return the disk space as B', async () => {
-      mocks.storage.checkDiskUsage.mockResolvedValue({ free: 200, available: 300, total: 500 });
+    const auth = factory.auth();
 
-      await expect(sut.getStorage()).resolves.toEqual({
-        diskAvailable: '300 B',
-        diskAvailableRaw: 300,
-        diskSize: '500 B',
-        diskSizeRaw: 500,
-        diskUsagePercentage: 60,
-        diskUse: '300 B',
-        diskUseRaw: 300,
+    beforeEach(() => {
+      mocks.user.getUsage.mockResolvedValue({ uploads: 0, external: 0 });
+    });
+
+    it.each([
+      { total: 500, available: 300, size: '500 B', free: '300 B' },
+      { total: 500_000, available: 300_000, size: '488.3 KiB', free: '293.0 KiB' },
+      { total: 500_000_000, available: 300_000_000, size: '476.8 MiB', free: '286.1 MiB' },
+      { total: 500_000_000_000, available: 300_000_000_000, size: '465.7 GiB', free: '279.4 GiB' },
+      { total: 500_000_000_000_000, available: 300_000_000_000_000, size: '454.7 TiB', free: '272.8 TiB' },
+      { total: 500_000_000_000_000_000, available: 300_000_000_000_000_000, size: '444.1 PiB', free: '266.5 PiB' },
+    ])('should return the disk space as $size', async ({ total, available, size, free }) => {
+      mocks.storage.checkDiskUsage.mockResolvedValue({ free: 200, available, total });
+
+      await expect(sut.getStorage(auth)).resolves.toMatchObject({
+        diskAvailable: free,
+        diskAvailableRaw: available,
+        diskSize: size,
+        diskSizeRaw: total,
       });
 
       expect(mocks.storage.checkDiskUsage).toHaveBeenCalledWith(expect.stringContaining('/data/library'));
     });
 
-    it('should return the disk space as KiB', async () => {
-      mocks.storage.checkDiskUsage.mockResolvedValue({ free: 200_000, available: 300_000, total: 500_000 });
+    it("should return what the user's photos take, uploaded and of their external libraries", async () => {
+      mocks.storage.checkDiskUsage.mockResolvedValue({ free: 200_000, available: 300_000, total: 1_000_000 });
+      mocks.user.getUsage.mockResolvedValue({ uploads: 100_000, external: 150_000 });
 
-      await expect(sut.getStorage()).resolves.toEqual({
+      const withQuota = factory.auth({ user: { quotaSizeInBytes: 200_000 } });
+
+      await expect(sut.getStorage(withQuota)).resolves.toEqual({
         diskAvailable: '293.0 KiB',
         diskAvailableRaw: 300_000,
-        diskSize: '488.3 KiB',
-        diskSizeRaw: 500_000,
-        diskUsagePercentage: 60,
-        diskUse: '293.0 KiB',
-        diskUseRaw: 300_000,
+        diskSize: '976.6 KiB',
+        diskSizeRaw: 1_000_000,
+        diskUse: '244.1 KiB',
+        diskUseRaw: 250_000,
+        diskUsagePercentage: 25,
+        usageUploads: 100_000,
+        usageExternal: 150_000,
+        quotaSizeInBytes: 200_000,
+        sharesNotCounted: 0,
       });
-
-      expect(mocks.storage.checkDiskUsage).toHaveBeenCalledWith(expect.stringContaining('/data/library'));
+      expect(mocks.user.getUsage).toHaveBeenCalledWith(withQuota.user.id);
     });
 
-    it('should return the disk space as MiB', async () => {
-      mocks.storage.checkDiskUsage.mockResolvedValue({ free: 200_000_000, available: 300_000_000, total: 500_000_000 });
+    describe('with network shares', () => {
+      const location = '/Users/me/Library/Application Support/Immich/mounts';
+      let platform: PropertyDescriptor;
+      let metadata: Record<string, unknown>;
 
-      await expect(sut.getStorage()).resolves.toEqual({
-        diskAvailable: '286.1 MiB',
-        diskAvailableRaw: 300_000_000,
-        diskSize: '476.8 MiB',
-        diskSizeRaw: 500_000_000,
-        diskUsagePercentage: 60,
-        diskUse: '286.1 MiB',
-        diskUseRaw: 300_000_000,
+      beforeAll(() => {
+        platform = Object.getOwnPropertyDescriptor(process, 'platform')!;
+        Object.defineProperty(process, 'platform', { value: 'darwin' });
       });
 
-      expect(mocks.storage.checkDiskUsage).toHaveBeenCalledWith(expect.stringContaining('/data/library'));
-    });
-
-    it('should return the disk space as GiB', async () => {
-      mocks.storage.checkDiskUsage.mockResolvedValue({
-        free: 200_000_000_000,
-        available: 300_000_000_000,
-        total: 500_000_000_000,
+      afterAll(() => {
+        Object.defineProperty(process, 'platform', platform);
       });
 
-      await expect(sut.getStorage()).resolves.toEqual({
-        diskAvailable: '279.4 GiB',
-        diskAvailableRaw: 300_000_000_000,
-        diskSize: '465.7 GiB',
-        diskSizeRaw: 500_000_000_000,
-        diskUsagePercentage: 60,
-        diskUse: '279.4 GiB',
-        diskUseRaw: 300_000_000_000,
+      beforeEach(() => {
+        mocks.config.getEnv.mockReturnValue(
+          mockEnvData({ storage: { ignoreMountCheckErrors: false, networkSharesLocation: location } }),
+        );
+        mocks.storage.checkDiskUsage.mockResolvedValue({ free: 400, available: 400, total: 1000 });
+        metadata = {
+          [SystemMetadataKey.NetworkShares]: {
+            shares: [
+              { id: 'a', name: 'A', host: 'nas', exportPath: '/volume1/a', folder: 'A', enabled: true },
+              { id: 'b', name: 'B', host: 'nas', exportPath: '/volume1/b', folder: 'B', enabled: true },
+              { id: 'c', name: 'C', host: 'nas2', exportPath: '/c', folder: 'C', enabled: true },
+            ],
+          },
+          [SystemMetadataKey.NetworkShareSpace]: {
+            checkedAt: new Date().toISOString(),
+            mountPaths: { a: `${location}/A`, b: `${location}/B`, c: `${location}/C` },
+            shares: {
+              a: { total: 10_000, used: 4000, available: 6000 },
+              // the same volume as a: a share of another folder on it
+              b: { total: 10_000, used: 4000, available: 6000 },
+            },
+          },
+        };
+        mocks.systemMetadata.get.mockImplementation((key) => Promise.resolve(metadata[key] ?? null) as any);
       });
 
-      expect(mocks.storage.checkDiskUsage).toHaveBeenCalledWith(expect.stringContaining('/data/library'));
-    });
-
-    it('should return the disk space as TiB', async () => {
-      mocks.storage.checkDiskUsage.mockResolvedValue({
-        free: 200_000_000_000_000,
-        available: 300_000_000_000_000,
-        total: 500_000_000_000_000,
+      it('should count each volume of the shares that answered once', async () => {
+        await expect(sut.getStorage(auth)).resolves.toMatchObject({
+          diskSizeRaw: 11_000,
+          diskAvailableRaw: 6400,
+          sharesNotCounted: 1,
+        });
       });
 
-      await expect(sut.getStorage()).resolves.toEqual({
-        diskAvailable: '272.8 TiB',
-        diskAvailableRaw: 300_000_000_000_000,
-        diskSize: '454.7 TiB',
-        diskSizeRaw: 500_000_000_000_000,
-        diskUsagePercentage: 60,
-        diskUse: '272.8 TiB',
-        diskUseRaw: 300_000_000_000_000,
+      it('should not count them when set not to', async () => {
+        mocks.systemMetadata.get.mockImplementation(
+          (key) =>
+            Promise.resolve(
+              key === SystemMetadataKey.SystemConfig
+                ? { server: { storageIncludesNetworkShares: false } }
+                : (metadata[key] ?? null),
+            ) as any,
+        );
+
+        await expect(sut.getStorage(auth)).resolves.toMatchObject({
+          diskSizeRaw: 1000,
+          diskAvailableRaw: 400,
+          sharesNotCounted: 0,
+        });
       });
 
-      expect(mocks.storage.checkDiskUsage).toHaveBeenCalledWith(expect.stringContaining('/data/library'));
-    });
-
-    it('should return the disk space as PiB', async () => {
-      mocks.storage.checkDiskUsage.mockResolvedValue({
-        free: 200_000_000_000_000_000,
-        available: 300_000_000_000_000_000,
-        total: 500_000_000_000_000_000,
+      it('should list each volume for the admin', async () => {
+        await expect(sut.getStorageDetails()).resolves.toEqual({
+          totalBytes: 11_000,
+          usedBytes: 4600,
+          availableBytes: 6400,
+          includesNetworkShares: true,
+          notCounted: 1,
+          checkedAt: expect.any(String),
+          volumes: [
+            expect.objectContaining({ id: 'local', kind: 'local', status: 'counted', totalBytes: 1000 }),
+            expect.objectContaining({ id: 'a', source: 'nas:/volume1/a', path: `${location}/A`, status: 'counted' }),
+            expect.objectContaining({ id: 'b', status: 'sameVolume', sameAs: 'a' }),
+            expect.objectContaining({ id: 'c', status: 'offline', totalBytes: undefined }),
+          ],
+        });
       });
-
-      await expect(sut.getStorage()).resolves.toEqual({
-        diskAvailable: '266.5 PiB',
-        diskAvailableRaw: 300_000_000_000_000_000,
-        diskSize: '444.1 PiB',
-        diskSizeRaw: 500_000_000_000_000_000,
-        diskUsagePercentage: 60,
-        diskUse: '266.5 PiB',
-        diskUseRaw: 300_000_000_000_000_000,
-      });
-
-      expect(mocks.storage.checkDiskUsage).toHaveBeenCalledWith(expect.stringContaining('/data/library'));
     });
   });
 

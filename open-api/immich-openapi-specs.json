@@ -14278,7 +14278,7 @@
     },
     "/server/storage": {
       "get": {
-        "description": "Retrieve the current storage utilization information of the server.",
+        "description": "Retrieve the server's storage, the disk the library is on and the network shares it mounts, and what your photos take of it: uploaded, and of your external libraries.",
         "operationId": "getStorage",
         "parameters": [],
         "responses": {
@@ -14324,6 +14324,53 @@
         ],
         "x-immich-permission": "server.storage",
         "x-immich-state": "Stable"
+      }
+    },
+    "/server/storage/details": {
+      "get": {
+        "description": "Retrieve the server's storage volume by volume: the disk the library is on, and each network share, with whether it is counted.",
+        "operationId": "getStorageDetails",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServerStorageDetailsResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "cookie": []
+          },
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "Get storage details",
+        "tags": [
+          "Server"
+        ],
+        "x-immich-admin-only": true,
+        "x-immich-history": [
+          {
+            "version": "v3.3.5",
+            "state": "Added"
+          },
+          {
+            "version": "v3.3.5",
+            "state": "Alpha"
+          }
+        ],
+        "x-immich-permission": "server.statistics",
+        "x-immich-state": "Alpha"
       }
     },
     "/server/version": {
@@ -16030,6 +16077,340 @@
         ],
         "x-immich-permission": "sync.stream",
         "x-immich-state": "Stable"
+      }
+    },
+    "/synology/account": {
+      "delete": {
+        "description": "Forget the Synology account, and remove its password from the Keychain.",
+        "operationId": "unbindSynologyAccount",
+        "parameters": [],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "cookie": []
+          },
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "Unbind my Synology account",
+        "tags": [
+          "Synology"
+        ],
+        "x-immich-history": [
+          {
+            "version": "v3.3.5",
+            "state": "Added"
+          },
+          {
+            "version": "v3.3.5",
+            "state": "Alpha"
+          }
+        ],
+        "x-immich-permission": "userPreference.update",
+        "x-immich-state": "Alpha"
+      },
+      "get": {
+        "description": "Retrieve the Synology account the user bound, and what the last login with it found.",
+        "operationId": "getSynologyAccount",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SynologyAccountResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "cookie": []
+          },
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "Retrieve my Synology account",
+        "tags": [
+          "Synology"
+        ],
+        "x-immich-history": [
+          {
+            "version": "v3.3.5",
+            "state": "Added"
+          },
+          {
+            "version": "v3.3.5",
+            "state": "Alpha"
+          }
+        ],
+        "x-immich-permission": "userPreference.read",
+        "x-immich-state": "Alpha"
+      },
+      "put": {
+        "description": "Log in to Synology with the account, and keep it when that works: the password in the macOS Keychain. Synology may ask for a 2-step verification code, once.",
+        "operationId": "bindSynologyAccount",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SynologyAccountBindDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SynologyAccountTestResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "cookie": []
+          },
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "Bind my Synology account",
+        "tags": [
+          "Synology"
+        ],
+        "x-immich-history": [
+          {
+            "version": "v3.3.5",
+            "state": "Added"
+          },
+          {
+            "version": "v3.3.5",
+            "state": "Alpha"
+          }
+        ],
+        "x-immich-permission": "userPreference.update",
+        "x-immich-state": "Alpha"
+      }
+    },
+    "/synology/account/schedule": {
+      "put": {
+        "description": "Whether the albums are synced every day, and at what time of day, in the server's time zone.",
+        "operationId": "updateSynologySyncSchedule",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SynologySyncScheduleDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SynologyAccountResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "cookie": []
+          },
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "Schedule my Synology album sync",
+        "tags": [
+          "Synology"
+        ],
+        "x-immich-history": [
+          {
+            "version": "v3.3.5",
+            "state": "Added"
+          },
+          {
+            "version": "v3.3.5",
+            "state": "Alpha"
+          }
+        ],
+        "x-immich-permission": "userPreference.update",
+        "x-immich-state": "Alpha"
+      }
+    },
+    "/synology/account/sync": {
+      "post": {
+        "description": "Sync the albums of the bound account now, in the background: each becomes an album of the user, with the photos found in their external libraries. Nothing on Synology is changed.",
+        "operationId": "syncSynologyAccount",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SynologyAccountResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "cookie": []
+          },
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "Sync my Synology albums",
+        "tags": [
+          "Synology"
+        ],
+        "x-immich-history": [
+          {
+            "version": "v3.3.5",
+            "state": "Added"
+          },
+          {
+            "version": "v3.3.5",
+            "state": "Alpha"
+          }
+        ],
+        "x-immich-permission": "userPreference.update",
+        "x-immich-state": "Alpha"
+      }
+    },
+    "/synology/account/test": {
+      "post": {
+        "description": "Log in to Synology with the bound account, read Synology Photos, and log out.",
+        "operationId": "testSynologyAccount",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SynologyAccountTestResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "cookie": []
+          },
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "Test my Synology account",
+        "tags": [
+          "Synology"
+        ],
+        "x-immich-history": [
+          {
+            "version": "v3.3.5",
+            "state": "Added"
+          },
+          {
+            "version": "v3.3.5",
+            "state": "Alpha"
+          }
+        ],
+        "x-immich-permission": "userPreference.read",
+        "x-immich-state": "Alpha"
+      }
+    },
+    "/synology/account/unmatched": {
+      "get": {
+        "description": "The albums the last sync did not create or could not read, and the photos it did not find, found more than once, or whose owners are not in Immich yet.",
+        "operationId": "getSynologyUnmatched",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SynologyUnmatchedDto"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "cookie": []
+          },
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "List what my last Synology sync did not match",
+        "tags": [
+          "Synology"
+        ],
+        "x-immich-history": [
+          {
+            "version": "v3.3.5",
+            "state": "Added"
+          },
+          {
+            "version": "v3.3.5",
+            "state": "Alpha"
+          }
+        ],
+        "x-immich-permission": "userPreference.read",
+        "x-immich-state": "Alpha"
       }
     },
     "/system-config": {
@@ -19183,6 +19564,10 @@
       "description": "Network shares, such as a NAS folder shared over NFS, that the server mounts itself, so that external libraries can read them. Only available when the server runs natively on macOS."
     },
     {
+      "name": "Synology",
+      "description": "The user's own Synology account, which the server reads their Synology Photos albums with. The password is kept in the macOS Keychain, not in the database. Only available when the server runs natively on macOS."
+    },
+    {
       "name": "Map",
       "description": "Map endpoints include supplemental functionality related to geolocation, such as reverse geocoding and retrieving map markers for assets with geolocation data."
     },
@@ -20535,12 +20920,17 @@
           "publicUsers": {
             "description": "Public users",
             "type": "boolean"
+          },
+          "storageIncludesNetworkShares": {
+            "description": "Whether the server's storage counts the network shares the server mounts (macOS), besides the disk the library is on",
+            "type": "boolean"
           }
         },
         "required": [
           "externalDomain",
           "loginPageMessage",
-          "publicUsers"
+          "publicUsers",
+          "storageIncludesNetworkShares"
         ],
         "type": "object"
       },
@@ -23954,6 +24344,7 @@
           "LibrarySyncFilesQueueAll",
           "LibrarySyncFiles",
           "LibraryScanQueueAll",
+          "SynologyAlbumSync",
           "HlsSessionCleanup",
           "MemoryCleanup",
           "MemoryGenerate",
@@ -29482,39 +29873,116 @@
         ],
         "type": "object"
       },
+      "ServerStorageDetailsResponseDto": {
+        "properties": {
+          "availableBytes": {
+            "description": "Available space in bytes, of the volumes counted",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "checkedAt": {
+            "description": "When the network shares' space was read (ISO 8601)",
+            "type": "string"
+          },
+          "includesNetworkShares": {
+            "description": "Whether the server's storage counts the network shares",
+            "type": "boolean"
+          },
+          "notCounted": {
+            "description": "Network shares not counted, as they were not mounted or did not answer",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "totalBytes": {
+            "description": "The server's storage in bytes",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "usedBytes": {
+            "description": "Used space in bytes, of the volumes counted",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "volumes": {
+            "description": "The disk the library is on, and each network share",
+            "items": {
+              "$ref": "#/components/schemas/StorageVolumeDto"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "availableBytes",
+          "includesNetworkShares",
+          "notCounted",
+          "totalBytes",
+          "usedBytes",
+          "volumes"
+        ],
+        "type": "object"
+      },
       "ServerStorageResponseDto": {
         "properties": {
           "diskAvailable": {
-            "description": "Available disk space (human-readable format)",
+            "description": "The server's available space (human-readable format)",
             "type": "string"
           },
           "diskAvailableRaw": {
-            "description": "Available disk space in bytes",
+            "description": "The server's available space in bytes",
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
           },
           "diskSize": {
-            "description": "Total disk size (human-readable format)",
+            "description": "The server's storage (human-readable format): the disk the library is on, and the network shares it mounts",
             "type": "string"
           },
           "diskSizeRaw": {
-            "description": "Total disk size in bytes",
+            "description": "The server's storage in bytes",
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
           },
           "diskUsagePercentage": {
-            "description": "Disk usage percentage (0-100)",
+            "description": "What your photos take, as a percentage (0-100) of the server's storage",
             "format": "double",
             "type": "number"
           },
           "diskUse": {
-            "description": "Used disk space (human-readable format)",
+            "description": "What your photos take (human-readable format): uploaded, and of your external libraries",
             "type": "string"
           },
           "diskUseRaw": {
-            "description": "Used disk space in bytes",
+            "description": "What your photos take in bytes: uploaded, and of your external libraries",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "quotaSizeInBytes": {
+            "description": "Your quota in bytes, if you have one",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "nullable": true,
+            "type": "integer"
+          },
+          "sharesNotCounted": {
+            "description": "Network shares the server's storage could not count: not mounted, or not answering",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "usageExternal": {
+            "description": "What the photos of your external libraries take in bytes",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "usageUploads": {
+            "description": "What your uploaded photos take in bytes: what the quota counts",
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
@@ -29527,7 +29995,11 @@
           "diskSizeRaw",
           "diskUsagePercentage",
           "diskUse",
-          "diskUseRaw"
+          "diskUseRaw",
+          "quotaSizeInBytes",
+          "sharesNotCounted",
+          "usageExternal",
+          "usageUploads"
         ],
         "type": "object"
       },
@@ -31624,6 +32096,82 @@
           "users"
         ],
         "type": "object"
+      },
+      "StorageVolumeDto": {
+        "properties": {
+          "availableBytes": {
+            "description": "Available space in bytes, when it answered",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "id": {
+            "description": "\"local\" for the disk the library is on, else the network share id",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/StorageVolumeKind"
+          },
+          "name": {
+            "description": "The network share's name; empty for the disk the library is on",
+            "type": "string"
+          },
+          "path": {
+            "description": "Where it is mounted, or the library folder",
+            "type": "string"
+          },
+          "sameAs": {
+            "description": "The volume it is the same as",
+            "type": "string"
+          },
+          "source": {
+            "description": "The library folder for the disk it is on, host:/export for a network share",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/StorageVolumeStatus"
+          },
+          "totalBytes": {
+            "description": "Size in bytes, when it answered",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "usedBytes": {
+            "description": "Used space in bytes, when it answered",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "name",
+          "path",
+          "source",
+          "status"
+        ],
+        "type": "object"
+      },
+      "StorageVolumeKind": {
+        "description": "Kind",
+        "enum": [
+          "local",
+          "networkShare"
+        ],
+        "type": "string"
+      },
+      "StorageVolumeStatus": {
+        "description": "Counted; the same volume as one counted; offline; unmounted by hand; or not counted, as the setting says",
+        "enum": [
+          "counted",
+          "sameVolume",
+          "offline",
+          "disabled",
+          "excluded"
+        ],
+        "type": "string"
       },
       "StringFilter": {
         "properties": {
@@ -33727,6 +34275,390 @@
           "profileChangedAt"
         ],
         "type": "object"
+      },
+      "SynologyAccountBindDto": {
+        "properties": {
+          "account": {
+            "description": "Synology account name",
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "otpCode": {
+            "description": "2-step verification code, when Synology asks for one; this server is then trusted, without codes",
+            "pattern": "^\\d{6,8}$",
+            "type": "string"
+          },
+          "password": {
+            "description": "Password of the account. Left out, the one in the Keychain is used, if the address and account stay",
+            "maxLength": 1024,
+            "minLength": 1,
+            "type": "string"
+          },
+          "url": {
+            "description": "Address of the Synology, such as https://nas.example.com:5001; HTTPS without a scheme",
+            "maxLength": 512,
+            "type": "string"
+          },
+          "verifyCertificate": {
+            "default": true,
+            "description": "Check the Synology's HTTPS certificate; turn off for a self-signed one",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "account",
+          "url"
+        ],
+        "type": "object"
+      },
+      "SynologyAccountResponseDto": {
+        "properties": {
+          "account": {
+            "description": "Synology account name",
+            "type": "string"
+          },
+          "albumCount": {
+            "description": "How many albums of its own the account had then",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "autoSync": {
+            "description": "Whether the albums are synced every day",
+            "type": "boolean"
+          },
+          "bound": {
+            "description": "Whether the user bound a Synology account",
+            "type": "boolean"
+          },
+          "boundAt": {
+            "description": "When the account was bound",
+            "type": "string"
+          },
+          "checkedAt": {
+            "description": "When the server last logged in with it",
+            "type": "string"
+          },
+          "errorReason": {
+            "$ref": "#/components/schemas/SynologyErrorReason"
+          },
+          "lastSync": {
+            "$ref": "#/components/schemas/SynologySyncReportDto",
+            "description": "What the last sync did"
+          },
+          "message": {
+            "description": "The last error, as Synology or the system reported it",
+            "type": "string"
+          },
+          "name": {
+            "description": "The name Synology Photos has for the account",
+            "type": "string"
+          },
+          "nextSyncAt": {
+            "description": "When they are synced next, if every day",
+            "type": "string"
+          },
+          "syncPending": {
+            "description": "Whether a sync waits or runs",
+            "type": "boolean"
+          },
+          "syncTime": {
+            "description": "The server's local time of day the albums are synced at, HH:MM",
+            "type": "string"
+          },
+          "url": {
+            "description": "Address of the Synology",
+            "type": "string"
+          },
+          "verifyCertificate": {
+            "description": "Whether the Synology's HTTPS certificate is checked",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "bound"
+        ],
+        "type": "object"
+      },
+      "SynologyAccountTestResponseDto": {
+        "properties": {
+          "account": {
+            "$ref": "#/components/schemas/SynologyAccountResponseDto"
+          },
+          "albumCount": {
+            "description": "How many albums of its own the account has",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "errorReason": {
+            "$ref": "#/components/schemas/SynologyErrorReason"
+          },
+          "message": {
+            "description": "The error, as Synology or the system reported it",
+            "type": "string"
+          },
+          "success": {
+            "description": "Whether the server could log in and read Synology Photos",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "account",
+          "success"
+        ],
+        "type": "object"
+      },
+      "SynologyErrorReason": {
+        "description": "Why connecting to Synology, or logging in to it, failed",
+        "enum": [
+          "unreachable",
+          "certificate",
+          "notSynology",
+          "noPhotos",
+          "wrongPassword",
+          "disabled",
+          "denied",
+          "otpRequired",
+          "otpWrong",
+          "otpEnforced",
+          "blocked",
+          "passwordExpired",
+          "alreadyBound",
+          "keychain",
+          "other"
+        ],
+        "type": "string"
+      },
+      "SynologySyncReportDto": {
+        "properties": {
+          "added": {
+            "description": "Photos added to albums",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "albums": {
+            "description": "The Synology albums of the account",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "albumsCreated": {
+            "description": "Albums created in Immich",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "albumsEmpty": {
+            "description": "Albums none of whose photos were found in the external libraries: not created",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "albumsFailed": {
+            "description": "Albums whose photos Synology did not list: left as they were",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "albumsRemoved": {
+            "description": "Albums the sync created and Synology no longer has: removed, not their photos",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "albumsUpdated": {
+            "description": "Albums changed: renamed, another cover, photos added or removed",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "ambiguous": {
+            "description": "Photos, the account's or others', found by name, size and time more than once in their owners' libraries: one was taken",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "errorReason": {
+            "$ref": "#/components/schemas/SynologyErrorReason"
+          },
+          "finishedAt": {
+            "description": "When it finished",
+            "type": "string"
+          },
+          "items": {
+            "description": "The account's own photos in its albums",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "matched": {
+            "description": "Of them, those found: by path in the user's external libraries, or else by name, size and time",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "matchedByName": {
+            "description": "Of those found, those found by name, size and time",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "membersAdded": {
+            "description": "Members the albums were shared with, as Synology shares them",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "membersRemoved": {
+            "description": "Members Synology no longer shares the albums with: removed",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "membersUpdated": {
+            "description": "Members whose access changed, as Synology's did",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "membersWaiting": {
+            "description": "How many Synology users the albums are shared with, or who added photos to them, are not in Immich yet: they are to log in with Synology SSO, or bind their Synology account",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "message": {
+            "description": "The error, as Synology or the system reported it",
+            "type": "string"
+          },
+          "others": {
+            "description": "Photos others added to the albums",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "othersMatched": {
+            "description": "Of them, those found in their owners' own libraries, and added",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "othersWaiting": {
+            "description": "Of them, those whose owners are not in Immich yet",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "removed": {
+            "description": "Photos removed from albums",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "startedAt": {
+            "description": "When the sync started",
+            "type": "string"
+          },
+          "success": {
+            "description": "Whether it could log in and read the albums",
+            "type": "boolean"
+          },
+          "unmatched": {
+            "description": "How many albums and photos are in the list of those not matched",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "added",
+          "albums",
+          "albumsCreated",
+          "albumsEmpty",
+          "albumsFailed",
+          "albumsRemoved",
+          "albumsUpdated",
+          "ambiguous",
+          "finishedAt",
+          "items",
+          "matched",
+          "matchedByName",
+          "membersAdded",
+          "membersRemoved",
+          "membersUpdated",
+          "membersWaiting",
+          "others",
+          "othersMatched",
+          "othersWaiting",
+          "removed",
+          "startedAt",
+          "success",
+          "unmatched"
+        ],
+        "type": "object"
+      },
+      "SynologySyncScheduleDto": {
+        "properties": {
+          "autoSync": {
+            "description": "Sync the albums every day",
+            "type": "boolean"
+          },
+          "syncTime": {
+            "description": "The server's local time of day to sync them at, HH:MM",
+            "type": "string"
+          }
+        },
+        "required": [
+          "autoSync",
+          "syncTime"
+        ],
+        "type": "object"
+      },
+      "SynologyUnmatchedDto": {
+        "properties": {
+          "albumId": {
+            "description": "The Synology album",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "albumName": {
+            "description": "The Synology album's name",
+            "type": "string"
+          },
+          "mine": {
+            "description": "Whether the photo is the account's own, not one another user added",
+            "type": "boolean"
+          },
+          "path": {
+            "description": "The photo, as its path in Synology Photos, or only its name when its folder could not be read",
+            "type": "string"
+          },
+          "reason": {
+            "$ref": "#/components/schemas/SynologyUnmatchedReason"
+          }
+        },
+        "required": [
+          "albumId",
+          "albumName",
+          "mine",
+          "reason"
+        ],
+        "type": "object"
+      },
+      "SynologyUnmatchedReason": {
+        "description": "Why: a photo not found in its owner's library, found more than once, or whose owner is not in Immich yet; an album not created as none of its photos were found, or whose photos Synology did not list",
+        "enum": [
+          "notFound",
+          "ambiguous",
+          "ownerWaiting",
+          "albumEmpty",
+          "albumFailed"
+        ],
+        "type": "string"
       },
       "SystemConfigTemplateStorageOptionDto": {
         "properties": {
