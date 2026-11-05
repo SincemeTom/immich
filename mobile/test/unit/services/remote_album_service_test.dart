@@ -1,5 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
+import 'package:immich_mobile/domain/models/events.model.dart';
 import 'package:immich_mobile/domain/services/remote_album.service.dart';
+import 'package:immich_mobile/domain/utils/event_stream.dart';
 import 'package:mocktail/mocktail.dart';
 
 import '../../service.mocks.dart';
@@ -42,6 +46,62 @@ void main() {
         expect(persisted, isNot(contains('asset-2')));
 
         expect(count, removed.length);
+      });
+    });
+
+    group('album assets events', () {
+      const albumId = 'album-1';
+      late List<AlbumAssetsChangedEvent> events;
+      late StreamSubscription<AlbumAssetsChangedEvent> subscription;
+
+      setUp(() {
+        events = [];
+        subscription = EventStream.shared.listen<AlbumAssetsChangedEvent>(events.add);
+      });
+
+      tearDown(() => subscription.cancel());
+
+      test('addAssets tells which assets went in', () async {
+        when(
+          () => mocks.albumApi.addAssets(albumId, any()),
+        ).thenAnswer((_) async => (added: ['asset-1'], failed: ['asset-2']));
+        when(() => mocks.remoteAlbum.addAssets(albumId, any())).thenAnswer((_) async => 1);
+
+        await sut.addAssets(albumId: albumId, assetIds: ['asset-1', 'asset-2']);
+        await pumpEventQueue();
+
+        expect(events, hasLength(1));
+        expect(events.single.albumId, albumId);
+        expect(events.single.assetIds, ['asset-1']);
+      });
+
+      test('removeAssets tells which assets came out', () async {
+        when(
+          () => mocks.albumApi.removeAssets(albumId, any()),
+        ).thenAnswer((_) async => (removed: ['asset-1'], failed: <String>[]));
+        when(() => mocks.remoteAlbum.removeAssets(albumId, any())).thenAnswer((_) async {});
+
+        await sut.removeAssets(albumId: albumId, assetIds: ['asset-1']);
+        await pumpEventQueue();
+
+        expect(events.single.assetIds, ['asset-1']);
+      });
+
+      test('says nothing when nothing changed', () async {
+        when(
+          () => mocks.albumApi.addAssets(albumId, any()),
+        ).thenAnswer((_) async => (added: <String>[], failed: ['asset-1']));
+        when(() => mocks.remoteAlbum.addAssets(albumId, any())).thenAnswer((_) async => 0);
+        when(
+          () => mocks.albumApi.removeAssets(albumId, any()),
+        ).thenAnswer((_) async => (removed: <String>[], failed: ['asset-1']));
+        when(() => mocks.remoteAlbum.removeAssets(albumId, any())).thenAnswer((_) async {});
+
+        await sut.addAssets(albumId: albumId, assetIds: ['asset-1']);
+        await sut.removeAssets(albumId: albumId, assetIds: ['asset-1']);
+        await pumpEventQueue();
+
+        expect(events, isEmpty);
       });
     });
   });

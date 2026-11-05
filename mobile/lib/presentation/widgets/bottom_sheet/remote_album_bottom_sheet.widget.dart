@@ -89,7 +89,9 @@ class _RemoteAlbumBottomSheetState extends ConsumerState<RemoteAlbumBottomSheet>
           .new(action: ArchiveAction(source: .timeline)),
           .new(action: FavoriteAction(source: .timeline)),
         ],
-        const .new(action: DownloadAction(source: .timeline)),
+        ActionColumnButton(
+          action: DownloadAction(source: .timeline, albumId: widget.album.id),
+        ),
         if (ownsAlbum) ...const [
           .new(action: DeleteAction(source: .timeline)),
           .new(action: EditDateTimeAction(source: .timeline)),
@@ -98,14 +100,13 @@ class _RemoteAlbumBottomSheetState extends ConsumerState<RemoteAlbumBottomSheet>
           .new(action: StackAction(source: .timeline)),
         ],
         const .new(action: CleanupLocalAction(source: .timeline)),
-        if (ownsAlbum) ...[
-          ActionColumnButton(
-            action: RemoveFromAlbumAction(source: .timeline, albumId: widget.album.id),
-          ),
-          ActionColumnButton(
-            action: SetAlbumCoverAction(source: .timeline, albumId: widget.album.id),
-          ),
-        ],
+        // shown as the user's access to the album lets them
+        ActionColumnButton(
+          action: RemoveFromAlbumAction(source: .timeline, albumId: widget.album.id),
+        ),
+        ActionColumnButton(
+          action: SetAlbumCoverAction(source: .timeline, albumId: widget.album.id),
+        ),
       ],
       slivers: ownsAlbum
           ? [const AddToAlbumHeader(), AlbumSelector(onAlbumSelected: addToAlbum, onKeyboardExpanded: onKeyboardExpand)]

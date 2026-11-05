@@ -7,11 +7,14 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:immich_mobile/domain/models/album/album.model.dart';
+import 'package:immich_mobile/domain/models/album/album_access.model.dart';
 import 'package:immich_mobile/domain/models/user.model.dart';
 import 'package:immich_mobile/extensions/build_context_extensions.dart';
 import 'package:immich_mobile/extensions/theme_extensions.dart';
 import 'package:immich_mobile/generated/translations.g.dart';
 import 'package:immich_mobile/presentation/pages/user_selection.page.dart';
+import 'package:immich_mobile/presentation/widgets/album/album_access_picker.widget.dart';
+import 'package:immich_mobile/presentation/widgets/album/album_invite.dart';
 import 'package:immich_mobile/providers/auth.provider.dart';
 import 'package:immich_mobile/providers/infrastructure/album.provider.dart';
 import 'package:immich_mobile/providers/infrastructure/current_album.provider.dart';
@@ -29,11 +32,19 @@ class AlbumOptionsPage extends HookConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final sharedUsersAsync = ref.watch(remoteAlbumSharedUsersProvider(album.id));
+    final members = ref.watch(albumMembersProvider(album.id)).valueOrNull;
     final userId = ref.watch(authProvider).userId;
     final activityEnabled = useState(album.isActivityEnabled);
     final isOwner = album.ownerId == userId;
+    final myAccess = ref.watch(myAlbumAccessProvider(album.id)).valueOrNull ?? (isOwner ? AlbumAccess.owner : null);
+    final canManage = myAccess?.canManage ?? false;
     final owner = isOwner ? ref.watch(currentUserProvider) : null;
     final allUsers = isOwner ? null : ref.watch(usersProvider);
+
+    void refreshMembers() {
+      ref.invalidate(remoteAlbumSharedUsersProvider(album.id));
+      ref.invalidate(albumMembersProvider(album.id));
+    }
 
     void showErrorMessage() {
       ContextHelper(context).pop();
@@ -61,7 +72,7 @@ class AlbumOptionsPage extends HookConsumerWidget {
     Future<void> removeUserFromAlbum(UserDto user) async {
       try {
         await ref.read(remoteAlbumProvider.notifier).removeUser(album.id, user.id);
-        ref.invalidate(remoteAlbumSharedUsersProvider(album.id));
+        refreshMembers();
       } catch (_) {
         showErrorMessage();
       }
@@ -69,75 +80,81 @@ class AlbumOptionsPage extends HookConsumerWidget {
       ContextHelper(context).pop();
     }
 
-    Future<void> addUsers() async {
-      final newUsers = await context.pushRoute<List<String>>(UserSelectionRoute(album: album));
-
-      if (newUsers == null || newUsers.isEmpty) {
+    Future<void> changeAccess(UserDto user, AlbumAccess access) async {
+      if (members == null) {
         return;
       }
-
       try {
-        if (!context.mounted) {
-          return;
+        await ref
+            .read(remoteAlbumProvider.notifier)
+            .updateMemberAccess(album.id, user.id, access, hasAccessLevels: members.hasAccessLevels);
+        refreshMembers();
+        if (context.mounted) {
+          ImmichToast.show(context: context, msg: context.t.album_member_access_updated, toastType: ToastType.success);
         }
-
-        await ref.read(remoteAlbumProvider.notifier).addUsers(album.id, newUsers);
-        ref.invalidate(remoteAlbumSharedUsersProvider(album.id));
-        if (!context.mounted) {
-          return;
+      } catch (_) {
+        if (context.mounted) {
+          ImmichToast.show(
+            context: context,
+            msg: context.t.errors.unable_to_change_album_user_role,
+            toastType: ToastType.error,
+          );
         }
-
-        ImmichToast.show(
-          context: context,
-          msg: context.t.users_added_to_album_count(count: newUsers.length),
-          toastType: ToastType.success,
-        );
-      } catch (e) {
-        if (!context.mounted) {
-          return;
-        }
-
-        ImmichToast.show(context: context, msg: "Failed to add users to album: $e", toastType: ToastType.error);
       }
     }
 
-    void handleUserClick(UserDto user) {
-      var actions = [];
+    Future<void> addUsers() => inviteAlbumUsers(context, ref, album);
 
+    Future<void> handleUserClick(UserDto user) async {
       if (user.id == userId) {
-        actions = [
-          ListTile(
-            leading: const Icon(Icons.exit_to_app_rounded),
-            title: Text(context.t.leave_album),
-            onTap: leaveAlbum,
+        await showModalBottomSheet(
+          backgroundColor: context.colorScheme.surfaceContainer,
+          context: context,
+          builder: (sheetContext) => SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.only(top: 24.0),
+              child: ListTile(
+                leading: const Icon(Icons.exit_to_app_rounded),
+                title: Text(context.t.leave_album),
+                onTap: leaveAlbum,
+              ),
+            ),
           ),
-        ];
+        );
+        return;
       }
 
-      if (isOwner) {
-        actions = [
+      // a manager gives the others a level, or removes them (not the owner)
+      final current = members?.accessOf(user.id);
+      if (members == null || current == AlbumAccess.owner) {
+        return;
+      }
+      final access = await showAlbumAccessPicker(
+        context,
+        title: user.name,
+        members: members,
+        current: current,
+        extra: [
           ListTile(
-            leading: const Icon(Icons.person_remove_rounded),
-            title: Text(context.t.remove_user),
+            leading: Icon(Icons.person_remove_rounded, color: context.colorScheme.error),
+            title: Text(context.t.remove_user, style: TextStyle(color: context.colorScheme.error)),
             onTap: () => removeUserFromAlbum(user),
           ),
-        ];
+        ],
+      );
+      if (access != null && access != current) {
+        await changeAccess(user, access);
       }
+    }
 
-      unawaited(
-        showModalBottomSheet(
-          backgroundColor: context.colorScheme.surfaceContainer,
-          isScrollControlled: false,
-          context: context,
-          builder: (context) {
-            return SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.only(top: 24.0),
-                child: Column(mainAxisSize: MainAxisSize.min, children: [...actions]),
-              ),
-            );
-          },
-        ),
+    Widget? accessLabel(String id) {
+      final access = members?.accessOf(id);
+      if (access == null) {
+        return null;
+      }
+      return Text(
+        albumAccessLabel(context, access, hasAccessLevels: members!.hasAccessLevels),
+        style: context.textTheme.labelLarge?.copyWith(color: context.colorScheme.onSurfaceSecondary),
       );
     }
 
@@ -182,12 +199,20 @@ class AlbumOptionsPage extends HookConsumerWidget {
           itemCount: sharedUsers.length,
           itemBuilder: (context, index) {
             final user = sharedUsers[index];
+            final canTap = userId == user.id || (canManage && members != null);
+            final label = accessLabel(user.id);
             return ListTile(
               leading: UserCircleAvatar(user: user),
               title: Text(user.name, style: const TextStyle(fontWeight: FontWeight.w500)),
               subtitle: Text(user.email, style: TextStyle(color: context.colorScheme.onSurfaceSecondary)),
-              trailing: userId == user.id || isOwner ? const Icon(Icons.more_horiz_rounded) : const SizedBox(),
-              onTap: userId == user.id || isOwner ? () => handleUserClick(user) : null,
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  ?label,
+                  if (canTap) ...[const SizedBox(width: 8), const Icon(Icons.more_horiz_rounded)],
+                ],
+              ),
+              onTap: canTap ? () => handleUserClick(user) : null,
             );
           },
         ),
@@ -216,7 +241,7 @@ class AlbumOptionsPage extends HookConsumerWidget {
         body: ListView(
           children: [
             const SizedBox(height: 8),
-            if (isOwner)
+            if (canManage)
               SwitchListTile.adaptive(
                 value: activityEnabled.value,
                 onChanged: (bool value) async {
@@ -235,7 +260,7 @@ class AlbumOptionsPage extends HookConsumerWidget {
                 ),
               ),
             buildSectionTitle(context.t.shared_album_section_people_title),
-            if (isOwner) ...[
+            if (canManage) ...[
               ListTile(
                 leading: const Icon(Icons.person_add_rounded),
                 title: Text(context.t.invite_people),

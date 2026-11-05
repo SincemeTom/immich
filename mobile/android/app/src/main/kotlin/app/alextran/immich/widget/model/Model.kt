@@ -80,5 +80,5 @@ fun imageFilename(id: String): String {
 }
 
 fun assetDeeplink(asset: Asset): String {
-  return "immich://asset?id=${asset.id}"
+  return "pixcellar://asset?id=${asset.id}"
 }

@@ -3,7 +3,7 @@
 import 'package:easy_localization/src/easy_localization_controller.dart';
 import 'package:easy_localization/src/localization.dart';
 import 'package:immich_mobile/constants/locales.dart';
-import 'package:immich_mobile/generated/codegen_loader.g.dart';
+import 'package:immich_mobile/utils/branded_translation_loader.dart';
 import 'package:immich_mobile/utils/debug_print.dart';
 
 /// Workaround to manually load translations in another Isolate
@@ -14,7 +14,7 @@ Future<bool> loadTranslations() async {
     supportedLocales: locales.values.toList(),
     useFallbackTranslations: true,
     saveLocale: true,
-    assetLoader: const CodegenLoader(),
+    assetLoader: const BrandedTranslationLoader(),
     path: translationsPath,
     useOnlyLangCode: false,
     onLoadError: (e) => dPrint(() => e.toString()),

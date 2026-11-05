@@ -1,5 +1,5 @@
-app_identifier "app.alextran.immich" # The bundle identifier of your app
-apple_id "altran@futo.org" # Your Apple email address
+app_identifier "io.github.sincemetom.pixcellar" # The bundle identifier of your app
+# apple_id is taken from FASTLANE_USER, or use an App Store Connect API key
 
 
 # For more information about the Appfile, see:

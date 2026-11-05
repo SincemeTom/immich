@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:drift/drift.dart' hide isNotNull, isNull;
@@ -5,6 +6,7 @@ import 'package:drift/native.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:immich_mobile/data/db/main/database.dart';
+import 'package:immich_mobile/domain/models/asset/base_asset.model.dart';
 import 'package:immich_mobile/domain/models/store.model.dart';
 import 'package:immich_mobile/domain/services/store.service.dart';
 import 'package:immich_mobile/entities/store.entity.dart';
@@ -258,6 +260,88 @@ void main() {
       verify(() => mockAssetService.stackEditedUpload(asset.localId!, 'remote', 'sha')).called(1);
       verifyZeroInteractions(mockStorageRepository);
       verifyZeroInteractions(mockUploadRepository);
+    });
+  });
+
+  group('overlapping uploads', () {
+    late Completer<UploadResult> firstUpload;
+    late int uploads;
+
+    void mockPhoto(LocalAsset asset) {
+      final mockEntity = MockAssetEntity();
+      when(() => mockEntity.isLivePhoto).thenReturn(false);
+      when(() => mockStorageRepository.getAssetEntityForAsset(asset)).thenAnswer((_) async => mockEntity);
+      when(() => mockStorageRepository.isAssetAvailableLocally(asset.id)).thenAnswer((_) async => true);
+      when(() => mockStorageRepository.getFileForAsset(asset.id)).thenAnswer((_) async => File('/path/to/photo.jpg'));
+      when(() => mockAssetMediaRepository.getOriginalFilename(asset.id)).thenAnswer((_) async => 'photo.jpg');
+    }
+
+    setUp(() {
+      firstUpload = Completer<UploadResult>();
+      uploads = 0;
+      when(() => mockStorageRepository.clearCache()).thenAnswer((_) async {});
+      when(
+        () => mockUploadRepository.uploadFile(
+          file: any(named: 'file'),
+          originalFileName: any(named: 'originalFileName'),
+          fields: any(named: 'fields'),
+          cancelToken: any(named: 'cancelToken'),
+          onProgress: any(named: 'onProgress'),
+          logContext: any(named: 'logContext'),
+        ),
+      ).thenAnswer((_) {
+        uploads++;
+        return uploads == 1 ? firstUpload.future : Future.value(UploadResult.success(remoteAssetId: 'remote-2'));
+      });
+    });
+
+    test('an asset is uploaded once at a time: its temporary file is shared', () async {
+      final asset = LocalAssetStub.image1;
+      mockPhoto(asset);
+
+      final first = sut.uploadSingleAsset(asset, null, callbacks: const UploadCallbacks());
+      final second = sut.uploadSingleAsset(asset, null, callbacks: const UploadCallbacks());
+      await pumpEventQueue();
+      expect(uploads, 1);
+
+      firstUpload.complete(UploadResult.success(remoteAssetId: 'remote-1'));
+      await Future.wait([first, second]);
+      expect(uploads, 2);
+    });
+
+    test('a cancelled upload waiting for the other one does not start', () async {
+      final asset = LocalAssetStub.image1;
+      mockPhoto(asset);
+      final cancelToken = Completer<void>();
+
+      final first = sut.uploadSingleAsset(asset, null, callbacks: const UploadCallbacks());
+      final second = sut.uploadSingleAsset(asset, cancelToken, callbacks: const UploadCallbacks());
+      await pumpEventQueue();
+      cancelToken.complete();
+      firstUpload.complete(UploadResult.success(remoteAssetId: 'remote-1'));
+      await Future.wait([first, second]);
+
+      expect(uploads, 1);
+    });
+
+    test('the temporary files are not cleared while another upload runs', () async {
+      final asset = LocalAssetStub.image1;
+      final other = LocalAssetStub.image2;
+      mockPhoto(asset);
+      mockPhoto(other);
+
+      final manual = sut.uploadManual([asset]);
+      await pumpEventQueue();
+      verify(() => mockStorageRepository.clearCache()).called(1);
+
+      await sut.uploadManual([other]);
+      verifyNever(() => mockStorageRepository.clearCache());
+
+      firstUpload.complete(UploadResult.success(remoteAssetId: 'remote-1'));
+      await manual;
+
+      await sut.uploadManual([other]);
+      verify(() => mockStorageRepository.clearCache()).called(1);
     });
   });
 }

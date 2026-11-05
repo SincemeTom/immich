@@ -5,6 +5,7 @@ import 'package:immich_mobile/constants/enums.dart';
 import 'package:immich_mobile/generated/translations.g.dart';
 import 'package:immich_mobile/presentation/actions/action.dart';
 import 'package:immich_mobile/providers/infrastructure/album.provider.dart';
+import 'package:immich_mobile/providers/infrastructure/remote_album.provider.dart';
 import 'package:immich_mobile/providers/infrastructure/toast.provider.dart';
 import 'package:immich_mobile/utils/error_handler.dart';
 
@@ -21,7 +22,7 @@ class SetAlbumCoverAction extends AssetActionBuilder {
   @override
   ActionItem? create(BuildContext context, WidgetRef ref) {
     final assetId = ref.watch(_stateProvider(source));
-    if (assetId == null) {
+    if (assetId == null || !(ref.watch(myAlbumAccessProvider(albumId)).valueOrNull?.canManage ?? false)) {
       return null;
     }
 

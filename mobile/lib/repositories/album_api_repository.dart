@@ -1,10 +1,16 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:immich_mobile/domain/models/album/album.model.dart';
+import 'package:immich_mobile/domain/models/album/album.model.dart' hide AlbumUserRole;
+import 'package:immich_mobile/domain/models/album/album.model.dart' as domain show AlbumUserRole;
+import 'package:immich_mobile/domain/models/album/album_access.model.dart';
 import 'package:immich_mobile/domain/models/user.model.dart';
+import 'package:immich_mobile/infrastructure/utils/user.converter.dart';
 import 'package:immich_mobile/providers/api.provider.dart';
 import 'package:immich_mobile/repositories/api.repository.dart';
 // ignore: import_rule_openapi
-import 'package:openapi/api.dart' hide AlbumUserRole;
+import 'package:openapi/api.dart';
 
 final albumApiRepositoryProvider = Provider((ref) => AlbumApiRepository(ref.watch(apiServiceProvider).albumsApi));
 
@@ -107,9 +113,76 @@ class AlbumApiRepository extends ApiRepository {
     return _api.deleteAlbum(albumId);
   }
 
-  Future<void> addUsers(String albumId, Iterable<String> userIds) async {
-    final albumUsers = userIds.map((userId) => AlbumUserAddDto(userId: userId)).toList();
+  /// Add [userIds] as members: with [access] (the server's default, an editor, without), given as the fork's flags on a
+  /// server that has its levels ([hasAccessLevels]), and as the role alone on others
+  Future<void> addUsers(
+    String albumId,
+    Iterable<String> userIds, {
+    AlbumAccess? access,
+    bool hasAccessLevels = false,
+  }) async {
+    final server = access?.toServer();
+    final albumUsers = userIds
+        .map(
+          (userId) => AlbumUserAddDto(
+            userId: userId,
+            role: server == null ? const Optional.absent() : Optional.present(server.role.toApi()),
+            allowDownload: server == null || !hasAccessLevels
+                ? const Optional.absent()
+                : Optional.present(server.allowDownload),
+            isManager: server == null || !hasAccessLevels
+                ? const Optional.absent()
+                : Optional.present(server.isManager),
+          ),
+        )
+        .toList();
     await checkNull(_api.addUsersToAlbum(albumId, AddUsersDto(albumUsers: albumUsers)));
+  }
+
+  /// The album's members with what each can do. Whether the server has the fork's levels is told by its answer: an
+  /// official server's members have no `isManager`
+  Future<AlbumMembers> getMembers(String albumId) async {
+    final response = await _api.getAlbumInfoWithHttpInfo(albumId);
+    if (response.statusCode >= HttpStatus.badRequest) {
+      throw ApiException(response.statusCode, utf8.decode(response.bodyBytes));
+    }
+    final json = jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+    final rawUsers = (json['albumUsers'] as List?) ?? const [];
+    final hasAccessLevels = rawUsers.any((user) => user is Map && user.containsKey('isManager'));
+    final album = AlbumResponseDto.fromJson(json)!;
+
+    final members = [
+      for (final member in album.albumUsers)
+        AlbumMember(
+          user: UserConverter.fromSimpleUserDto(member.user),
+          access: AlbumAccess.fromServer(
+            member.role.toDomain(),
+            allowDownload: member.allowDownload,
+            isManager: member.isManager,
+            hasAccessLevels: hasAccessLevels,
+          ),
+        ),
+    ]..sort((a, b) => (b.access == AlbumAccess.owner ? 1 : 0) - (a.access == AlbumAccess.owner ? 1 : 0));
+    return AlbumMembers(members: members, hasAccessLevels: hasAccessLevels);
+  }
+
+  /// Give a member another access (not the owner's)
+  Future<void> updateMemberAccess(
+    String albumId,
+    String userId,
+    AlbumAccess access, {
+    required bool hasAccessLevels,
+  }) async {
+    final server = access.toServer();
+    await _api.updateAlbumUser(
+      albumId,
+      userId,
+      UpdateAlbumUserDto(
+        role: server.role.toApi(),
+        allowDownload: hasAccessLevels ? Optional.present(server.allowDownload) : const Optional.absent(),
+        isManager: hasAccessLevels ? Optional.present(server.isManager) : const Optional.absent(),
+      ),
+    );
   }
 
   Future<void> removeUser(String albumId, {required String userId}) async {
@@ -122,6 +195,22 @@ class AlbumApiRepository extends ApiRepository {
     );
     return response.isActivityEnabled;
   }
+}
+
+extension on domain.AlbumUserRole {
+  AlbumUserRole toApi() => switch (this) {
+    domain.AlbumUserRole.owner => AlbumUserRole.owner,
+    domain.AlbumUserRole.editor => AlbumUserRole.editor,
+    domain.AlbumUserRole.viewer => AlbumUserRole.viewer,
+  };
+}
+
+extension on AlbumUserRole {
+  domain.AlbumUserRole toDomain() => switch (this) {
+    AlbumUserRole.owner => domain.AlbumUserRole.owner,
+    AlbumUserRole.editor => domain.AlbumUserRole.editor,
+    _ => domain.AlbumUserRole.viewer,
+  };
 }
 
 extension on AlbumResponseDto {

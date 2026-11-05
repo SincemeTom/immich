@@ -14,6 +14,14 @@ class _CurrentTimestamp implements _Dynamic {
 
 const _now = _CurrentTimestamp();
 
+// Pixcellar: fields the fork's server added (macos/), absent from official Immich servers. The features they belong
+// to do not exist there, so the defaults turn them off.
+const _queueLegacy = {
+  'jobCounts': {'active': 0, 'completed': 0, 'delayed': 0, 'failed': 0, 'paused': 0, 'waiting': 0},
+  'queueStatus': {'isActive': false, 'isPaused': false},
+};
+const _jobConcurrency = {'concurrency': 1};
+
 @visibleForTesting
 final Map<String, Map<String, Object?>> openApiPatches = {
   'UserPreferencesResponseDto': {
@@ -27,6 +35,17 @@ final Map<String, Map<String, Object?>> openApiPatches = {
     'cast': CastResponse(gCastEnabled: false).toJson(),
     'albums': {'defaultAssetOrder': 'desc'},
     'recentlyAdded': RecentlyAddedResponse(sidebarWeb: false).toJson(),
+    'autoStack': AutoStackResponse(
+      enabled: false,
+      burst: false,
+      rawJpeg: false,
+      edited: false,
+      similar: false,
+      maxDistance: 0.06,
+      maxSeconds: 600,
+      anytime: false,
+      anytimeDistance: 0.03,
+    ).toJson(),
   },
   'ServerConfigDto': {
     'mapLightStyleUrl': 'https://tiles.immich.cloud/v1/style/light.json',
@@ -39,12 +58,34 @@ final Map<String, Map<String, Object?>> openApiPatches = {
   'LoginResponseDto': {'isOnboarded': false},
   'SyncUserV1': {'profileChangedAt': _now, 'hasProfileImage': false},
   'SyncAssetV1': {'isEdited': false},
-  'ServerFeaturesDto': {'ocr': false, 'realtimeTranscoding': false},
+  'ServerFeaturesDto': {'ocr': false, 'realtimeTranscoding': false, 'networkShares': false},
   'SearchAssetResponseDto': {'nextCursor': null},
   'MemoriesResponse': {'duration': 5, 'sidebarWeb': false},
   'PeopleResponse': {'updateStrategy': 'everyone'},
   'PersonResponseDto': {'otherPeople': const [], 'sharedBy': const [], 'sharedWith': const []},
   'WorkflowResponseDto': {'logging': false},
+  // official servers have viewers and editors only: a viewer may download, nobody else manages
+  'AlbumUserResponseDto': {'allowDownload': true, 'isManager': false},
+  'AdminConfigFacialRecognitionDto': {'hideNewPeople': false},
+  'AdminConfigLibraryDto': {'includeInStatistics': false},
+  'AdminConfigJobDto': {'contentAnalysis': _jobConcurrency, 'locationInference': _jobConcurrency},
+  'AdminConfigMachineLearningDto': {
+    'contentAnalysis': {
+      'enabled': false,
+      'tags': false,
+      'archiveScreenshots': false,
+      'speech': false,
+      'speechLanguage': 'zh-CN',
+    },
+  },
+  'AdminConfigMetadataDto': {
+    'locationInference': {'enabled': false, 'betweenMinutes': 180, 'nearbyMinutes': 30, 'maxDistanceMeters': 1000},
+  },
+  'QueuesResponseLegacyDto': {
+    'autoStack': _queueLegacy,
+    'contentAnalysis': _queueLegacy,
+    'locationInference': _queueLegacy,
+  },
 };
 
 // ignore: unused-code
@@ -57,9 +98,16 @@ void upgradeDto(dynamic value, String targetType) {
     return;
   }
   fields.forEach((key, defaultValue) {
-    addDefault(value, key, defaultValue is _Dynamic ? defaultValue.resolve() : defaultValue);
+    addDefault(value, key, defaultValue is _Dynamic ? defaultValue.resolve() : _copy(defaultValue));
   });
 }
+
+/// A modifiable copy, since the patches of the nested DTOs write into it
+Object? _copy(Object? value) => switch (value) {
+  Map() => {for (final MapEntry(:key, :value) in value.entries) key: _copy(value)},
+  List() => [for (final item in value) _copy(item)],
+  _ => value,
+};
 
 void addDefault(dynamic value, String keys, dynamic defaultValue) {
   // Loop through the keys and assign the default value if the key is not present

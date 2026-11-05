@@ -896,6 +896,46 @@ void main() {
     });
   });
 
+  group('stack member buttons', () {
+    const types = [
+      ActionButtonType.setStackCover,
+      ActionButtonType.removeFromStack,
+      ActionButtonType.keepThisDeleteOthers,
+    ];
+
+    ActionButtonContext stackContext({
+      ActionSource source = ActionSource.viewer,
+      bool isOwner = true,
+      bool isStacked = true,
+      TimelineOrigin timelineOrigin = TimelineOrigin.main,
+    }) => ActionButtonContext(
+      asset: createRemoteAsset(),
+      isOwner: isOwner,
+      isArchived: false,
+      isInLockedView: false,
+      currentAlbum: null,
+      advancedTroubleshooting: false,
+      isStacked: isStacked,
+      source: source,
+      timelineOrigin: timelineOrigin,
+    );
+
+    test('show in the viewer, for the owner of a stacked asset', () {
+      for (final type in types) {
+        expect(type.shouldShow(stackContext()), isTrue, reason: type.name);
+      }
+    });
+
+    test('do not show for a selection, for someone else, out of a stack or in the trash', () {
+      for (final type in types) {
+        expect(type.shouldShow(stackContext(source: ActionSource.timeline)), isFalse, reason: type.name);
+        expect(type.shouldShow(stackContext(isOwner: false)), isFalse, reason: type.name);
+        expect(type.shouldShow(stackContext(isStacked: false)), isFalse, reason: type.name);
+        expect(type.shouldShow(stackContext(timelineOrigin: TimelineOrigin.trash)), isFalse, reason: type.name);
+      }
+    });
+  });
+
   group('ActionButtonType.buildButton', () {
     late BaseAsset asset;
     late ActionButtonContext context;

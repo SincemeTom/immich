@@ -34,4 +34,17 @@ class RemoteExifRepository extends DatabaseAccessor<Drift> with $RemoteExifRepos
       }
     });
   }
+
+  /// Removes the location of an asset, with the place it was found to be in
+  Future<void> clearLocation(String id) {
+    return (_db.update(_db.remoteExifEntity)..where((a) => a.assetId.equals(id))).write(
+      const RemoteExifEntityCompanion(
+        latitude: Value(null),
+        longitude: Value(null),
+        city: Value(null),
+        state: Value(null),
+        country: Value(null),
+      ),
+    );
+  }
 }

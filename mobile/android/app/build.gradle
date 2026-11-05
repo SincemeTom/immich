@@ -37,12 +37,12 @@ android {
   }
 
   defaultConfig {
-    applicationId "app.alextran.immich"
+    applicationId "io.github.sincemetom.pixcellar"
     minSdk = 26
     targetSdk = flutter.targetSdkVersion
     versionCode flutter.versionCode
     versionName flutter.versionName
-    resValue "string", "app_name", "Immich"
+    resValue "string", "app_name", "Pixcellar"
   }
 
   signingConfigs {
@@ -62,10 +62,14 @@ android {
     debug {
       applicationIdSuffix '.debug'
       versionNameSuffix '-DEBUG'
+      resValue "string", "app_name", "Pixcellar Debug"
     }
 
     release {
-      def hasKeystore = file("../key.jks").exists() && file("../key.jks").length() > 0
+      // Pixcellar: the key may also be named by key.properties (storeFile, absolute or relative to app/)
+      def propertiesStore = keystoreProperties['storeFile'] ? file(keystoreProperties['storeFile']) : null
+      def hasKeystore = (file("../key.jks").exists() && file("../key.jks").length() > 0) ||
+        (propertiesStore != null && propertiesStore.exists())
       signingConfig hasKeystore ? signingConfigs.release : signingConfigs.debug
       proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
 
@@ -73,7 +77,7 @@ android {
       if (prNumber) {
         applicationIdSuffix ".pr${prNumber}"
         versionNameSuffix "-pr${prNumber}"
-        resValue "string", "app_name", "Immich PR ${prNumber}"
+        resValue "string", "app_name", "Pixcellar PR ${prNumber}"
       }
     }
   }

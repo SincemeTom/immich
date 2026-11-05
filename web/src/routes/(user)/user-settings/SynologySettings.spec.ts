@@ -135,7 +135,7 @@ describe('SynologySettings', () => {
       .mockResolvedValueOnce({
         success: false,
         errorReason: SynologyErrorReason.OtpRequired,
-        message: 'Synology answered with error 403',
+        message: 'The NAS answered with error 403',
         account: { bound: false },
       })
       .mockResolvedValueOnce({ success: true, albumCount: 49, account: bound });
@@ -149,7 +149,7 @@ describe('SynologySettings', () => {
     await fireEvent.click(bindButton());
 
     expect(await screen.findByText('synology_error_otpRequired')).toBeInTheDocument();
-    expect(screen.getByText('Synology answered with error 403')).toBeInTheDocument();
+    expect(screen.getByText('The NAS answered with error 403')).toBeInTheDocument();
     const otp = inputs().all[2];
     expect(bindButton()).toBeDisabled();
     await fireEvent.input(otp, { target: { value: '123456' } });

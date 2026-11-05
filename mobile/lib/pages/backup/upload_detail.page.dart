@@ -23,19 +23,22 @@ class _UploadDetailPageState extends ConsumerState<UploadDetailPage> {
   final Set<String> _failedTaskIds = {};
 
   final Map<String, int> _taskSlotAssignments = {};
-  static const int _maxSlots = 3;
+  static const int _minSlots = 3;
 
   /// Assigns uploading items to fixed slots to prevent jumping when items complete
   List<UploadStatus?> _assignItemsToSlots(List<UploadStatus> uploadingItems) {
-    final slots = List<UploadStatus?>.filled(_maxSlots, null);
+    final maxSlots = uploadingItems.length > _minSlots ? uploadingItems.length : _minSlots;
+    final slots = List<UploadStatus?>.filled(maxSlots, null);
     final currentTaskIds = uploadingItems.map((e) => e.taskId).toSet();
 
     _taskSlotAssignments.removeWhere((taskId, _) => !currentTaskIds.contains(taskId));
 
     for (final item in uploadingItems) {
       final existingSlot = _taskSlotAssignments[item.taskId];
-      if (existingSlot != null && existingSlot < _maxSlots) {
+      if (existingSlot != null && existingSlot < maxSlots && slots[existingSlot] == null) {
         slots[existingSlot] = item;
+      } else {
+        _taskSlotAssignments.remove(item.taskId);
       }
     }
 
@@ -44,7 +47,7 @@ class _UploadDetailPageState extends ConsumerState<UploadDetailPage> {
         continue;
       }
 
-      for (int i = 0; i < _maxSlots; i++) {
+      for (int i = 0; i < maxSlots; i++) {
         if (slots[i] == null) {
           slots[i] = item;
           _taskSlotAssignments[item.taskId] = i;
@@ -75,7 +78,12 @@ class _UploadDetailPageState extends ConsumerState<UploadDetailPage> {
       }
     }
 
-    final uploadingItems = uploadItems.values.where((item) => item.progress < 1.0 && item.isFailed != true).toList();
+    final uploadingItems = uploadItems.values
+        .where((item) => item.progress < 1.0 && item.isFailed != true && item.phase != UploadPhase.waiting)
+        .toList();
+    final waitingItems = uploadItems.values
+        .where((item) => item.isFailed != true && item.phase == UploadPhase.waiting)
+        .toList();
     final failedItems = uploadItems.values.where((item) => item.isFailed == true).toList();
 
     return Scaffold(
@@ -85,16 +93,18 @@ class _UploadDetailPageState extends ConsumerState<UploadDetailPage> {
         elevation: 0,
         scrolledUnderElevation: 1,
       ),
-      body: _buildTwoSectionLayout(context, uploadingItems, failedItems, iCloudProgress),
+      body: _buildTwoSectionLayout(context, uploadingItems, waitingItems, failedItems, iCloudProgress),
     );
   }
 
   Widget _buildTwoSectionLayout(
     BuildContext context,
     List<UploadStatus> uploadingItems,
+    List<UploadStatus> waitingItems,
     List<UploadStatus> failedItems,
     Map<String, double> iCloudProgress,
   ) {
+    final slots = _assignItemsToSlots(uploadingItems);
     return CustomScrollView(
       slivers: [
         // iCloud Downloads Section
@@ -135,16 +145,36 @@ class _UploadDetailPageState extends ConsumerState<UploadDetailPage> {
           sliver: SliverList(
             delegate: SliverChildBuilderDelegate((context, index) {
               // Use slot-based assignment to prevent items from jumping
-              final slots = _assignItemsToSlots(uploadingItems);
               final item = slots[index];
               if (item != null) {
                 return _buildCurrentUploadCard(context, item);
               } else {
                 return _buildPlaceholderCard(context);
               }
-            }, childCount: 3),
+            }, childCount: slots.length),
           ),
         ),
+
+        // Queued in the background session (iOS)
+        if (waitingItems.isNotEmpty) ...[
+          SliverToBoxAdapter(
+            child: _buildSectionHeader(
+              context,
+              title: context.t.upload_queued,
+              count: waitingItems.length,
+              color: context.colorScheme.secondary,
+            ),
+          ),
+          SliverPadding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            sliver: SliverList(
+              delegate: SliverChildBuilderDelegate(
+                (context, index) => _buildCurrentUploadCard(context, waitingItems[index]),
+                childCount: waitingItems.length,
+              ),
+            ),
+          ),
+        ],
 
         // Errors Section
         if (failedItems.isNotEmpty) ...[
@@ -279,6 +309,20 @@ class _UploadDetailPageState extends ConsumerState<UploadDetailPage> {
   Widget _buildCurrentUploadCard(BuildContext context, UploadStatus item) {
     final double progressPercentage = (item.progress * 100).clamp(0, 100);
     final isFailed = item.isFailed == true;
+    final isWaiting = !isFailed && item.phase == UploadPhase.waiting;
+    final isPreparing = !isFailed && item.phase == UploadPhase.preparing;
+    final String subtitle;
+    if (isFailed) {
+      subtitle = item.error ?? context.t.errors.unable_to_upload_file;
+    } else if (isPreparing) {
+      subtitle = context.t.preparing;
+    } else if (isWaiting) {
+      subtitle = item.fileSize > 0
+          ? "${formatHumanReadableBytes(item.fileSize, 1)} • ${context.t.waiting}"
+          : context.t.waiting;
+    } else {
+      subtitle = "${formatHumanReadableBytes(item.fileSize, 1)} • ${item.networkSpeedAsString}";
+    }
 
     return Card(
       elevation: 0,
@@ -317,9 +361,7 @@ class _UploadDetailPageState extends ConsumerState<UploadDetailPage> {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        isFailed
-                            ? item.error ?? context.t.errors.unable_to_upload_file
-                            : "${formatHumanReadableBytes(item.fileSize, 1)} • ${item.networkSpeedAsString}",
+                        subtitle,
                         style: context.textTheme.labelLarge?.copyWith(
                           color: isFailed
                               ? context.colorScheme.error
@@ -328,12 +370,13 @@ class _UploadDetailPageState extends ConsumerState<UploadDetailPage> {
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                       ),
-                      if (!isFailed) ...[
+                      if (!isFailed && !isWaiting) ...[
                         const SizedBox(height: 8),
                         ClipRRect(
                           borderRadius: const BorderRadius.all(Radius.circular(4)),
                           child: LinearProgressIndicator(
-                            value: item.progress,
+                            // exporting from the photo library tells nothing of how far it is
+                            value: isPreparing ? null : item.progress,
                             backgroundColor: context.colorScheme.primary.withValues(alpha: 0.2),
                             valueColor: AlwaysStoppedAnimation(context.colorScheme.primary),
                             minHeight: 4,
@@ -348,6 +391,12 @@ class _UploadDetailPageState extends ConsumerState<UploadDetailPage> {
                   width: 48,
                   child: isFailed
                       ? Icon(Icons.error_rounded, color: context.colorScheme.error, size: 28)
+                      : isWaiting || isPreparing
+                      ? Icon(
+                          isWaiting ? Icons.hourglass_empty_rounded : Icons.drive_file_move_outline,
+                          color: context.colorScheme.onSurface.withValues(alpha: 0.5),
+                          size: 24,
+                        )
                       : Text(
                           "${progressPercentage.toStringAsFixed(0)}%",
                           textAlign: TextAlign.right,

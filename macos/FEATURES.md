@@ -50,7 +50,7 @@
 | 地点显示中文，国内到乡镇、街道，可以按中文地名搜索 | [m4-geodata-cn.md](verification/m4-geodata-cn.md) |
 | 没有位置的照片按前后 1 小时内拍的照片推断位置，标记"推断"，可清除 | [m4-location-inference.md](verification/m4-location-inference.md) |
 | 内容分析（Apple Vision，不用下载模型）：中文自动标签、截图、二维码、美学分；macOS 26 起视频里说的话可搜索，识别文档、镜头脏污 | [m4-vision-research.md](verification/m4-vision-research.md)、[m4-vision-content.md](verification/m4-vision-content.md)、[m4-vision-speech-deadlock.md](verification/m4-vision-speech-deadlock.md) |
-| 人物：新识别的人物可以默认隐藏；"隐藏未命名的人物"对全部生效；设特色照片后头像马上换 | [CHANGELOG.md](CHANGELOG.md)（mac.5） |
+| 人物：新识别的人物可以默认隐藏；"隐藏未命名的人物"对全部生效；设人物封面后头像马上换 | [CHANGELOG.md](CHANGELOG.md)（mac.5） |
 
 ## 5. 多人使用
 

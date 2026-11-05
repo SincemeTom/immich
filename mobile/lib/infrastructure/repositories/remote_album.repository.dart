@@ -335,18 +335,20 @@ class RemoteAlbumRepository extends DatabaseAccessor<Drift> with $RemoteAlbumRep
         );
   }
 
-  Future<void> addUsers(String albumId, List<String> userIds) {
+  Future<void> addUsers(String albumId, List<String> userIds, {AlbumUserRole role = AlbumUserRole.editor}) {
     final albumUsers = userIds.map(
-      (assetId) => RemoteAlbumUserEntityCompanion(
-        albumId: Value(albumId),
-        userId: Value(assetId),
-        role: const Value(AlbumUserRole.editor),
-      ),
+      (userId) => RemoteAlbumUserEntityCompanion(albumId: Value(albumId), userId: Value(userId), role: Value(role)),
     );
 
     return _db.batch((batch) {
       batch.insertAll(_db.remoteAlbumUserEntity, albumUsers);
     });
+  }
+
+  Future<void> updateUserRole(String albumId, String userId, AlbumUserRole role) {
+    final query = _db.update(_db.remoteAlbumUserEntity)
+      ..where((row) => row.albumId.equals(albumId) & row.userId.equals(userId));
+    return query.write(RemoteAlbumUserEntityCompanion(role: Value(role)));
   }
 
   Future<void> removeUser(String albumId, {required String userId}) {

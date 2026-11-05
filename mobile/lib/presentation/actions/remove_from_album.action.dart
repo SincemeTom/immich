@@ -1,16 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:immich_mobile/constants/enums.dart';
+import 'package:immich_mobile/domain/models/asset/base_asset.model.dart';
 import 'package:immich_mobile/generated/translations.g.dart';
 import 'package:immich_mobile/presentation/actions/action.dart';
 import 'package:immich_mobile/providers/infrastructure/album.provider.dart';
+import 'package:immich_mobile/providers/infrastructure/remote_album.provider.dart';
 import 'package:immich_mobile/providers/infrastructure/toast.provider.dart';
+import 'package:immich_mobile/providers/user.provider.dart';
 import 'package:immich_mobile/utils/error_handler.dart';
 
-final _stateProvider = Provider.family.autoDispose<List<String>?, ActionSource>((ref, source) {
+final _stateProvider = Provider.family.autoDispose<List<RemoteAsset>?, ActionSource>((ref, source) {
   final assets = ref.watch(assetsActionProvider(source));
-  final assetIds = assets.remote().map((asset) => asset.id).toList(growable: false);
-  return assetIds.isEmpty ? null : assetIds;
+  final remote = assets.remote().toList(growable: false);
+  return remote.isEmpty ? null : remote;
 }, dependencies: [assetsActionProvider]);
 
 class RemoveFromAlbumAction extends AssetActionBuilder {
@@ -20,10 +23,17 @@ class RemoveFromAlbumAction extends AssetActionBuilder {
 
   @override
   ActionItem? create(BuildContext context, WidgetRef ref) {
-    final assetIds = ref.watch(_stateProvider(source));
-    if (assetIds == null) {
+    final assets = ref.watch(_stateProvider(source));
+    if (assets == null) {
       return null;
     }
+    // managers remove any photo, editors only theirs
+    final userId = ref.watch(currentUserProvider.select((user) => user?.id));
+    final access = ref.watch(myAlbumAccessProvider(albumId)).valueOrNull;
+    if (access == null || !access.canRemoveAssets(ownAssets: assets.every((asset) => asset.ownerId == userId))) {
+      return null;
+    }
+    final assetIds = [for (final asset in assets) asset.id];
 
     return .new(
       icon: Icons.remove_circle_outline,

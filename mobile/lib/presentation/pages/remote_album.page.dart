@@ -5,10 +5,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:immich_mobile/domain/models/album/album.model.dart';
+import 'package:immich_mobile/domain/models/album/album_access.model.dart';
 import 'package:immich_mobile/domain/models/asset/base_asset.model.dart';
 import 'package:immich_mobile/domain/models/server_capability.model.dart';
 import 'package:immich_mobile/extensions/build_context_extensions.dart';
 import 'package:immich_mobile/generated/translations.g.dart';
+import 'package:immich_mobile/presentation/widgets/album/album_invite.dart';
 import 'package:immich_mobile/presentation/widgets/album/pending_uploads_banner.widget.dart';
 import 'package:immich_mobile/presentation/widgets/bottom_sheet/remote_album_bottom_sheet.widget.dart';
 import 'package:immich_mobile/presentation/widgets/remote_album/album_option.widget.dart';
@@ -70,37 +72,7 @@ class _RemoteAlbumPageState extends ConsumerState<RemoteAlbumPage> {
     }
   }
 
-  Future<void> addUsers(BuildContext context) async {
-    final newUsers = await context.pushRoute<List<String>>(UserSelectionRoute(album: _album));
-
-    if (newUsers == null || newUsers.isEmpty) {
-      return;
-    }
-
-    try {
-      if (!context.mounted) {
-        return;
-      }
-
-      await ref.read(remoteAlbumProvider.notifier).addUsers(_album.id, newUsers);
-      ref.invalidate(remoteAlbumSharedUsersProvider(_album.id));
-      if (!context.mounted) {
-        return;
-      }
-
-      ImmichToast.show(
-        context: context,
-        msg: context.t.users_added_to_album_count(count: newUsers.length),
-        toastType: ToastType.success,
-      );
-    } catch (e) {
-      if (!context.mounted) {
-        return;
-      }
-
-      ImmichToast.show(context: context, msg: "Failed to add users to album: $e", toastType: ToastType.error);
-    }
-  }
+  Future<void> addUsers(BuildContext context) => inviteAlbumUsers(context, ref, _album);
 
   Future<void> toggleAlbumOrder() async {
     await ref.read(remoteAlbumProvider.notifier).toggleAlbumOrder(_album.id);
@@ -192,6 +164,10 @@ class _RemoteAlbumPageState extends ConsumerState<RemoteAlbumPage> {
     final editorCanUpdate = ref.watch(
       serverInfoProvider.select((state) => state.serverVersion.supports(.albumEditorUpdate)),
     );
+    final access =
+        ref.watch(myAlbumAccessProvider(_album.id)).valueOrNull ?? (isOwner ? AlbumAccess.owner : AlbumAccess.viewer);
+    // official servers before 2.6.2 let only the owner change the album's details
+    final canEdit = isOwner || (access.canManage && editorCanUpdate);
 
     return ProviderScope(
       overrides: [
@@ -204,30 +180,21 @@ class _RemoteAlbumPageState extends ConsumerState<RemoteAlbumPage> {
       ],
       child: Timeline(
         topSliverWidget: PendingUploadsBanner(albumId: _album.id),
-        appBar: FutureBuilder<bool>(
-          future: ref
-              .watch(remoteAlbumServiceProvider)
-              .getUserRole(_album.id, user?.id ?? '')
-              .then((role) => role == AlbumUserRole.editor),
-          builder: (_, snapshot) {
-            final isEditor = snapshot.data ?? false;
-            final canEdit = isOwner || (isEditor && editorCanUpdate);
-
-            return RemoteAlbumSliverAppBar(
-              kebabMenu: _AlbumKebabMenu(
-                album: _album,
-                onDeleteAlbum: () => deleteAlbum(context),
-                onAddUsers: () => addUsers(context),
-                onAddPhotos: isOwner || isEditor ? () => addAssets(context) : null,
-                onToggleAlbumOrder: () => toggleAlbumOrder(),
-                onEditAlbum: canEdit ? () => showEditTitleAndDescription(context) : null,
-                onCreateSharedLink: () => unawaited(context.pushRoute(SharedLinkEditRoute(albumId: _album.id))),
-                onShowOptions: () => context.pushRoute(AlbumOptionsRoute(album: _album)),
-              ),
-              onEditTitle: canEdit ? () => showEditTitleAndDescription(context) : null,
-              onActivity: () => showActivity(context),
-            );
-          },
+        appBar: RemoteAlbumSliverAppBar(
+          kebabMenu: _AlbumKebabMenu(
+            album: _album,
+            onDeleteAlbum: access.canDelete ? () => deleteAlbum(context) : null,
+            onAddUsers: access.canManage ? () => addUsers(context) : null,
+            onAddPhotos: access.canAddAssets ? () => addAssets(context) : null,
+            onToggleAlbumOrder: canEdit ? () => toggleAlbumOrder() : null,
+            onEditAlbum: canEdit ? () => showEditTitleAndDescription(context) : null,
+            onCreateSharedLink: access.canManage
+                ? () => unawaited(context.pushRoute(SharedLinkEditRoute(albumId: _album.id)))
+                : null,
+            onShowOptions: () => context.pushRoute(AlbumOptionsRoute(album: _album)),
+          ),
+          onEditTitle: canEdit ? () => showEditTitleAndDescription(context) : null,
+          onActivity: () => showActivity(context),
         ),
         bottomSheet: RemoteAlbumBottomSheet(album: _album),
       ),
@@ -432,18 +399,15 @@ class _AlbumKebabMenu extends ConsumerWidget {
         const Shadow(offset: Offset(0, 2), blurRadius: 0, color: Colors.transparent),
     ];
 
-    final user = ref.watch(currentUserProvider);
-    final isOwner = user != null && user.id == album.ownerId;
-
     return RemoteAlbumOption(
       iconColor: iconColor,
       iconShadows: iconShadows,
-      onDeleteAlbum: isOwner ? onDeleteAlbum : null,
-      onAddUsers: isOwner ? onAddUsers : null,
+      onDeleteAlbum: onDeleteAlbum,
+      onAddUsers: onAddUsers,
       onAddPhotos: onAddPhotos,
-      onToggleAlbumOrder: isOwner ? onToggleAlbumOrder : null,
+      onToggleAlbumOrder: onToggleAlbumOrder,
       onEditAlbum: onEditAlbum,
-      onCreateSharedLink: isOwner ? onCreateSharedLink : null,
+      onCreateSharedLink: onCreateSharedLink,
       onShowOptions: onShowOptions,
     );
   }

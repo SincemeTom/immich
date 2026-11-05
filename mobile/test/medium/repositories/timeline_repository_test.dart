@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:immich_mobile/domain/models/asset/base_asset.model.dart';
+import 'package:immich_mobile/domain/models/timeline.model.dart';
 import 'package:immich_mobile/infrastructure/repositories/timeline.repository.dart';
 import 'package:intl/date_symbol_data_local.dart';
 
@@ -99,6 +100,24 @@ void main() {
         normalEarlier.id,
         normalLater.id,
       ]);
+    });
+
+    test('leaves trashed assets out of the count, grouped or not', () async {
+      final user = await ctx.newUser();
+      final album = await ctx.newRemoteAlbum(ownerId: user.id);
+      final kept = await ctx.newRemoteAsset(ownerId: user.id);
+      final trashed = await ctx.newRemoteAsset(ownerId: user.id, deletedAt: DateTime.utc(2024));
+      await ctx.newRemoteAlbumAsset(albumId: album.id, assetId: kept.id);
+      await ctx.newRemoteAlbumAsset(albumId: album.id, assetId: trashed.id);
+
+      for (final groupBy in [GroupAssetsBy.none, GroupAssetsBy.day]) {
+        final query = sut.remoteAlbum(album.id, groupBy);
+        final buckets = await query.bucketSource().first;
+        expect(buckets.fold(0, (sum, bucket) => sum + bucket.assetCount), 1, reason: '$groupBy');
+
+        final assets = await query.assetSource(0, 10);
+        expect(assets.map((asset) => (asset as RemoteAsset).id), [kept.id], reason: '$groupBy');
+      }
     });
   });
 

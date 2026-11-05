@@ -26,6 +26,7 @@ class ApiService {
   late MapApi mapApi;
   late PartnersApi partnersApi;
   late PeopleApi peopleApi;
+  late FacesApi facesApi;
   late SharedLinksApi sharedLinksApi;
   late SyncApi syncApi;
   // ignore: unused-code
@@ -40,6 +41,7 @@ class ApiService {
   late MemoriesApi memoriesApi;
   late SessionsApi sessionsApi;
   late TagsApi tagsApi;
+  late SynologyApi externalAlbumsApi;
 
   ApiService() {
     // The below line ensures that the api clients are initialized when the service is instantiated
@@ -66,6 +68,7 @@ class ApiService {
     mapApi = MapApi(_apiClient);
     partnersApi = PartnersApi(_apiClient);
     peopleApi = PeopleApi(_apiClient);
+    facesApi = FacesApi(_apiClient);
     sharedLinksApi = SharedLinksApi(_apiClient);
     syncApi = SyncApi(_apiClient);
     systemConfigApi = SystemConfigApi(_apiClient);
@@ -77,6 +80,7 @@ class ApiService {
     memoriesApi = MemoriesApi(_apiClient);
     sessionsApi = SessionsApi(_apiClient);
     tagsApi = TagsApi(_apiClient);
+    externalAlbumsApi = SynologyApi(_apiClient);
   }
 
   Future<String> resolveAndSetEndpoint(String serverUrl) async {

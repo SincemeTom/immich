@@ -45,6 +45,7 @@ class Timeline extends ConsumerWidget {
     this.readOnly = false,
     this.persistentBottomBar = false,
     this.loadingWidget,
+    this.selectionAppBar,
   });
 
   final Widget? topSliverWidget;
@@ -52,6 +53,9 @@ class Timeline extends ConsumerWidget {
   final Widget? bottomSliverWidget;
   final bool showStorageIndicator;
   final Widget? appBar;
+
+  /// The app bar while picking photos (multi-select forced on), instead of the "N selected / Done" one
+  final Widget? selectionAppBar;
   final Widget? bottomSheet;
   final bool withStack;
   final GroupAssetsBy? groupBy;
@@ -93,6 +97,7 @@ class Timeline extends ConsumerWidget {
             snapToMonth: snapToMonth,
             maxWidth: constraints.maxWidth,
             loadingWidget: loadingWidget,
+            selectionAppBar: selectionAppBar,
           ),
         );
       },
@@ -123,6 +128,7 @@ class _SliverTimeline extends ConsumerStatefulWidget {
     this.snapToMonth = true,
     this.maxWidth,
     this.loadingWidget,
+    this.selectionAppBar,
   });
 
   final Widget? topSliverWidget;
@@ -135,6 +141,7 @@ class _SliverTimeline extends ConsumerStatefulWidget {
   final bool snapToMonth;
   final double? maxWidth;
   final Widget? loadingWidget;
+  final Widget? selectionAppBar;
 
   @override
   ConsumerState createState() => _SliverTimelineState();
@@ -381,7 +388,7 @@ class _SliverTimelineState extends ConsumerState<_SliverTimeline> with WidgetsBi
                         scrollCacheExtent: .pixels(maxHeight * 2),
                         slivers: [
                           if (isSelectionMode)
-                            const SelectionSliverAppBar()
+                            widget.selectionAppBar ?? const SelectionSliverAppBar()
                           else if (widget.appBar != null)
                             widget.appBar!,
                           if (widget.topSliverWidget != null) widget.topSliverWidget!,

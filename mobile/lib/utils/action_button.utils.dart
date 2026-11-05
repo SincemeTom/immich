@@ -24,6 +24,7 @@ import 'package:immich_mobile/presentation/actions/share_link.action.dart';
 import 'package:immich_mobile/presentation/actions/similar_photos.action.dart';
 import 'package:immich_mobile/presentation/actions/slideshow.action.dart';
 import 'package:immich_mobile/presentation/actions/stack.action.dart';
+import 'package:immich_mobile/presentation/actions/stack_member.action.dart';
 import 'package:immich_mobile/presentation/actions/upload.action.dart';
 import 'package:immich_mobile/presentation/widgets/action_buttons/base_action_button.widget.dart';
 import 'package:immich_mobile/presentation/widgets/action_buttons/like_activity_action_button.widget.dart';
@@ -64,6 +65,7 @@ enum ActionButtonType {
   shareLink,
   cast,
   setAlbumCover,
+  setStackCover,
   similarPhotos,
   setProfilePicture,
   viewInTimeline,
@@ -72,6 +74,8 @@ enum ActionButtonType {
   upload,
   openInBrowser,
   unstack,
+  removeFromStack,
+  keepThisDeleteOthers,
   archive,
   unarchive,
   moveToLockFolder,
@@ -123,9 +127,9 @@ enum ActionButtonType {
       ActionButtonType.upload =>
         !context.isInLockedView && //
             context.asset.storage == AssetState.local,
+      // what the user may do in the album, the action itself tells
       ActionButtonType.removeFromAlbum =>
-        context.isOwner && //
-            !context.isInLockedView && //
+        !context.isInLockedView && //
             context.currentAlbum != null,
       ActionButtonType.setAlbumCover =>
         !context.isInLockedView && //
@@ -135,6 +139,13 @@ enum ActionButtonType {
         context.isOwner && //
             context.timelineOrigin != TimelineOrigin.trash &&
             !context.isInLockedView && //
+            context.isStacked,
+      // which of them applies to the asset, the action tells
+      ActionButtonType.setStackCover || ActionButtonType.removeFromStack || ActionButtonType.keepThisDeleteOthers =>
+        context.source == ActionSource.viewer &&
+            context.isOwner &&
+            context.timelineOrigin != TimelineOrigin.trash &&
+            !context.isInLockedView &&
             context.isStacked,
       ActionButtonType.openInBrowser => context.asset.hasRemote && !context.isInLockedView,
       ActionButtonType.likeActivity =>
@@ -176,7 +187,9 @@ enum ActionButtonType {
       ActionButtonType.slideshow => const ActionMenuItem(action: SlideshowAction()),
       ActionButtonType.archive ||
       ActionButtonType.unarchive => ActionMenuItem(action: ArchiveAction(source: context.source)),
-      ActionButtonType.download => ActionMenuItem(action: DownloadAction(source: context.source)),
+      ActionButtonType.download => ActionMenuItem(
+        action: DownloadAction(source: context.source, albumId: context.currentAlbum?.id),
+      ),
       ActionButtonType.restoreTrash => ActionMenuItem(action: RestoreAction(source: context.source)),
       ActionButtonType.delete => ActionMenuItem(action: DeleteAction(source: context.source)),
       ActionButtonType.moveToLockFolder ||
@@ -193,6 +206,11 @@ enum ActionButtonType {
       ),
       ActionButtonType.likeActivity => LikeActivityActionButton(iconOnly: iconOnly, menuItem: menuItem),
       ActionButtonType.unstack => ActionMenuItem(action: StackAction(source: context.source)),
+      ActionButtonType.setStackCover => ActionMenuItem(action: SetStackCoverAction(source: context.source)),
+      ActionButtonType.removeFromStack => ActionMenuItem(action: RemoveFromStackAction(source: context.source)),
+      ActionButtonType.keepThisDeleteOthers => ActionMenuItem(
+        action: KeepThisDeleteOthersAction(source: context.source),
+      ),
       ActionButtonType.openInBrowser => ActionMenuItem(
         action: OpenInBrowserAction(remoteId: context.asset.remoteId!, origin: context.timelineOrigin),
       ),
@@ -232,6 +250,8 @@ enum ActionButtonType {
     ActionButtonType.removeFromLockFolder => 10,
     ActionButtonType.removeFromAlbum => 10,
     ActionButtonType.unstack => 10,
+    ActionButtonType.removeFromStack => 10,
+    ActionButtonType.keepThisDeleteOthers => 10,
     ActionButtonType.archive => 10,
     ActionButtonType.unarchive => 10,
     ActionButtonType.moveToLockFolder => 10,
