@@ -2459,6 +2459,7 @@
   "synology_unmatched_others": "Added by another member",
   "synology_unmatched_ownerWaiting": "Its owner is not in Immich yet",
   "synology_unmatched_reason": "Why",
+  "synology_unsupported": "This server has no external albums. They come with the Pixcellar server on macOS.",
   "synology_verify_certificate": "Check HTTPS certificate",
   "synology_verify_certificate_description": "Turn off only when the NAS uses a self-signed certificate",
   "system_theme": "System theme",

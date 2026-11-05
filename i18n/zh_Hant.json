@@ -2374,6 +2374,7 @@
   "synology_unmatched_others": "別人加的",
   "synology_unmatched_ownerWaiting": "主人還不在 Immich 裡",
   "synology_unmatched_reason": "原因",
+  "synology_unsupported": "目前伺服器不支援外部相簿，需要 macOS 上的 Pixcellar 伺服器。",
   "synology_verify_certificate": "驗證 HTTPS 憑證",
   "synology_verify_certificate_description": "只有 NAS 用的是自簽憑證時才關閉",
   "system_theme": "系統主題",
