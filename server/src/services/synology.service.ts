@@ -34,8 +34,14 @@ import {
 
 /** The Keychain items: this service, and the Immich user's ID as the account */
 export const SYNOLOGY_KEYCHAIN_SERVICE = 'Immich Synology';
-/** The name of the session on Synology, and of this server in the account's trusted devices */
-const SESSION = 'Immich';
+/**
+ * The session the NAS is logged in to: its own web UI's. DSM 7 checks a session name against the account's
+ * application privileges, and denies one it does not know to any account but an administrator's (error 402), as
+ * `Immich` and `SynologyPhotos` were. Only the session with this ID is logged out.
+ */
+const SESSION = 'webui';
+/** The name of this server in the account's trusted devices (2-step verification) */
+const DEVICE_NAME = 'Immich';
 const PAGE = 500;
 /** a sync asked for longer ago than this, and not run, was lost (a queue emptied) */
 const PENDING_FOR = 6 * 60 * 60 * 1000;
@@ -1152,7 +1158,7 @@ export class SynologyService extends BaseService {
         passwd: secret.password,
         session: SESSION,
         format: 'sid',
-        device_name: SESSION,
+        device_name: DEVICE_NAME,
         ...(otpCode ? { otp_code: otpCode, enable_device_token: 'yes' } : { device_id: secret.deviceId }),
       },
     );

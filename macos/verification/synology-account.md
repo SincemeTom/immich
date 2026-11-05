@@ -74,6 +74,18 @@
 
 结果出来前，绑定只用密码。
 
+## 普通账号登录报 402（2026-11-05，分支 `mac/fix/synology-login-session`）
+
+管理员账号能绑定，普通账号报“这个账号不允许从这里登录”（登录错误码 402）。用 `macos/scripts/synology_login_probe.py` 拿这个普通账号在正式的 NAS 上依次试登录（只读，最多 5 次，登上后读一次相册应用里的用户再登出）：
+
+| 登录方式 | 结果 |
+|---|---|
+| `/webapi/entry.cgi`，`session=Immich`（原来用的） | 402 |
+| `/webapi/entry.cgi`，`session=SynologyPhotos` | 402 |
+| `/webapi/entry.cgi`，`session=webui` | 登上，相册应用用户 ID 3 |
+
+DSM 7 按会话名对照账号的应用程序权限：不认识的会话名，除管理员以外一律拒绝；相册应用自己的名字也不行，DSM 网页的 `webui` 可以。所以登录改用 `session=webui`，登出也用它（只登出这个会话 ID，不影响账号在浏览器里的 DSM 登录）。受信任设备的名字仍是 `Immich`，两步验证记住的设备不变。服务端群晖相关单元测试 72 项通过。
+
 ## 还没做的
 
 - 用真实账号绑定：要在正式服上做（开发机没有挂群晖）。要看 4 项：

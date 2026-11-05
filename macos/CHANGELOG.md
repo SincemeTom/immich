@@ -2,6 +2,14 @@
 
 Immich macOS 原生版（非官方）的各个版本。版本号是 `<上游 Immich 版本>-mac.<序号>`，每个版本对应一个 git 标签，发布流程见 [RELEASING.md](RELEASING.md)。这个版本基于上游 Immich 修改，改动的验证记录在 [verification/](verification/README.md)。
 
+## v3.3.5-mac.11（2026-11-05）
+
+基于上游 v3.3.5。
+
+**修复**
+
+- 外部相册：不是 NAS 管理员的账号绑定时报“这个账号不允许从这里登录”（错误 402）。登录 NAS 时改用 NAS 网页的会话，普通账号也能绑定；已绑定的账号不受影响（[synology-account.md](verification/synology-account.md#普通账号登录报-4022026-11-05分支-macfixsynology-login-session)）
+
 ## v3.3.5-mac.10（2026-11-05）
 
 基于上游 v3.3.5。
