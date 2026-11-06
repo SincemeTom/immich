@@ -77,6 +77,7 @@ Future<void> tagAssets(
   }
 
   final count = await ref.read(Store.tags).applyToAssets(assetIds, tagIds.toList());
+  ref.invalidate(Store.tags.forAnyAsset);
   if (context.mounted) {
     toastService.success(context.t.tagged_assets(count: count));
   }

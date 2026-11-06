@@ -4,12 +4,15 @@ import 'package:immich_mobile/domain/models/tag.model.dart';
 import 'package:immich_mobile/providers/api.provider.dart';
 import 'package:openapi/api.dart';
 
-final tagApiRepositoryProvider = Provider((ref) => TagApiRepository(ref.watch(apiServiceProvider).tagsApi));
+final tagApiRepositoryProvider = Provider(
+  (ref) => TagApiRepository(ref.watch(apiServiceProvider).tagsApi, ref.watch(apiServiceProvider).assetsApi),
+);
 
 class TagApiRepository extends ApiRepository {
   final TagsApi _api;
+  final AssetsApi _assetsApi;
 
-  const TagApiRepository(this._api);
+  const TagApiRepository(this._api, this._assetsApi);
 
   /// Apply every tag in [tagIds] to every asset in [assetIds], returning the number of assets successfully tagged
   Future<int> bulkTagAssets(List<String> assetIds, List<String> tagIds) async {
@@ -21,6 +24,12 @@ class TagApiRepository extends ApiRepository {
   Future<List<Tag>> getAll() async {
     final response = await checkNull(_api.getAllTags());
     return response.map(_toTag).toList();
+  }
+
+  /// The tags on the asset [assetId], as the server lists them in the asset's details
+  Future<List<Tag>> getForAsset(String assetId) async {
+    final response = await checkNull(_assetsApi.getAssetInfo(assetId));
+    return (response.tags.orElse(null) ?? const []).map(_toTag).toList();
   }
 
   /// Create the tags named [values], returning the list of successfully created (or pre-existing) tags

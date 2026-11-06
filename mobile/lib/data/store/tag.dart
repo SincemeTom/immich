@@ -16,6 +16,14 @@ extension type const TagStore._(Provider<TagMutations> _provider) implements Pro
   ///
   /// **NOTE:** This is not reactive to changes, and only hits the HTTP API
   AutoDisposeFutureProvider<List<Tag>> all() => _allProvider;
+
+  /// The tags on the asset [assetId], sorted by value. The server lists them to the asset's owner only
+  ///
+  /// **NOTE:** Not reactive either; invalidate [forAnyAsset] after tags change
+  AutoDisposeFutureProvider<List<Tag>> forAsset(String assetId) => _forAssetProvider(assetId);
+
+  /// Every [forAsset] query, to invalidate them all at once
+  ProviderOrFamily get forAnyAsset => _forAssetProvider;
 }
 
 final _allProvider = FutureProvider.autoDispose<List<Tag>>((ref) async {
@@ -24,6 +32,16 @@ final _allProvider = FutureProvider.autoDispose<List<Tag>>((ref) async {
   } catch (error, stack) {
     _log.severe("Failed to get all tags", error, stack);
     return const [];
+  }
+});
+
+final _forAssetProvider = FutureProvider.autoDispose.family<List<Tag>, String>((ref, assetId) async {
+  try {
+    final tags = await ref.watch(tagApiRepositoryProvider).getForAsset(assetId);
+    return [...tags]..sort((a, b) => a.value.compareTo(b.value));
+  } catch (error, stack) {
+    _log.severe("Failed to get the tags of asset $assetId", error, stack);
+    rethrow;
   }
 });
 

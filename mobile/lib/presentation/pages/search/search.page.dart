@@ -118,6 +118,30 @@ class SearchPage extends HookConsumerWidget {
           locationCurrentFilterWidget.value = preFilter.location.city != null
               ? Text(preFilter.location.city!, style: context.textTheme.labelLarge)
               : null;
+          final preTagIds = preFilter.tagIds ?? const <String>[];
+          if (preTagIds.isNotEmpty) {
+            // the filter has the tags' ids only; their names come with the list of tags
+            ProviderSubscription<AsyncValue<List<Tag>>>? subscription;
+            var labelled = false;
+            subscription = ref.listenManual(Store.tags.all(), (_, next) {
+              if (next.isLoading || labelled) {
+                return;
+              }
+              labelled = true;
+              // null when the tags were already loaded: closed below, once listenManual returns
+              subscription?.close();
+              final label = (next.valueOrNull ?? const <Tag>[])
+                  .where((tag) => preTagIds.contains(tag.id))
+                  .map((tag) => tag.value)
+                  .join(', ');
+              if (context.mounted && label.isNotEmpty) {
+                tagCurrentFilterWidget.value = Text(label, style: context.textTheme.labelLarge);
+              }
+            }, fireImmediately: true);
+            if (labelled) {
+              subscription.close();
+            }
+          }
           search(preFilter);
         }),
       );

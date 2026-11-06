@@ -451,4 +451,7 @@ extension type const TagApiRepositoryStub(MockTagApiRepository repo) implements 
 
   Future<List<Tag>> Function() get getAll =>
       () => repo.getAll();
+
+  Future<List<Tag>> Function() get getForAsset =>
+      () => repo.getForAsset(any());
 }
