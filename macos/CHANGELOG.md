@@ -2,6 +2,15 @@
 
 Immich macOS 原生版（非官方）的各个版本。版本号是 `<上游 Immich 版本>-mac.<序号>`，每个版本对应一个 git 标签，发布流程见 [RELEASING.md](RELEASING.md)。这个版本基于上游 Immich 修改，改动的验证记录在 [verification/](verification/README.md)。
 
+## v3.3.6-mac.1（2026-11-06）
+
+基于上游 v3.3.6，包含 v3.3.5-mac.11 的全部内容。
+
+**修复**
+
+- 关掉机器学习服务发给微软的遥测。机器学习用的 onnxruntime 默认会把设备信息（Mac 型号、芯片、系统版本、内存、一个设备 ID）和模型使用、性能数据发给微软，照片内容和路径不在里面；Mac 版 mac.1 到 mac.11 都受影响。上游 v3.3.6 在机器学习服务里关掉了它，Mac 版的服务启动脚本也另外关掉了一次（[onnxruntime-telemetry.md](verification/onnxruntime-telemetry.md)）
+- 升级后可以删掉以前留下的遥测记录：`~/Library/Application Support/Microsoft/DeveloperTools/.onnxruntime/`
+
 ## v3.3.5-mac.11（2026-11-05）
 
 基于上游 v3.3.5。

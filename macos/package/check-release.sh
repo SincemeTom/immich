@@ -23,6 +23,8 @@ RELEASE="$WORK/release"
 cp -cR "$SOURCE" "$RELEASE"
 PROFILE="$WORK/deny.sb"
 failures=0
+# onnxruntime's usage data to Microsoft, off for the checks below (macos/verification/onnxruntime-telemetry.md)
+export ORT_DISABLE_TELEMETRY=1
 
 cat >"$PROFILE" <<EOF
 (version 1)
@@ -159,6 +161,10 @@ check "onnxruntime has CoreML" sandbox-exec -f "$PROFILE" "$py" -c \
 check "the service's app loads" env -i HOME="$HOME" PYTHONPATH="$RELEASE/ml" PYTHONDONTWRITEBYTECODE=1 \
   MACHINE_LEARNING_CACHE_FOLDER="$WORK/models" sandbox-exec -f "$PROFILE" "$py" -c \
   'import immich_ml.main, cv2, numpy, PIL, tokenizers, huggingface_hub, uvicorn; print("immich_ml", cv2.__version__, numpy.__version__)'
+# without the variable run-service sets: immich_ml itself turns onnxruntime's telemetry off (upstream v3.3.6)
+check "immich_ml turns onnxruntime telemetry off" env -i HOME="$HOME" PYTHONPATH="$RELEASE/ml" PYTHONDONTWRITEBYTECODE=1 \
+  sandbox-exec -f "$PROFILE" "$py" -c \
+  'import os, immich_ml; v = os.environ.get("ORT_DISABLE_TELEMETRY"); assert v == "1", v; print("ORT_DISABLE_TELEMETRY=1")'
 
 echo "== geodata"
 # the place names in Chinese (macos/native/geodata.sh): what the server reads, and the place nearest a point in
