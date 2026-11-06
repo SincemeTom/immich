@@ -43,6 +43,8 @@ export HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK=1 HOMEBR
 export PATH="$BREW_PREFIX/bin:$BREW_PREFIX/opt/rustup/bin:$HOME/.cargo/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 export MISE_TRUSTED_CONFIG_PATHS="$REPO/mise.toml" MISE_YES=1 MISE_DISABLE_TOOLS="$MISE_UNUSED"
 export UV_PYTHON_PREFERENCE=only-managed
+# onnxruntime sends usage data to Microsoft unless this is set (macos/verification/onnxruntime-telemetry.md)
+export ORT_DISABLE_TELEMETRY=1
 # Homebrew's bottles here are built for macOS 15, and so is everything this compiles (PostgreSQL, pgvector, VectorChord,
 # sharp), rather than for this Mac's version, which compilers assume otherwise; with Apple's clang, whatever the shell
 # had set

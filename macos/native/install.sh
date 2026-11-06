@@ -95,6 +95,8 @@ export PATH="/opt/homebrew/bin:/opt/homebrew/opt/rustup/bin:$HOME/.cargo/bin:/us
 export MISE_TRUSTED_CONFIG_PATHS="$REPO/mise.toml" MISE_YES=1 MISE_DISABLE_TOOLS="$MISE_UNUSED"
 # uv-managed CPython only: an Intel Python under /usr/local would install x86 wheels without CoreML
 export UV_PYTHON_PREFERENCE=only-managed
+# onnxruntime sends usage data to Microsoft unless this is set (macos/verification/onnxruntime-telemetry.md)
+export ORT_DISABLE_TELEMETRY=1
 
 mise_exec() { (cd "$REPO" && mise exec -- "$@"); }
 

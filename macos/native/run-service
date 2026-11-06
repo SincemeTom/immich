@@ -70,6 +70,9 @@ case "$service" in
     export MACHINE_LEARNING_MODEL_REVISION="${IMMICH_NATIVE_MODEL_REVISION:-$MODEL_REVISION}"
     export HF_HOME="$home/data/models/hf-cache"
     export IMMICH_LOG_LEVEL="${IMMICH_NATIVE_LOG_LEVEL:-info}"
+    # onnxruntime 1.30 sends usage data to Microsoft unless this is set (macos/verification/onnxruntime-telemetry.md).
+    # immich_ml sets it too, since upstream v3.3.6; here it also covers anything run before immich_ml is imported.
+    export ORT_DISABLE_TELEMETRY=1
     if [ "$service" = ml-warm ]; then
       # `immichctl warm` runs this in place of the service: the models are downloaded, then the service's own
       # preload prepares every shape the provider compiles (CoreML), and only then answers /ping

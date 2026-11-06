@@ -203,7 +203,7 @@ describe(SynologyService.name, () => {
       const [connection, version, params] = [login[0], login[3], login[4]];
       expect(connection).toEqual({ url, verifyCertificate: false });
       expect(version).toBe(7);
-      expect(params).toMatchObject({ account: 'alice', passwd: 'p@ss "w0rd"', session: 'Immich', format: 'sid' });
+      expect(params).toMatchObject({ account: 'alice', passwd: 'p@ss "w0rd"', session: 'webui', format: 'sid' });
       expect(params).not.toHaveProperty('otp_code');
     });
 
@@ -211,7 +211,7 @@ describe(SynologyService.name, () => {
       await sut.bindAccount(auth, { url, account: 'alice', password: 'pw', verifyCertificate: true });
 
       expect(called('SYNO.API.Auth', 'logout')).toEqual([
-        [{ url, verifyCertificate: true }, 'SYNO.API.Auth', 'logout', 7, { session: 'Immich' }, 'sid-1'],
+        [{ url, verifyCertificate: true }, 'SYNO.API.Auth', 'logout', 7, { session: 'webui' }, 'sid-1'],
       ]);
     });
 
